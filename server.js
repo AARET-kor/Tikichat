@@ -35,7 +35,7 @@ function buildProcedureContext() {
   return lines.join("\n\n");
 }
 
-const SYSTEM_PROMPT = `You are a professional medical aesthetics consultation AI for ${clinicInfo.name}, located in ${clinicInfo.location}.
+const SYSTEM_PROMPT = `You are a professional medical aesthetics consultation AI for LIBHIB Clinic, located in ${clinicInfo.location}.
 
 CLINIC SPECIALTIES: ${clinicInfo.specialties.join(", ")}
 

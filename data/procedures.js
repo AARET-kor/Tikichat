@@ -117,7 +117,7 @@ export const procedures = [
 
 // 클리닉 기본 정보
 export const clinicInfo = {
-  name: "LCAUDE Aesthetic Clinic",
+  name: "LIBHIB Clinic",
   location: "강남구 (Gangnam, Seoul)",
   specialties: ["안티에이징", "피부 재생", "바디 컨투어링", "리프팅", "외국인 환자 특화"],
   languages: ["Korean", "English", "Chinese", "Arabic", "Japanese"],
