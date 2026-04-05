@@ -17,59 +17,75 @@ app.use(express.static("public"));
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// 시술 DB를 시스템 프롬프트용 텍스트로 변환
-function buildProcedureContext() {
-  const lines = procedures.map((p) => {
-    const name = p.name.en || p.name.ko;
-    return [
-      `[${name} / ${p.name.ko}]`,
-      `Category: ${p.category}`,
-      `Description: ${p.description.en}`,
-      `Effects: ${p.effects.join(", ")}`,
-      `Downtime: ${p.downtime}`,
-      `Duration: ${p.duration}`,
-      `Price range: ${p.price_range}`,
-      `Cautions: ${p.cautions.join("; ")}`,
-    ].join("\n");
-  });
-  return lines.join("\n\n");
+// 특정 시술 정보 텍스트 빌드
+function buildSingleProcedure(id) {
+  const p = procedures.find((x) => x.id === id);
+  if (!p) return "";
+  return [
+    `[${p.name.en} / ${p.name.ko}]`,
+    `Category: ${p.category}`,
+    `Description: ${p.description.en}`,
+    `Effects: ${p.effects.join(", ")}`,
+    `Downtime: ${p.downtime}`,
+    `Duration: ${p.duration}`,
+    `Price range: ${p.price_range}`,
+    `Cautions: ${p.cautions.join("; ")}`,
+  ].join("\n");
 }
 
-const SYSTEM_PROMPT = `You are a professional medical aesthetics consultation AI for LIBHIB Clinic, located in ${clinicInfo.location}.
+// 전체 시술 목록 텍스트 빌드
+function buildAllProcedures() {
+  return procedures.map((p) => buildSingleProcedure(p.id)).join("\n\n");
+}
 
-CLINIC SPECIALTIES: ${clinicInfo.specialties.join(", ")}
+// 시스템 프롬프트 생성 — procedure 선택 여부에 따라 범위 제한
+function buildSystemPrompt(procedureId) {
+  const base = `You are a structured medical aesthetics consultation AI for LIBHIB Clinic, ${clinicInfo.location}.
 
-YOUR ROLE:
-- Answer questions about aesthetic procedures (pre/post consultation)
-- Provide personalized recommendations based on patient concerns
-- Explain procedures, expected results, downtime, and pricing
-- Handle aftercare questions
-- Always recommend an in-person consultation for final decisions
+LANGUAGE RULE: Always respond in the SAME language as the user's message (Korean/English/Japanese/Chinese/Arabic).
 
-LANGUAGE RULE:
-Detect the language of the user's message and ALWAYS respond in that SAME language.
-If Arabic → respond in Arabic. If Chinese → respond in Chinese. If English → respond in English. If Korean → respond in Korean. If Japanese → respond in Japanese.
+TONE: Warm, concise, professional. Max 3~4 sentences per reply unless the user asks for more detail.
 
-TONE: Warm, professional, knowledgeable. Never make definitive medical diagnoses. Always note that results vary by individual.
+HARD BOUNDARIES:
+- Only discuss aesthetic procedures offered at LIBHIB Clinic
+- Do NOT answer unrelated questions (food, travel, general health, etc.)
+- Do NOT diagnose conditions or prescribe medication
+- If asked something outside scope, politely redirect: "저는 LIBHIB 클리닉 시술 상담만 도와드릴 수 있어요 😊"
 
-AVAILABLE PROCEDURES DATABASE:
-${buildProcedureContext()}
+BOOKING CTA: When the user seems ready or asks about next steps, always end with:
+"👉 지금 바로 상담 예약하시겠어요? [예약하기] 버튼을 눌러주세요!"
+(translate to user's language)`;
 
-IMPORTANT BOUNDARIES:
-- Do not prescribe medication
-- Do not diagnose medical conditions
-- For emergencies or adverse reactions, advise to contact a doctor immediately
-- Always recommend consultation before any procedure`;
+  if (procedureId) {
+    const info = buildSingleProcedure(procedureId);
+    return `${base}
 
-// POST /api/chat — 채팅 메시지 처리 (스트리밍)
+CURRENT CONTEXT — User selected this procedure:
+${info}
+
+FOCUS: Answer questions ONLY about this procedure. Guide the user through:
+1. Their specific concern / target area
+2. Expected results & downtime
+3. Pricing & sessions needed
+4. → Recommend booking a free consultation`;
+  }
+
+  return `${base}
+
+AVAILABLE PROCEDURES:
+${buildAllProcedures()}
+
+FOCUS: Help the user identify which procedure fits their concern, then guide them to select it.`;
+}
+
+// POST /api/chat
 app.post("/api/chat", async (req, res) => {
-  const { messages } = req.body;
+  const { messages, procedureId } = req.body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "messages array required" });
   }
 
-  // SSE 헤더 설정
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -77,23 +93,16 @@ app.post("/api/chat", async (req, res) => {
   try {
     const stream = client.messages.stream({
       model: "claude-opus-4-6",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      max_tokens: 512,
+      system: buildSystemPrompt(procedureId || null),
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
     });
 
     for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
       }
     }
-
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err) {
@@ -103,12 +112,12 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// GET /api/procedures — 시술 목록 반환
+// GET /api/procedures
 app.get("/api/procedures", (req, res) => {
   res.json(procedures);
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Clinic chatbot running at http://localhost:${PORT}`);
+  console.log(`LIBHIB Clinic chatbot running at http://localhost:${PORT}`);
 });

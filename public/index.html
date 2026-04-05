@@ -8,760 +8,746 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #f7f5f2;
-      --sidebar-bg: #1a1a2e;
-      --sidebar-text: rgba(255,255,255,0.85);
-      --sidebar-hover: rgba(255,255,255,0.08);
-      --sidebar-active: rgba(255,255,255,0.14);
-      --header-bg: #1a1a2e;
-      --accent: #c9a96e;
-      --user-bubble: #1a1a2e;
-      --ai-bubble: #f0ece7;
-      --input-border: #e0dbd4;
-      --radius: 16px;
+      --navy:   #1a1a2e;
+      --gold:   #c9a96e;
+      --gold-l: #e8d5b0;
+      --bg:     #f7f5f2;
+      --white:  #ffffff;
+      --bubble-ai: #f0ece7;
+      --border: #e8e3dc;
+      --text:   #1a1a2e;
+      --muted:  #999;
+      --r:      14px;
+      --nav-h:  64px;
     }
+
+    html, body { height: 100%; overflow: hidden; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
-      height: 100dvh;
-      display: flex;
-      overflow: hidden;
-    }
-
-    /* ── SIDEBAR ── */
-    .sidebar {
-      width: 260px;
-      min-width: 260px;
-      background: var(--sidebar-bg);
       display: flex;
       flex-direction: column;
-      padding: 0;
-      overflow: hidden;
-      transition: transform 0.25s ease;
+      max-width: 480px;
+      margin: 0 auto;
+      height: 100dvh;
+      position: relative;
+      box-shadow: 0 0 60px rgba(0,0,0,.08);
     }
 
-    .sidebar-header {
-      padding: 22px 18px 14px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .logo {
+    /* ── HEADER ── */
+    header {
+      background: var(--navy);
+      color: #fff;
+      padding: 14px 18px;
       display: flex;
       align-items: center;
       gap: 10px;
-      color: #fff;
-      text-decoration: none;
-    }
-
-    .logo-icon {
-      width: 32px; height: 32px;
-      background: linear-gradient(135deg, #c9a96e, #e8d5b0);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
       flex-shrink: 0;
+      z-index: 10;
     }
 
-    .logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.5px; }
-    .logo-sub  { font-size: 10px; opacity: 0.5; margin-top: 1px; }
-
-    .new-chat-btn {
-      margin: 12px 14px 0;
-      background: rgba(201,169,110,0.18);
-      border: 1px solid rgba(201,169,110,0.35);
-      color: var(--accent);
-      border-radius: 10px;
-      padding: 9px 14px;
-      font-size: 13px;
-      cursor: pointer;
-      width: calc(100% - 28px);
-      text-align: left;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: background 0.15s;
-    }
-    .new-chat-btn:hover { background: rgba(201,169,110,0.28); }
-
-    .sidebar-section {
-      padding: 14px 14px 6px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: rgba(255,255,255,0.3);
-      text-transform: uppercase;
+    .hdr-logo {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-l));
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0;
     }
 
-    .history-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0 8px;
-    }
+    .hdr-title  { font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+    .hdr-sub    { font-size: 11px; opacity: .55; margin-top: 1px; }
 
-    .history-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-      color: var(--sidebar-text);
-      font-size: 13px;
-      transition: background 0.12s;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .history-item:hover { background: var(--sidebar-hover); }
-    .history-item.active { background: var(--sidebar-active); }
-    .history-item .hi-icon { opacity: 0.5; flex-shrink: 0; }
-
-    .lang-section {
-      padding: 14px;
-      border-top: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .lang-label { font-size: 10px; color: rgba(255,255,255,0.3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
-
-    .lang-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-
-    .lang-pill {
+    .hdr-badge {
+      margin-left: auto;
+      background: rgba(74,222,128,.15);
+      border: 1px solid rgba(74,222,128,.35);
+      color: #4ade80;
       font-size: 11px;
       padding: 3px 9px;
       border-radius: 20px;
-      background: rgba(255,255,255,0.08);
-      color: rgba(255,255,255,0.65);
-      cursor: pointer;
-      border: none;
-      transition: background 0.12s;
-    }
-    .lang-pill:hover, .lang-pill.active { background: var(--accent); color: #fff; }
-
-    /* ── MAIN AREA ── */
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      min-width: 0;
     }
 
-    .chat-header {
-      background: #fff;
-      border-bottom: 1px solid #ece8e2;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .hamburger {
-      display: none;
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 4px;
-      color: #555;
-    }
-
-    .header-title { font-size: 15px; font-weight: 600; color: #1a1a2e; }
-    .header-sub   { font-size: 11px; color: #aaa; margin-top: 1px; }
-
-    .header-actions {
-      margin-left: auto;
-      display: flex;
-      gap: 6px;
-    }
-
-    .icon-btn {
-      background: none;
-      border: 1px solid #ece8e2;
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 12px;
-      color: #777;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      transition: background 0.12s, color 0.12s;
-    }
-    .icon-btn:hover { background: #f5f2ef; color: #333; }
-    .icon-btn svg { width: 14px; height: 14px; }
-
-    .status-dot {
-      width: 7px; height: 7px;
-      background: #4ade80;
-      border-radius: 50%;
-      display: inline-block;
-      margin-right: 5px;
-    }
-
-    /* ── MESSAGES ── */
-    .messages {
+    /* ── SCREENS ── */
+    .screen {
       flex: 1;
       overflow-y: auto;
-      padding: 24px 20px;
-      display: flex;
+      display: none;
       flex-direction: column;
-      gap: 6px;
+    }
+    .screen.active { display: flex; }
+
+    /* ── HOME SCREEN ── */
+    #homeScreen {
+      padding: 20px 16px calc(var(--nav-h) + 16px);
+      gap: 20px;
+    }
+
+    .home-hero {
+      background: linear-gradient(135deg, var(--navy) 0%, #16213e 100%);
+      border-radius: 18px;
+      padding: 24px 20px;
+      color: #fff;
+    }
+    .home-hero h2 { font-size: 18px; font-weight: 700; line-height: 1.4; }
+    .home-hero p  { font-size: 13px; opacity: .65; margin-top: 6px; line-height: 1.5; }
+
+    .hero-chips {
+      display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap;
+    }
+    .hero-chip {
+      font-size: 11px;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.2);
+      color: rgba(255,255,255,.85);
+      padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    .section-title {
+      font-size: 13px; font-weight: 700;
+      color: var(--muted); letter-spacing: .5px;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+
+    /* 카테고리 그리드 */
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .cat-card {
+      background: var(--white);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .cat-card:hover, .cat-card:active {
+      border-color: var(--gold);
+      transform: translateY(-1px);
+    }
+    .cat-icon { font-size: 24px; }
+    .cat-name { font-size: 14px; font-weight: 700; color: var(--text); }
+    .cat-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+    /* 인기 시술 */
+    .popular-list {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .popular-item {
+      background: var(--white);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 13px 15px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .popular-item:hover { border-color: var(--gold); }
+    .pi-icon { font-size: 22px; flex-shrink: 0; }
+    .pi-name { font-size: 14px; font-weight: 600; color: var(--text); }
+    .pi-tag  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .pi-arrow { margin-left: auto; color: var(--muted); font-size: 16px; }
+
+    /* ── PROCEDURE LIST SCREEN ── */
+    #procScreen { padding: 16px 16px calc(var(--nav-h) + 16px); gap: 10px; }
+
+    .back-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 6px;
+    }
+    .back-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--navy); font-size: 22px; line-height: 1;
+      padding: 2px 4px;
+    }
+    .back-title { font-size: 16px; font-weight: 700; color: var(--text); }
+
+    .proc-card {
+      background: var(--white);
+      border: 1.5px solid var(--border);
+      border-radius: var(--r);
+      padding: 15px;
+      cursor: pointer;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .proc-card:hover {
+      border-color: var(--gold);
+      box-shadow: 0 4px 16px rgba(201,169,110,.15);
+    }
+    .pc-row { display: flex; align-items: flex-start; gap: 12px; }
+    .pc-icon { font-size: 26px; flex-shrink: 0; }
+    .pc-name { font-size: 15px; font-weight: 700; color: var(--text); }
+    .pc-desc { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+    .pc-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+    .pc-tag  {
+      font-size: 11px; padding: 3px 9px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 20px; color: var(--muted);
+    }
+    .pc-price {
+      font-size: 12px; font-weight: 600;
+      color: var(--gold); margin-top: 6px;
+    }
+
+    /* ── CHAT SCREEN ── */
+    #chatScreen { display: none; flex-direction: column; }
+    #chatScreen.active { display: flex; }
+
+    .chat-proc-bar {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0;
+    }
+    .cpb-icon { font-size: 20px; }
+    .cpb-name { font-size: 14px; font-weight: 700; color: var(--text); }
+    .cpb-sub  { font-size: 11px; color: var(--muted); }
+    .cpb-change {
+      margin-left: auto;
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px 11px;
+      font-size: 12px; color: var(--muted); cursor: pointer;
+    }
+    .cpb-change:hover { border-color: var(--navy); color: var(--navy); }
+
+    .messages {
+      flex: 1; overflow-y: auto;
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 10px;
       scroll-behavior: smooth;
     }
 
-    .msg-row {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .msg-row.user  { align-items: flex-end; }
+    .msg-row { display: flex; flex-direction: column; gap: 3px; }
+    .msg-row.user      { align-items: flex-end; }
     .msg-row.assistant { align-items: flex-start; }
 
-    .msg-meta {
-      font-size: 10px;
-      color: #bbb;
-      padding: 0 4px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
+    .msg-label { font-size: 10px; color: var(--muted); padding: 0 4px; }
 
     .msg {
-      max-width: min(72%, 560px);
-      padding: 11px 15px;
-      border-radius: var(--radius);
-      line-height: 1.6;
-      font-size: 14px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      position: relative;
+      max-width: 82%;
+      padding: 11px 14px;
+      border-radius: 16px;
+      font-size: 14px; line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
     }
+    .msg.user      { background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.assistant { background: var(--bubble-ai); color: var(--text); border-bottom-left-radius: 4px; }
 
-    .msg.user {
-      background: var(--user-bubble);
-      color: #fff;
-      border-bottom-right-radius: 4px;
+    /* 가이드 버튼 */
+    .guide-chips {
+      padding: 0 16px 10px;
+      display: flex; gap: 7px; flex-wrap: wrap; flex-shrink: 0;
     }
-
-    .msg.assistant {
-      background: var(--ai-bubble);
-      color: #222;
-      border-bottom-left-radius: 4px;
-    }
-
-    .msg-actions {
-      display: flex;
-      gap: 4px;
-      opacity: 0;
-      transition: opacity 0.15s;
-    }
-    .msg-row:hover .msg-actions { opacity: 1; }
-
-    .msg-action-btn {
-      background: none;
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 3px 8px;
-      font-size: 11px;
-      color: #999;
-      cursor: pointer;
-      transition: background 0.1s;
-    }
-    .msg-action-btn:hover { background: #f0ece7; color: #555; }
-
-    /* 타이핑 */
-    .typing-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-    }
-
-    .typing-bubble {
-      background: var(--ai-bubble);
-      padding: 12px 16px;
-      border-radius: var(--radius);
-      border-bottom-left-radius: 4px;
-      display: none;
-    }
-    .typing-bubble.visible {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-
-    .dot {
-      width: 7px; height: 7px;
-      background: #bbb;
-      border-radius: 50%;
-      animation: bounce 1.2s infinite;
-    }
-    .dot:nth-child(2) { animation-delay: 0.2s; }
-    .dot:nth-child(3) { animation-delay: 0.4s; }
-
-    @keyframes bounce {
-      0%, 80%, 100% { transform: translateY(0); }
-      40%           { transform: translateY(-6px); }
-    }
-
-    /* 빠른 질문 */
-    .quick-wrap {
-      padding: 0 20px 10px;
-    }
-
-    .quick-label {
-      font-size: 11px;
-      color: #bbb;
-      margin-bottom: 7px;
-    }
-
-    .quick-chips {
-      display: flex;
-      gap: 7px;
-      flex-wrap: wrap;
-    }
-
-    .chip {
-      font-size: 12px;
-      padding: 6px 13px;
-      background: #fff;
-      border: 1px solid #e8e3dc;
-      border-radius: 20px;
-      cursor: pointer;
-      color: #555;
-      transition: border-color 0.12s, color 0.12s;
+    .g-chip {
+      font-size: 13px;
+      padding: 8px 14px;
+      background: var(--white);
+      border: 1.5px solid var(--border);
+      border-radius: 20px; cursor: pointer;
+      color: var(--text); font-weight: 500;
+      transition: border-color .12s, background .12s;
       white-space: nowrap;
     }
-    .chip:hover { border-color: var(--accent); color: #1a1a2e; }
+    .g-chip:hover { border-color: var(--gold); background: #fdfaf6; }
+
+    /* 예약 CTA */
+    .booking-cta {
+      margin: 4px 16px 8px;
+      background: linear-gradient(135deg, var(--navy), #16213e);
+      border-radius: var(--r);
+      padding: 16px;
+      display: none; flex-direction: column; gap: 8px;
+      flex-shrink: 0;
+    }
+    .booking-cta.show { display: flex; }
+    .cta-text { font-size: 14px; font-weight: 600; color: #fff; }
+    .cta-sub  { font-size: 12px; color: rgba(255,255,255,.6); }
+    .cta-btn  {
+      background: var(--gold);
+      color: #fff; border: none;
+      border-radius: 10px; padding: 11px;
+      font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: opacity .15s;
+      text-align: center;
+    }
+    .cta-btn:hover { opacity: .9; }
 
     /* 입력창 */
     .input-area {
-      padding: 14px 20px 18px;
-      border-top: 1px solid #ece8e2;
-      background: #fff;
+      padding: 10px 12px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--white);
+      display: flex; gap: 8px; align-items: flex-end;
+      flex-shrink: 0;
     }
 
-    .input-box {
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      background: var(--bg);
-      border: 1.5px solid var(--input-border);
-      border-radius: 14px;
-      padding: 10px 12px;
-      transition: border-color 0.15s;
+    .input-wrap {
+      flex: 1; background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      display: flex; align-items: flex-end; gap: 6px;
+      padding: 9px 12px;
+      transition: border-color .15s;
     }
-    .input-box:focus-within { border-color: #1a1a2e; }
+    .input-wrap:focus-within { border-color: var(--navy); }
 
     textarea {
-      flex: 1;
-      border: none;
-      background: transparent;
-      outline: none;
-      resize: none;
-      font-size: 14px;
-      font-family: inherit;
-      line-height: 1.45;
-      min-height: 24px;
-      max-height: 120px;
-      color: #1a1a2e;
+      flex: 1; border: none; background: transparent;
+      outline: none; resize: none;
+      font-size: 14px; font-family: inherit;
+      line-height: 1.4; min-height: 22px; max-height: 100px;
+      color: var(--text);
     }
+    textarea::placeholder { color: #ccc; }
 
-    textarea::placeholder { color: #bbb; }
-
-    #send {
+    #sendBtn {
       width: 36px; height: 36px;
-      background: var(--user-bubble);
-      border: none;
-      border-radius: 9px;
-      cursor: pointer;
+      background: var(--navy); border: none;
+      border-radius: 9px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: opacity .15s;
+    }
+    #sendBtn:disabled { opacity: .3; cursor: default; }
+    #sendBtn svg { fill: #fff; }
+
+    /* 타이핑 */
+    .typing {
+      display: none; padding: 10px 14px;
+      background: var(--bubble-ai); border-radius: 14px;
+      align-items: center; gap: 5px;
+      width: fit-content; border-bottom-left-radius: 4px;
+    }
+    .typing.show { display: flex; }
+    .dot { width: 7px; height: 7px; background: #bbb; border-radius: 50%; animation: bop 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay: .2s; }
+    .dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes bop { 0%,80%,100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav {
+      height: var(--nav-h);
+      background: var(--white);
+      border-top: 1px solid var(--border);
       display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: opacity 0.15s, transform 0.1s;
-    }
-    #send:hover:not(:disabled) { transform: scale(1.05); }
-    #send:disabled { opacity: 0.35; cursor: default; }
-    #send svg { fill: #fff; }
-
-    .input-hint {
-      font-size: 11px;
-      color: #ccc;
-      margin-top: 7px;
-      text-align: center;
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      z-index: 20;
     }
 
-    /* ── MOBILE ── */
-    @media (max-width: 680px) {
-      .sidebar {
-        position: fixed;
-        inset: 0 auto 0 0;
-        z-index: 100;
-        transform: translateX(-100%);
-        width: 280px;
-      }
-      .sidebar.open { transform: translateX(0); }
-      .hamburger { display: flex; }
-      .overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.4);
-        z-index: 99;
-      }
-      .overlay.show { display: block; }
-      .msg { max-width: 88%; }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; cursor: pointer;
+      border: none; background: none;
+      color: var(--muted); transition: color .15s;
+      font-size: 10px; font-weight: 500;
     }
+    .nav-item .nav-icon { font-size: 20px; line-height: 1; }
+    .nav-item.active    { color: var(--navy); }
+    .nav-item.book      { color: var(--gold); font-weight: 700; }
+    .nav-item.book .nav-icon { font-size: 22px; }
+
+    /* 스크롤바 */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
   </style>
 </head>
 <body>
 
-<!-- 모바일 오버레이 -->
-<div class="overlay" id="overlay"></div>
+<!-- HEADER -->
+<header>
+  <div class="hdr-logo">✦</div>
+  <div>
+    <div class="hdr-title">LIBHIB Clinic</div>
+    <div class="hdr-sub">AI 미용 상담 · Aesthetic Consultation</div>
+  </div>
+  <div class="hdr-badge">● 온라인</div>
+</header>
 
-<!-- ── SIDEBAR ── -->
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <a class="logo" href="#">
-      <div class="logo-icon">✦</div>
-      <div>
-        <div class="logo-text">LIBHIB Clinic</div>
-        <div class="logo-sub">AI Consultation</div>
+<!-- ── HOME SCREEN ── -->
+<div class="screen active" id="homeScreen">
+
+  <div class="home-hero">
+    <h2>어떤 고민이 있으신가요? 🌿</h2>
+    <p>시술 카테고리를 선택하거나 아래 인기 시술을 눌러<br>맞춤 상담을 시작하세요.</p>
+    <div class="hero-chips">
+      <span class="hero-chip">🇰🇷 한국어</span>
+      <span class="hero-chip">🇺🇸 English</span>
+      <span class="hero-chip">🇯🇵 日本語</span>
+      <span class="hero-chip">🇨🇳 中文</span>
+      <span class="hero-chip">🇸🇦 عربي</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">카테고리 선택</div>
+    <div class="cat-grid">
+      <div class="cat-card" onclick="goCategory('face')">
+        <div class="cat-icon">💉</div>
+        <div class="cat-name">얼굴 성형</div>
+        <div class="cat-desc">보톡스·필러·<br>눈 밑 교정</div>
       </div>
-    </a>
-  </div>
-
-  <button class="new-chat-btn" id="newChatBtn">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-    새 상담 시작
-  </button>
-
-  <div class="sidebar-section">최근 상담</div>
-  <div class="history-list" id="historyList">
-    <!-- JS로 동적 추가 -->
-  </div>
-
-  <div class="lang-section">
-    <div class="lang-label">언어 / Language</div>
-    <div class="lang-grid">
-      <button class="lang-pill active" data-lang="auto">Auto</button>
-      <button class="lang-pill" data-lang="ko">한국어</button>
-      <button class="lang-pill" data-lang="en">English</button>
-      <button class="lang-pill" data-lang="zh">中文</button>
-      <button class="lang-pill" data-lang="ar">العربية</button>
-      <button class="lang-pill" data-lang="ja">日本語</button>
-    </div>
-  </div>
-</aside>
-
-<!-- ── MAIN ── -->
-<div class="main">
-
-  <div class="chat-header">
-    <button class="hamburger" id="hamburger" aria-label="메뉴">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
-    </button>
-    <div>
-      <div class="header-title"><span class="status-dot"></span>LIBHIB Clinic AI</div>
-      <div class="header-sub">의료 미용 AI 상담 · Aesthetic Consultation</div>
-    </div>
-    <div class="header-actions">
-      <button class="icon-btn" id="clearBtn" title="대화 초기화">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        초기화
-      </button>
-    </div>
-  </div>
-
-  <div class="messages" id="messages">
-    <div class="msg-row assistant">
-      <div class="msg-meta">LIBHIB AI</div>
-      <div class="msg assistant">안녕하세요! LIBHIB Clinic AI 상담사입니다 😊
-피부 고민이나 시술에 대해 궁금한 점을 편하게 물어보세요.
-
-Hello! I'm the LIBHIB Clinic AI consultant.
-Feel free to ask about any procedures or skin concerns in your language.</div>
-      <div class="msg-actions">
-        <button class="msg-action-btn" onclick="copyMsg(this)">복사</button>
+      <div class="cat-card" onclick="goCategory('skin')">
+        <div class="cat-icon">✨</div>
+        <div class="cat-name">피부 관리</div>
+        <div class="cat-desc">레이저·박피·<br>리쥬란·필링</div>
+      </div>
+      <div class="cat-card" onclick="goCategory('lifting')">
+        <div class="cat-icon">🔝</div>
+        <div class="cat-name">리프팅</div>
+        <div class="cat-desc">울쎄라·써마지·<br>실 리프팅</div>
+      </div>
+      <div class="cat-card" onclick="goCategory('body')">
+        <div class="cat-icon">💪</div>
+        <div class="cat-name">바디</div>
+        <div class="cat-desc">HIFU 체형·<br>지방분해</div>
       </div>
     </div>
   </div>
 
-  <div class="typing-row" style="padding: 0 20px 8px;">
-    <div class="typing-bubble" id="typing">
-      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-    </div>
-  </div>
-
-  <div class="quick-wrap" id="quickWrap">
-    <div class="quick-label">빠른 질문 / Quick questions</div>
-    <div class="quick-chips">
-      <button class="chip">보톡스 가격 & 효과</button>
-      <button class="chip">Filler for lips?</button>
-      <button class="chip">皮肤提升推荐</button>
-      <button class="chip">ما هو البوتوكس؟</button>
-      <button class="chip">울쎄라 vs 써마지</button>
-      <button class="chip">リジュランとは？</button>
-    </div>
-  </div>
-
-  <div class="input-area">
-    <div class="input-box">
-      <textarea id="input" placeholder="메시지를 입력하세요 / Type your message..." rows="1"></textarea>
-      <button id="send" aria-label="전송">
-        <svg width="16" height="16" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-      </button>
-    </div>
-    <div class="input-hint">Enter 전송 · Shift+Enter 줄바꿈</div>
+  <div>
+    <div class="section-title">⭐ 인기 시술</div>
+    <div class="popular-list" id="popularList"></div>
   </div>
 
 </div>
 
+<!-- ── PROCEDURE LIST SCREEN ── -->
+<div class="screen" id="procScreen">
+  <div class="back-bar">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="back-title" id="procScreenTitle">시술 목록</div>
+  </div>
+  <div id="procList"></div>
+</div>
+
+<!-- ── CHAT SCREEN ── -->
+<div class="screen" id="chatScreen">
+
+  <div class="chat-proc-bar">
+    <div class="cpb-icon" id="chatProcIcon">💉</div>
+    <div>
+      <div class="cpb-name" id="chatProcName">보톡스</div>
+      <div class="cpb-sub">상담 진행 중</div>
+    </div>
+    <button class="cpb-change" onclick="goHome()">다른 시술</button>
+  </div>
+
+  <div class="messages" id="messages"></div>
+
+  <div class="typing" id="typing">
+    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+  </div>
+
+  <div class="guide-chips" id="guideChips"></div>
+
+  <div class="booking-cta" id="bookingCta">
+    <div>
+      <div class="cta-text">📅 무료 상담 예약하기</div>
+      <div class="cta-sub">지금 예약하면 당일 상담 가능합니다</div>
+    </div>
+    <button class="cta-btn" onclick="openBooking()">예약하기 →</button>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="input" placeholder="궁금한 점을 입력하세요..." rows="1"></textarea>
+    </div>
+    <button id="sendBtn" onclick="sendMessage()">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-item active" id="nav-home" onclick="goHome()">
+    <span class="nav-icon">🏠</span>홈
+  </button>
+  <button class="nav-item" id="nav-face" onclick="goCategory('face')">
+    <span class="nav-icon">💉</span>얼굴
+  </button>
+  <button class="nav-item" id="nav-skin" onclick="goCategory('skin')">
+    <span class="nav-icon">✨</span>피부
+  </button>
+  <button class="nav-item" id="nav-lifting" onclick="goCategory('lifting')">
+    <span class="nav-icon">🔝</span>리프팅
+  </button>
+  <button class="nav-item book" onclick="openBooking()">
+    <span class="nav-icon">📅</span>예약
+  </button>
+</nav>
+
 <script>
-  // ── DOM refs ──
-  const messagesEl  = document.getElementById("messages");
-  const inputEl     = document.getElementById("input");
-  const sendBtn     = document.getElementById("send");
-  const typingEl    = document.getElementById("typing");
-  const quickWrap   = document.getElementById("quickWrap");
-  const clearBtn    = document.getElementById("clearBtn");
-  const newChatBtn  = document.getElementById("newChatBtn");
-  const historyList = document.getElementById("historyList");
-  const hamburger   = document.getElementById("hamburger");
-  const sidebar     = document.getElementById("sidebar");
-  const overlay     = document.getElementById("overlay");
+// ── 데이터 ──
+const PROCEDURES = {
+  face: [
+    { id:"botox",      icon:"💉", name:"보톡스",      en:"Botox",          price:"5만~30만원",  desc:"주름·윤곽·땀 억제",        guides:["어느 부위가 고민이에요?","효과 지속 기간이 궁금해요","가격이 얼마예요?","시술 후 주의사항은?"] },
+    { id:"filler",     icon:"💧", name:"필러",        en:"Filler",         price:"15만~80만원", desc:"볼륨·팔자·입술·코 교정",   guides:["어느 부위에 볼륨을 원하세요?","자연스러운 정도를 조절할 수 있나요?","붓기가 얼마나 지속되나요?","가격이 얼마예요?"] },
+    { id:"eye_filler",  icon:"👁", name:"눈 밑 필러", en:"Under-eye Filler",price:"15만~40만원", desc:"다크서클·꺼짐·애교살",      guides:["다크서클인가요, 꺼짐인가요?","애교살 효과도 가능한가요?","회복 기간은요?"] },
+  ],
+  skin: [
+    { id:"laser_toning",  icon:"🔆", name:"레이저 토닝",  en:"Laser Toning",    price:"3만~10만원",  desc:"기미·잡티·톤업·모공",    guides:["기미가 심한가요, 전체적인 톤업 원하세요?","몇 회 정도 필요한가요?","일상 복귀는 바로 가능한가요?"] },
+    { id:"rejuran",       icon:"🌿", name:"리쥬란 힐러",  en:"Rejuran Healer",  price:"15만~40만원", desc:"피부 재생·잔주름·탄력",  guides:["피부 재생이 목적인가요, 잔주름인가요?","연어 알레르기가 있으신가요?","몇 회 코스를 추천하나요?"] },
+    { id:"pico_laser",    icon:"⚡", name:"피코 레이저",  en:"Pico Laser",      price:"5만~20만원",  desc:"색소·문신·모공·흉터",    guides:["색소 제거인가요, 피부 결인가요?","시술 후 붉어짐이 얼마나 가요?","비용이 궁금해요"] },
+    { id:"chemical_peel", icon:"🧴", name:"화학적 박피",  en:"Chemical Peel",   price:"5만~30만원",  desc:"여드름·모공·피부결",     guides:["여드름 흉터인가요, 모공인가요?","벗겨짐이 심한가요?","자외선 차단은 필수인가요?"] },
+  ],
+  lifting: [
+    { id:"ulthera",     icon:"📡", name:"울쎄라",   en:"Ultherapy",  price:"30만~150만원", desc:"SMAS 초음파 리프팅",     guides:["얼굴 전체인가요, 특정 부위인가요?","시술 중 통증은 어느 정도예요?","효과가 언제부터 나타나요?","가격이 궁금해요"] },
+    { id:"thermage",    icon:"🌡", name:"써마지",   en:"Thermage",   price:"50만~200만원", desc:"고주파 콜라겐 리모델링", guides:["울쎄라와 차이가 뭔가요?","한 번으로 효과가 나오나요?","눈가·이마도 가능한가요?"] },
+    { id:"thread_lift", icon:"🪡", name:"실 리프팅", en:"Thread Lift", price:"20만~100만원", desc:"즉각적 리프팅·자연스러운 윤곽", guides:["효과가 즉각적으로 나오나요?","실이 녹는 건가요?","회복 기간이 얼마나 걸려요?"] },
+  ],
+  body: [
+    { id:"hifu_body",       icon:"💪", name:"HIFU 바디",      en:"HIFU Body",         price:"20만~80만원", desc:"지방 감소·체형 교정",   guides:["어느 부위가 고민이에요?","지방 흡입과 차이는요?","몇 회 필요한가요?"] },
+    { id:"fat_dissolving",  icon:"💧", name:"지방분해주사",   en:"Fat Dissolving",    price:"5만~30만원",  desc:"소량 지방·윤곽 교정",   guides:["턱 아래인가요, 복부인가요?","멍이 많이 드나요?","몇 회 맞아야 하나요?"] },
+  ],
+};
 
-  let conversationHistory = [];
-  let selectedLang = "auto";
-  let sessions = JSON.parse(localStorage.getItem("libhib_sessions") || "[]");
+const CAT_LABEL = { face:"얼굴 성형", skin:"피부 관리", lifting:"리프팅", body:"바디" };
+const CAT_ICON  = { face:"💉", skin:"✨", lifting:"🔝", body:"💪" };
 
-  // ── 사이드바 토글 (모바일) ──
-  hamburger.addEventListener("click", () => {
-    sidebar.classList.toggle("open");
-    overlay.classList.toggle("show");
-  });
-  overlay.addEventListener("click", () => {
-    sidebar.classList.remove("open");
-    overlay.classList.remove("show");
-  });
+const POPULAR_IDS = ["botox","ulthera","rejuran","laser_toning","filler"];
 
-  // ── 언어 선택 ──
-  document.querySelectorAll(".lang-pill").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".lang-pill").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      selectedLang = btn.dataset.lang;
-    });
-  });
+// 전체 시술 플랫 목록
+const ALL_PROCS = Object.values(PROCEDURES).flat();
+const procById  = (id) => ALL_PROCS.find(p => p.id === id);
 
-  // ── 빠른 질문 ──
-  document.querySelectorAll(".chip").forEach(chip => {
-    chip.addEventListener("click", () => {
-      inputEl.value = chip.textContent;
-      autoResize();
-      sendMessage();
-    });
-  });
+// ── 상태 ──
+let currentProc      = null;
+let conversationHistory = [];
+let turnCount        = 0;
 
-  // ── 새 상담 / 초기화 ──
-  function startNewChat() {
-    if (conversationHistory.length > 0) saveSession();
-    conversationHistory = [];
-    messagesEl.innerHTML = `
-      <div class="msg-row assistant">
-        <div class="msg-meta">LIBHIB AI</div>
-        <div class="msg assistant">안녕하세요! LIBHIB Clinic AI 상담사입니다 😊
-피부 고민이나 시술에 대해 편하게 물어보세요.
+// ── 화면 전환 ──
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+}
 
-Hello! I'm the LIBHIB Clinic AI consultant.
-Feel free to ask in your language.</div>
-        <div class="msg-actions">
-          <button class="msg-action-btn" onclick="copyMsg(this)">복사</button>
+function setNavActive(key) {
+  const el = document.getElementById("nav-" + key);
+  if (el) el.classList.add("active");
+}
+
+function goHome() {
+  showScreen("homeScreen");
+  setNavActive("home");
+}
+
+function goCategory(cat) {
+  showScreen("procScreen");
+  setNavActive(cat);
+  document.getElementById("procScreenTitle").textContent =
+    CAT_ICON[cat] + "  " + CAT_LABEL[cat];
+
+  const list = document.getElementById("procList");
+  list.innerHTML = "";
+  (PROCEDURES[cat] || []).forEach(p => {
+    const div = document.createElement("div");
+    div.className = "proc-card";
+    div.innerHTML = `
+      <div class="pc-row">
+        <div class="pc-icon">${p.icon}</div>
+        <div>
+          <div class="pc-name">${p.name} <span style="font-size:11px;color:var(--muted);font-weight:400">${p.en}</span></div>
+          <div class="pc-desc">${p.desc}</div>
         </div>
-      </div>`;
-    quickWrap.style.display = "";
-    sidebar.classList.remove("open");
-    overlay.classList.remove("show");
-  }
-
-  newChatBtn.addEventListener("click", startNewChat);
-  clearBtn.addEventListener("click", startNewChat);
-
-  // ── 세션 저장 ──
-  function saveSession() {
-    if (conversationHistory.length === 0) return;
-    const firstMsg = conversationHistory[0]?.content?.slice(0, 30) || "상담";
-    sessions.unshift({ id: Date.now(), title: firstMsg, history: conversationHistory });
-    if (sessions.length > 20) sessions.pop();
-    localStorage.setItem("libhib_sessions", JSON.stringify(sessions));
-    renderHistory();
-  }
-
-  function renderHistory() {
-    historyList.innerHTML = "";
-    sessions.slice(0, 15).forEach(s => {
-      const el = document.createElement("div");
-      el.className = "history-item";
-      el.innerHTML = `<span class="hi-icon">💬</span><span>${s.title}…</span>`;
-      el.addEventListener("click", () => loadSession(s));
-      historyList.appendChild(el);
-    });
-  }
-
-  function loadSession(s) {
-    if (conversationHistory.length > 0) saveSession();
-    conversationHistory = s.history;
-    messagesEl.innerHTML = "";
-    s.history.forEach(m => appendMessage(m.role, m.content));
-    sidebar.classList.remove("open");
-    overlay.classList.remove("show");
-  }
-
-  renderHistory();
-
-  // ── 입력창 자동 높이 ──
-  function autoResize() {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
-  }
-  inputEl.addEventListener("input", autoResize);
-
-  inputEl.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      </div>
+      <div class="pc-tags">${p.guides.slice(0,2).map(g=>`<span class="pc-tag">${g}</span>`).join("")}</div>
+      <div class="pc-price">💰 ${p.price}</div>`;
+    div.addEventListener("click", () => startChat(p.id));
+    list.appendChild(div);
   });
-  sendBtn.addEventListener("click", sendMessage);
+}
 
-  // ── 메시지 복사 ──
-  function copyMsg(btn) {
-    const text = btn.closest(".msg-row").querySelector(".msg").textContent;
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = "복사됨 ✓";
-      setTimeout(() => btn.textContent = "복사", 1500);
+// ── 인기 시술 렌더 ──
+function renderPopular() {
+  const el = document.getElementById("popularList");
+  POPULAR_IDS.forEach(id => {
+    const p = procById(id);
+    if (!p) return;
+    const div = document.createElement("div");
+    div.className = "popular-item";
+    div.innerHTML = `
+      <div class="pi-icon">${p.icon}</div>
+      <div>
+        <div class="pi-name">${p.name}</div>
+        <div class="pi-tag">${p.price} · ${p.desc}</div>
+      </div>
+      <div class="pi-arrow">›</div>`;
+    div.addEventListener("click", () => startChat(p.id));
+    el.appendChild(div);
+  });
+}
+renderPopular();
+
+// ── 채팅 시작 ──
+function startChat(procId) {
+  const p = procById(procId);
+  if (!p) return;
+  currentProc = p;
+  conversationHistory = [];
+  turnCount = 0;
+
+  document.getElementById("chatProcIcon").textContent = p.icon;
+  document.getElementById("chatProcName").textContent = p.name;
+  document.getElementById("messages").innerHTML = "";
+  document.getElementById("bookingCta").classList.remove("show");
+
+  showScreen("chatScreen");
+
+  // 첫 AI 인사
+  const greeting = `안녕하세요! ${p.name} 상담을 시작할게요 😊\n어떤 부분이 가장 고민이세요?`;
+  appendMsg("assistant", greeting);
+  conversationHistory.push({ role: "assistant", content: greeting });
+
+  renderGuides(p.guides);
+}
+
+// ── 가이드 버튼 ──
+function renderGuides(guides) {
+  const el = document.getElementById("guideChips");
+  el.innerHTML = "";
+  guides.forEach(g => {
+    const btn = document.createElement("button");
+    btn.className = "g-chip";
+    btn.textContent = g;
+    btn.addEventListener("click", () => { clickGuide(g); });
+    el.appendChild(btn);
+  });
+}
+
+function clickGuide(text) {
+  document.getElementById("input").value = text;
+  sendMessage();
+}
+
+// ── 메시지 추가 ──
+function appendMsg(role, text) {
+  const row = document.createElement("div");
+  row.className = "msg-row " + role;
+  const label = role === "user" ? "나" : "LIBHIB AI";
+  row.innerHTML = `<div class="msg-label">${label}</div><div class="msg ${role}"></div>`;
+  row.querySelector(".msg").textContent = text;
+  document.getElementById("messages").appendChild(row);
+  scrollBottom();
+  return row.querySelector(".msg");
+}
+
+function scrollBottom() {
+  const el = document.getElementById("messages");
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── 전송 ──
+async function sendMessage() {
+  const input = document.getElementById("input");
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  input.style.height = "auto";
+  document.getElementById("sendBtn").disabled = true;
+  document.getElementById("guideChips").innerHTML = "";
+
+  appendMsg("user", text);
+  conversationHistory.push({ role: "user", content: text });
+  turnCount++;
+
+  document.getElementById("typing").classList.add("show");
+  scrollBottom();
+
+  let fullText = "";
+  let aiDiv    = null;
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: conversationHistory,
+        procedureId: currentProc?.id || null,
+      }),
     });
-  }
-  window.copyMsg = copyMsg;
 
-  // ── 메시지 추가 ──
-  function appendMessage(role, text) {
-    const now = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("typing").classList.remove("show");
+
     const row = document.createElement("div");
-    row.className = `msg-row ${role}`;
-
-    const label = role === "user" ? "나" : "LIBHIB AI";
-    row.innerHTML = `
-      <div class="msg-meta">${label} <span style="opacity:.5">${now}</span></div>
-      <div class="msg ${role}">${escHtml(text)}</div>
-      <div class="msg-actions">
-        <button class="msg-action-btn" onclick="copyMsg(this)">복사</button>
-      </div>`;
-
-    messagesEl.appendChild(row);
-    scrollBottom();
-    return row.querySelector(".msg");
-  }
-
-  function escHtml(s) {
-    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  }
-
-  function scrollBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  // ── 전송 ──
-  async function sendMessage() {
-    const text = inputEl.value.trim();
-    if (!text || sendBtn.disabled) return;
-
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-    quickWrap.style.display = "none";
-    sendBtn.disabled = true;
-
-    appendMessage("user", text);
-
-    const userContent = selectedLang !== "auto"
-      ? `[Please respond in ${selectedLang}] ${text}`
-      : text;
-
-    conversationHistory.push({ role: "user", content: userContent });
-
-    typingEl.classList.add("visible");
+    row.className = "msg-row assistant";
+    row.innerHTML = `<div class="msg-label">LIBHIB AI</div><div class="msg assistant"></div>`;
+    document.getElementById("messages").appendChild(row);
+    aiDiv = row.querySelector(".msg");
     scrollBottom();
 
-    let assistantDiv = null;
-    let fullText = "";
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: conversationHistory }),
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      typingEl.classList.remove("visible");
-
-      // 응답 행 미리 생성
-      const now = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-      const row = document.createElement("div");
-      row.className = "msg-row assistant";
-      row.innerHTML = `
-        <div class="msg-meta">LIBHIB AI <span style="opacity:.5">${now}</span></div>
-        <div class="msg assistant streaming"></div>
-        <div class="msg-actions">
-          <button class="msg-action-btn" onclick="copyMsg(this)">복사</button>
-        </div>`;
-      messagesEl.appendChild(row);
-      assistantDiv = row.querySelector(".msg");
-      scrollBottom();
-
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.text) {
-              fullText += data.text;
-              assistantDiv.textContent = fullText;
-              scrollBottom();
-            }
-            if (data.done) assistantDiv.classList.remove("streaming");
-            if (data.error) assistantDiv.textContent = "오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
-          } catch {}
-        }
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.text) { fullText += d.text; aiDiv.textContent = fullText; scrollBottom(); }
+        } catch {}
       }
-
-      if (fullText) conversationHistory.push({ role: "assistant", content: fullText });
-
-    } catch (err) {
-      typingEl.classList.remove("visible");
-      if (!assistantDiv) appendMessage("assistant", "연결 오류가 발생했습니다.");
-      else assistantDiv.textContent = "연결 오류가 발생했습니다. 서버를 확인해 주세요.";
-      console.error(err);
     }
 
-    sendBtn.disabled = false;
-    inputEl.focus();
+    if (fullText) conversationHistory.push({ role: "assistant", content: fullText });
+
+    // 3턴 이후 예약 CTA 노출
+    if (turnCount >= 3) {
+      document.getElementById("bookingCta").classList.add("show");
+      scrollBottom();
+    } else if (currentProc) {
+      // 다음 가이드 버튼
+      const used = conversationHistory
+        .filter(m => m.role === "user")
+        .map(m => m.content);
+      const remaining = currentProc.guides.filter(g => !used.includes(g));
+      if (remaining.length > 0) renderGuides(remaining.slice(0, 3));
+    }
+
+  } catch (err) {
+    document.getElementById("typing").classList.remove("show");
+    if (aiDiv) aiDiv.textContent = "오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+    console.error(err);
   }
+
+  document.getElementById("sendBtn").disabled = false;
+  input.focus();
+}
+
+// ── 예약 ──
+function openBooking() {
+  alert("📅 예약 시스템 연동 예정\n\n카카오톡 / WhatsApp / 직접 전화로 연결됩니다.");
+  // 추후: window.open("https://booking-url", "_blank");
+}
+
+// ── 입력창 자동 높이 ──
+const inputEl = document.getElementById("input");
+inputEl.addEventListener("input", () => {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
+});
+inputEl.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
 </script>
 </body>
 </html>
