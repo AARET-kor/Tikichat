@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LIBHIB Staff — 상담 관리 시스템</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --navy:#1a1a2e; --navy2:#16213e;
+      --gold:#c9a96e; --gold-l:#f5ead8;
+      --bg:#f4f2ef; --white:#fff;
+      --border:#e5e0d8; --border2:#ede8e0;
+      --text:#1a1a2e; --muted:#8a8580; --muted2:#b0aba3;
+      --green:#22c55e; --red:#ef4444; --amber:#f59e0b;
+      --blue:#3b82f6;
+      --sidebar:280px;
+    }
+    html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+
+    /* ── TOP NAV ── */
+    .topnav{
+      height:52px;background:var(--navy);
+      display:flex;align-items:center;padding:0 20px;gap:20px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      flex-shrink:0;
+    }
+    .tn-logo{display:flex;align-items:center;gap:9px;color:#fff;text-decoration:none}
+    .tn-icon{width:30px;height:30px;background:linear-gradient(135deg,var(--gold),#e8d5b0);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px}
+    .tn-name{font-size:14px;font-weight:700;letter-spacing:.3px}
+    .tn-divider{width:1px;height:18px;background:rgba(255,255,255,.15)}
+    .tn-tabs{display:flex;gap:2px}
+    .tn-tab{background:none;border:none;color:rgba(255,255,255,.5);font-size:13px;padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .15s;font-weight:500}
+    .tn-tab.active{background:rgba(255,255,255,.12);color:#fff}
+    .tn-tab:hover:not(.active){color:rgba(255,255,255,.8)}
+    .tn-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .tn-badge{font-size:11px;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.35);color:#f87171;padding:3px 9px;border-radius:20px}
+    .tn-staff{font-size:12px;color:rgba(255,255,255,.55)}
+
+    /* ── BODY ── */
+    .app-body{display:flex;height:calc(100vh - 52px);overflow:hidden}
+
+    /* ── VIEWS ── */
+    .view{display:none;width:100%;height:100%}
+    .view.active{display:flex}
+
+    /* ─── 상담관리 VIEW ─── */
+    #viewConsult{display:none}
+    #viewConsult.active{display:flex}
+
+    /* sidebar */
+    .sidebar{
+      width:var(--sidebar);min-width:var(--sidebar);
+      background:var(--white);border-right:1px solid var(--border);
+      display:flex;flex-direction:column;overflow:hidden;
+    }
+    .sb-header{padding:14px 16px 10px;border-bottom:1px solid var(--border2)}
+    .sb-title{font-size:13px;font-weight:700;color:var(--muted)}
+    .sb-filters{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+    .sf-btn{font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:none;cursor:pointer;color:var(--muted);transition:all .12s}
+    .sf-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .sb-list{flex:1;overflow-y:auto}
+    .conv-item{
+      padding:12px 16px;border-bottom:1px solid var(--border2);cursor:pointer;
+      transition:background .1s;display:flex;gap:10px;align-items:flex-start;
+    }
+    .conv-item:hover{background:#faf8f5}
+    .conv-item.active{background:var(--gold-l);border-left:3px solid var(--gold)}
+    .ci-flag{font-size:20px;line-height:1;flex-shrink:0;margin-top:1px}
+    .ci-body{flex:1;min-width:0}
+    .ci-top{display:flex;align-items:center;gap:6px}
+    .ci-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ci-channel{font-size:10px;padding:1px 6px;border-radius:10px;font-weight:600}
+    .ch-instagram{background:#fce7f3;color:#ec4899}
+    .ch-whatsapp{background:#dcfce7;color:#16a34a}
+    .ch-kakao{background:#fef9c3;color:#854d0e}
+    .ci-preview{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ci-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0}
+    .ci-time{font-size:10px;color:var(--muted2)}
+    .ci-dot{width:8px;height:8px;background:var(--red);border-radius:50%}
+    .ci-done{font-size:10px;color:var(--green);font-weight:600}
+
+    /* main panel */
+    .main-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+    .mp-empty{
+      flex:1;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:12px;color:var(--muted);
+    }
+    .mp-empty-icon{font-size:48px;opacity:.3}
+    .mp-empty-text{font-size:14px}
+
+    /* conversation detail */
+    .conv-detail{display:none;flex-direction:column;height:100%}
+    .conv-detail.show{display:flex}
+
+    .cd-header{
+      background:var(--white);border-bottom:1px solid var(--border);
+      padding:12px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;
+    }
+    .cd-flag{font-size:24px}
+    .cd-name{font-size:15px;font-weight:700}
+    .cd-sub{font-size:12px;color:var(--muted);margin-top:1px}
+    .cd-badges{display:flex;gap:6px;margin-left:auto}
+    .cd-badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
+    .badge-unread{background:#fef2f2;color:var(--red);border:1px solid #fecaca}
+    .badge-replied{background:#f0fdf4;color:var(--green);border:1px solid #bbf7d0}
+
+    /* message thread */
+    .cd-thread{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+    .msg-block{display:flex;flex-direction:column;gap:3px;max-width:680px}
+    .msg-block.patient{align-self:flex-start}
+    .msg-block.staff{align-self:flex-end}
+    .msg-label{font-size:10px;color:var(--muted);padding:0 4px}
+    .msg-bubble{padding:11px 15px;border-radius:14px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+    .patient .msg-bubble{background:var(--white);border:1.5px solid var(--border);border-bottom-left-radius:4px}
+    .staff .msg-bubble{background:var(--navy);color:#fff;border-bottom-right-radius:4px}
+    .msg-translated{font-size:12px;color:var(--muted);background:#fafaf8;border:1px solid var(--border2);border-radius:8px;padding:8px 12px;margin-top:4px;display:none}
+    .msg-translated.show{display:block}
+    .translated-label{font-size:10px;font-weight:600;color:var(--gold);margin-bottom:3px}
+
+    /* AI 패널 */
+    .ai-panel{
+      background:var(--white);border-top:1px solid var(--border);
+      padding:16px 20px;display:none;flex-direction:column;gap:12px;flex-shrink:0;
+    }
+    .ai-panel.show{display:flex}
+
+    .ai-section{display:flex;flex-direction:column;gap:6px}
+    .ai-label{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+    .ai-badge{font-size:10px;background:#eff6ff;color:var(--blue);padding:2px 7px;border-radius:10px;font-weight:600}
+    .ai-content{
+      background:#fafaf8;border:1px solid var(--border2);border-radius:10px;
+      padding:10px 13px;font-size:13px;line-height:1.6;color:var(--text);
+      min-height:44px;
+    }
+    .ai-content.streaming{opacity:.7}
+    .ai-loading{color:var(--muted2);font-size:13px;display:flex;align-items:center;gap:6px}
+    .spin{display:inline-block;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .reply-editor{
+      border:1.5px solid var(--border);border-radius:10px;
+      font-size:14px;line-height:1.6;padding:10px 13px;
+      resize:none;width:100%;font-family:inherit;color:var(--text);
+      min-height:80px;max-height:160px;outline:none;
+      transition:border-color .15s;
+    }
+    .reply-editor:focus{border-color:var(--navy)}
+
+    .panel-actions{display:flex;gap:8px;align-items:center}
+    .btn{border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px}
+    .btn-primary{background:var(--navy);color:#fff}
+    .btn-primary:hover{opacity:.88}
+    .btn-primary:disabled{opacity:.4;cursor:default}
+    .btn-secondary{background:none;border:1.5px solid var(--border);color:var(--muted)}
+    .btn-secondary:hover{border-color:var(--navy);color:var(--navy)}
+    .btn-gold{background:var(--gold);color:#fff}
+    .btn-gold:hover{opacity:.9}
+    .send-hint{font-size:11px;color:var(--muted2);margin-left:auto}
+
+    /* ─── 애프터케어 VIEW ─── */
+    #viewAftercare{display:none;padding:24px;overflow-y:auto}
+    #viewAftercare.active{display:block}
+
+    .ac-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+    .ac-title{font-size:18px;font-weight:700}
+    .ac-sub{font-size:13px;color:var(--muted)}
+    .btn-add{margin-left:auto}
+
+    .ac-table{background:var(--white);border-radius:14px;border:1px solid var(--border);overflow:hidden}
+    .ac-thead{background:#faf8f5;border-bottom:1px solid var(--border);display:grid;grid-template-columns:180px 110px 90px 1fr 1fr 1fr 60px;padding:10px 16px;gap:8px}
+    .ac-th{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase}
+    .ac-row{display:grid;grid-template-columns:180px 110px 90px 1fr 1fr 1fr 60px;padding:14px 16px;gap:8px;border-bottom:1px solid var(--border2);align-items:center;transition:background .1s}
+    .ac-row:last-child{border-bottom:none}
+    .ac-row:hover{background:#faf8f5}
+    .ac-patient{display:flex;align-items:center;gap:8px}
+    .ac-flag{font-size:17px}
+    .ac-pname{font-size:13px;font-weight:600}
+    .ac-proc{font-size:12px;font-weight:600;color:var(--navy);background:var(--gold-l);padding:3px 9px;border-radius:10px;display:inline-flex;width:fit-content}
+    .ac-date{font-size:12px;color:var(--muted)}
+
+    .day-cell{display:flex;flex-direction:column;gap:4px}
+    .day-status{display:flex;align-items:center;gap:5px}
+    .ds-sent{font-size:11px;color:var(--green);font-weight:600;display:flex;align-items:center;gap:3px}
+    .ds-pending{font-size:11px;color:var(--amber);font-weight:600}
+    .ds-scheduled{font-size:11px;color:var(--muted2)}
+    .day-time{font-size:10px;color:var(--muted2)}
+    .btn-preview{font-size:11px;padding:4px 9px;background:none;border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--muted);transition:all .12s;width:fit-content}
+    .btn-preview:hover{border-color:var(--gold);color:var(--gold)}
+    .btn-send-day{font-size:11px;padding:4px 9px;background:var(--navy);border:none;border-radius:7px;cursor:pointer;color:#fff;transition:opacity .12s;width:fit-content}
+    .btn-send-day:hover{opacity:.85}
+
+    /* 미리보기 모달 */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:none;align-items:center;justify-content:center}
+    .modal-overlay.show{display:flex}
+    .modal{background:var(--white);border-radius:16px;padding:24px;max-width:480px;width:90%;display:flex;flex-direction:column;gap:14px}
+    .modal-title{font-size:15px;font-weight:700}
+    .modal-sub{font-size:12px;color:var(--muted)}
+    .modal-body{background:#fafaf8;border:1px solid var(--border2);border-radius:10px;padding:14px;font-size:14px;line-height:1.7;min-height:80px;white-space:pre-wrap}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end}
+    .modal-close{background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 16px;font-size:13px;cursor:pointer}
+
+    /* 타이핑 */
+    .dots{display:inline-flex;gap:3px;align-items:center}
+    .d{width:5px;height:5px;background:var(--muted2);border-radius:50%;animation:bop 1.2s infinite}
+    .d:nth-child(2){animation-delay:.2s}
+    .d:nth-child(3){animation-delay:.4s}
+    @keyframes bop{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-thumb{background:#ddd;border-radius:4px}
+  </style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<div class="topnav">
+  <a class="tn-logo" href="#">
+    <div class="tn-icon">✦</div>
+    <div class="tn-name">LIBHIB Staff</div>
+  </a>
+  <div class="tn-divider"></div>
+  <div class="tn-tabs">
+    <button class="tn-tab active" onclick="switchView('consult')">💬 상담 관리</button>
+    <button class="tn-tab" onclick="switchView('aftercare')">📅 애프터케어</button>
+  </div>
+  <div class="tn-right">
+    <div class="tn-badge" id="unreadBadge">미답변 3</div>
+    <div class="tn-staff">👤 실장 김지현</div>
+  </div>
+</div>
+
+<!-- APP BODY -->
+<div class="app-body">
+
+  <!-- ── 상담관리 VIEW ── -->
+  <div class="view active" id="viewConsult">
+
+    <!-- sidebar -->
+    <div class="sidebar">
+      <div class="sb-header">
+        <div class="sb-title">전체 문의 <span id="convCount" style="color:var(--muted2)"></span></div>
+        <div class="sb-filters">
+          <button class="sf-btn active" onclick="filterConvs('all',this)">전체</button>
+          <button class="sf-btn" onclick="filterConvs('unread',this)">미답변</button>
+          <button class="sf-btn" onclick="filterConvs('replied',this)">답변완료</button>
+        </div>
+      </div>
+      <div class="sb-list" id="convList"></div>
+    </div>
+
+    <!-- main panel -->
+    <div class="main-panel">
+      <div class="mp-empty" id="mpEmpty">
+        <div class="mp-empty-icon">💬</div>
+        <div class="mp-empty-text">대화를 선택하면 AI 번역과 추천 답변이 자동으로 생성됩니다</div>
+      </div>
+
+      <!-- conversation detail -->
+      <div class="conv-detail" id="convDetail">
+        <div class="cd-header">
+          <div class="cd-flag" id="cdFlag">🇯🇵</div>
+          <div>
+            <div class="cd-name" id="cdName">Yuki Tanaka</div>
+            <div class="cd-sub" id="cdSub">Instagram · 일본어</div>
+          </div>
+          <div class="cd-badges">
+            <span class="cd-badge badge-unread" id="cdBadge">미답변</span>
+          </div>
+        </div>
+
+        <div class="cd-thread" id="cdThread"></div>
+
+        <div class="ai-panel" id="aiPanel">
+          <div class="ai-section">
+            <div class="ai-label">
+              🤖 AI 한국어 번역 <span class="ai-badge">직원용</span>
+            </div>
+            <div class="ai-content" id="aiTranslation">
+              <div class="ai-loading"><span class="spin">⟳</span> 번역 중...</div>
+            </div>
+          </div>
+
+          <div class="ai-section">
+            <div class="ai-label">
+              💡 AI 추천 답변 <span class="ai-badge">한국어 초안</span>
+            </div>
+            <div class="ai-content" id="aiSuggestion">
+              <div class="ai-loading"><span class="spin">⟳</span> 답변 생성 중...</div>
+            </div>
+            <button class="btn btn-secondary" style="width:fit-content;font-size:12px" onclick="useAiSuggestion()">
+              ↓ 이 답변 사용
+            </button>
+          </div>
+
+          <div class="ai-section">
+            <div class="ai-label">✏️ 답변 작성 / 수정</div>
+            <textarea class="reply-editor" id="replyEditor" placeholder="한국어로 답변을 작성하거나 위 AI 초안을 수정하세요..."></textarea>
+          </div>
+
+          <div class="panel-actions">
+            <button class="btn btn-primary" id="sendBtn" onclick="sendReply()">
+              ✈️ <span id="sendBtnLabel">번역 후 발송</span>
+            </button>
+            <button class="btn btn-secondary" onclick="clearReply()">초기화</button>
+            <span class="send-hint" id="sendHint"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 애프터케어 VIEW ── -->
+  <div class="view" id="viewAftercare">
+    <div class="ac-header">
+      <div>
+        <div class="ac-title">애프터케어 자동 메시지</div>
+        <div class="ac-sub">시술 완료 환자에게 D+1 · D+3 · D+7 메시지를 자동 발송합니다</div>
+      </div>
+      <button class="btn btn-primary btn-add" onclick="alert('시술 완료 환자 등록 기능 — 예약 시스템 연동 후 활성화됩니다')">+ 시술 완료 등록</button>
+    </div>
+
+    <div class="ac-table">
+      <div class="ac-thead">
+        <div class="ac-th">환자</div>
+        <div class="ac-th">시술</div>
+        <div class="ac-th">완료일</div>
+        <div class="ac-th">D+1</div>
+        <div class="ac-th">D+3</div>
+        <div class="ac-th">D+7</div>
+        <div class="ac-th"></div>
+      </div>
+      <div id="aftercareList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 미리보기 모달 -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">애프터케어 메시지 미리보기</div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="modal-body" id="modalBody">
+      <div class="ai-loading"><span class="spin">⟳</span> 생성 중...</div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-close" onclick="closeModal()">닫기</button>
+      <button class="btn btn-primary" onclick="confirmSendDay()">발송 확인</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 목 데이터 ──
+const CONVS = [
+  {
+    id:1, status:"unread", procHint:"botox",
+    patient:{ name:"Yuki Tanaka", flag:"🇯🇵", lang:"ja", channel:"instagram", channelLabel:"Instagram" },
+    time:"3분 전",
+    messages:[
+      { role:"patient", text:"ボトックスの料金と効果について詳しく教えていただけますか？特に額のシワと顎のラインが気になっています。施術後のダウンタイムも知りたいです。", time:"3분 전" }
+    ]
+  },
+  {
+    id:2, status:"unread", procHint:"filler",
+    patient:{ name:"Ahmed Al-Rashidi", flag:"🇸🇦", lang:"ar", channel:"whatsapp", channelLabel:"WhatsApp" },
+    time:"12분 전",
+    messages:[
+      { role:"patient", text:"مرحباً، أريد الاستفسار عن حقن الفيلر للأنف والشفاه. ما هي الأسعار والنتائج المتوقعة؟ وهل هناك آثار جانبية؟", time:"12분 전" }
+    ]
+  },
+  {
+    id:3, status:"replied", procHint:"ulthera",
+    patient:{ name:"Sarah Johnson", flag:"🇺🇸", lang:"en", channel:"instagram", channelLabel:"Instagram" },
+    time:"1시간 전",
+    messages:[
+      { role:"patient", text:"Hi! I'm interested in skin lifting. Can you tell me about Ultherapy vs Thermage? I'm in my early 40s and looking for a non-surgical option.", time:"1시간 전" },
+      { role:"staff", translated:"Hello Sarah! Both are excellent non-surgical lifting options. Ultherapy uses focused ultrasound targeting the SMAS layer — effects peak at 3 months and last 12 months (price: 300,000–1,500,000 KRW). Thermage uses radiofrequency to remodel collagen and lasts 1–2 years (price: 500,000–2,000,000 KRW). For your 40s, we often recommend combining both. Would you like to book a free consultation?", time:"55분 전" }
+    ]
+  },
+  {
+    id:4, status:"unread", procHint:"laser_toning",
+    patient:{ name:"李美玲", flag:"🇨🇳", lang:"zh", channel:"kakao", channelLabel:"카카오톡" },
+    time:"2시간 전",
+    messages:[
+      { role:"patient", text:"你好！我想了解关于激光去斑和皮肤美白的治疗方案。我的脸上有一些色斑，想改善整体肤色，请问有什么推荐的疗程吗？费用大概是多少？", time:"2시간 전" }
+    ]
+  },
+];
+
+const AFTERCARE_DATA = [
+  {
+    id:1,
+    patient:{ name:"Yuki Tanaka", flag:"🇯🇵", lang:"ja" },
+    proc:"보톡스", procId:"botox", completedDate:"오늘",
+    schedule:[
+      { day:1, status:"pending", time:"내일 오전 10:00" },
+      { day:3, status:"scheduled", time:"3일 후 오전 10:00" },
+      { day:7, status:"scheduled", time:"7일 후 오전 10:00" },
+    ]
+  },
+  {
+    id:2,
+    patient:{ name:"Ahmed Al-Rashidi", flag:"🇸🇦", lang:"ar" },
+    proc:"필러", procId:"filler", completedDate:"3일 전",
+    schedule:[
+      { day:1, status:"sent", time:"2일 전 오전 10:00" },
+      { day:3, status:"pending", time:"오늘 오전 10:00" },
+      { day:7, status:"scheduled", time:"4일 후 오전 10:00" },
+    ]
+  },
+  {
+    id:3,
+    patient:{ name:"Sarah Johnson", flag:"🇺🇸", lang:"en" },
+    proc:"울쎄라", procId:"ulthera", completedDate:"7일 전",
+    schedule:[
+      { day:1, status:"sent", time:"6일 전 오전 10:00" },
+      { day:3, status:"sent", time:"4일 전 오전 10:00" },
+      { day:7, status:"pending", time:"오늘 오후 2:00" },
+    ]
+  },
+];
+
+// ── 상태 ──
+let currentConvId = null;
+let aiSuggestionText = "";
+let currentFilter = "all";
+let modalContext = null;
+
+// ── 탭 전환 ──
+function switchView(v) {
+  document.querySelectorAll(".view").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".tn-tab").forEach(el => el.classList.remove("active"));
+  document.getElementById("view" + (v === "consult" ? "Consult" : "Aftercare")).classList.add("active");
+  event.target.classList.add("active");
+}
+
+// ── 대화 목록 렌더 ──
+function renderConvList() {
+  const list = document.getElementById("convList");
+  list.innerHTML = "";
+  const filtered = currentFilter === "all" ? CONVS
+    : CONVS.filter(c => c.status === currentFilter);
+  document.getElementById("convCount").textContent = `(${filtered.length})`;
+  document.getElementById("unreadBadge").textContent =
+    "미답변 " + CONVS.filter(c => c.status === "unread").length;
+
+  filtered.forEach(c => {
+    const lastMsg = c.messages[c.messages.length - 1];
+    const div = document.createElement("div");
+    div.className = "conv-item" + (c.id === currentConvId ? " active" : "");
+    div.innerHTML = `
+      <div class="ci-flag">${c.patient.flag}</div>
+      <div class="ci-body">
+        <div class="ci-top">
+          <div class="ci-name">${c.patient.name}</div>
+          <span class="ci-channel ch-${c.patient.channel}">${c.patient.channelLabel}</span>
+        </div>
+        <div class="ci-preview">${lastMsg.text.slice(0, 40)}…</div>
+      </div>
+      <div class="ci-right">
+        <div class="ci-time">${c.time}</div>
+        ${c.status === "unread" ? '<div class="ci-dot"></div>' : '<div class="ci-done">✓</div>'}
+      </div>`;
+    div.addEventListener("click", () => openConv(c.id));
+    list.appendChild(div);
+  });
+}
+
+function filterConvs(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll(".sf-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderConvList();
+}
+
+// ── 대화 열기 ──
+async function openConv(id) {
+  currentConvId = id;
+  const c = CONVS.find(x => x.id === id);
+  if (!c) return;
+  renderConvList();
+
+  document.getElementById("mpEmpty").style.display = "none";
+  document.getElementById("convDetail").classList.add("show");
+
+  // 헤더
+  document.getElementById("cdFlag").textContent = c.patient.flag;
+  document.getElementById("cdName").textContent = c.patient.name;
+  document.getElementById("cdSub").textContent =
+    `${c.patient.channelLabel} · ${langName(c.patient.lang)}`;
+  const badge = document.getElementById("cdBadge");
+  badge.className = "cd-badge " + (c.status === "unread" ? "badge-unread" : "badge-replied");
+  badge.textContent = c.status === "unread" ? "미답변" : "답변완료";
+
+  // 스레드
+  const thread = document.getElementById("cdThread");
+  thread.innerHTML = "";
+  c.messages.forEach(m => {
+    if (m.role === "patient") appendPatientMsg(m.text, m.time);
+    else appendStaffMsg(m.translated || m.text, m.time);
+  });
+
+  // AI 패널 초기화
+  document.getElementById("aiPanel").classList.add("show");
+  document.getElementById("aiTranslation").innerHTML = '<div class="ai-loading"><span class="spin">⟳</span> 번역 중...</div>';
+  document.getElementById("aiSuggestion").innerHTML = '<div class="ai-loading"><span class="spin">⟳</span> 답변 생성 중...</div>';
+  aiSuggestionText = "";
+  document.getElementById("replyEditor").value = "";
+  document.getElementById("sendHint").textContent = "";
+  document.getElementById("sendBtn").disabled = false;
+  document.getElementById("sendBtnLabel").textContent = "번역 후 발송";
+
+  // 첫 번째 환자 메시지
+  const patientMsg = c.messages.find(m => m.role === "patient")?.text;
+  if (!patientMsg) return;
+
+  // 1. 번역
+  await streamToEl(
+    "/api/translate",
+    { text: patientMsg, sourceLang: c.patient.lang },
+    "aiTranslation"
+  );
+
+  // 2. 추천 답변
+  await streamToEl(
+    "/api/suggest",
+    { patientMessage: patientMsg, patientLang: c.patient.lang, procedureHint: c.procHint },
+    "aiSuggestion",
+    (text) => { aiSuggestionText = text; }
+  );
+}
+
+// ── 스트리밍 → DOM ──
+async function streamToEl(url, body, elId, onDone) {
+  const el = document.getElementById(elId);
+  el.innerHTML = "";
+  el.classList.add("streaming");
+  let full = "";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.text) { full += d.text; el.textContent = full; }
+        } catch {}
+      }
+    }
+    el.classList.remove("streaming");
+    if (onDone) onDone(full);
+  } catch (err) {
+    el.textContent = "오류: " + err.message;
+    el.classList.remove("streaming");
+  }
+}
+
+// ── AI 제안 사용 ──
+function useAiSuggestion() {
+  document.getElementById("replyEditor").value = aiSuggestionText;
+  document.getElementById("replyEditor").focus();
+}
+
+function clearReply() {
+  document.getElementById("replyEditor").value = "";
+  aiSuggestionText = "";
+  document.getElementById("aiSuggestion").innerHTML = "";
+}
+
+// ── 발송 ──
+async function sendReply() {
+  const text = document.getElementById("replyEditor").value.trim();
+  if (!text) return alert("답변을 작성해주세요.");
+  const c = CONVS.find(x => x.id === currentConvId);
+  if (!c) return;
+
+  const btn = document.getElementById("sendBtn");
+  const label = document.getElementById("sendBtnLabel");
+  btn.disabled = true;
+  label.textContent = "번역 중…";
+  document.getElementById("sendHint").textContent = "";
+
+  try {
+    const res = await fetch("/api/translate-reply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, targetLang: c.patient.lang }),
+    });
+    const data = await res.json();
+    const translated = data.translated || text;
+
+    // 메시지 추가
+    appendStaffMsg(translated, "방금");
+    c.messages.push({ role: "staff", text, translated, time: "방금" });
+    c.status = "replied";
+    renderConvList();
+
+    document.getElementById("replyEditor").value = "";
+    document.getElementById("sendHint").textContent =
+      `✅ ${langName(c.patient.lang)}로 번역 완료 — 채널 연동 후 자동 발송됩니다`;
+    const badge = document.getElementById("cdBadge");
+    badge.className = "cd-badge badge-replied";
+    badge.textContent = "답변완료";
+  } catch (err) {
+    alert("오류: " + err.message);
+  }
+
+  btn.disabled = false;
+  label.textContent = "번역 후 발송";
+}
+
+// ── 메시지 버블 ──
+function appendPatientMsg(text, time) {
+  const div = document.createElement("div");
+  div.className = "msg-block patient";
+  div.innerHTML = `<div class="msg-label">${time || ""}</div><div class="msg-bubble">${esc(text)}</div>`;
+  document.getElementById("cdThread").appendChild(div);
+  scrollThread();
+}
+
+function appendStaffMsg(text, time) {
+  const div = document.createElement("div");
+  div.className = "msg-block staff";
+  div.innerHTML = `<div class="msg-label" style="text-align:right">직원 · ${time || ""}</div><div class="msg-bubble">${esc(text)}</div>`;
+  document.getElementById("cdThread").appendChild(div);
+  scrollThread();
+}
+
+function scrollThread() {
+  const t = document.getElementById("cdThread");
+  t.scrollTop = t.scrollHeight;
+}
+
+// ── 애프터케어 렌더 ──
+function renderAftercareList() {
+  const el = document.getElementById("aftercareList");
+  el.innerHTML = "";
+  AFTERCARE_DATA.forEach(ac => {
+    const row = document.createElement("div");
+    row.className = "ac-row";
+    row.innerHTML = `
+      <div class="ac-patient"><div class="ac-flag">${ac.patient.flag}</div><div class="ac-pname">${ac.patient.name}</div></div>
+      <div><span class="ac-proc">${ac.proc}</span></div>
+      <div class="ac-date">${ac.completedDate}</div>
+      ${ac.schedule.map(s => `
+        <div class="day-cell">
+          <div class="day-status">
+            ${s.status === "sent"
+              ? `<span class="ds-sent">✓ 발송완료</span>`
+              : s.status === "pending"
+              ? `<span class="ds-pending">● 발송 예정</span>`
+              : `<span class="ds-scheduled">예약됨</span>`}
+          </div>
+          <div class="day-time">${s.time}</div>
+          <button class="btn-preview" onclick="previewAftercare(${ac.id},${s.day})">미리보기</button>
+          ${s.status === "pending" ? `<button class="btn-send-day" onclick="sendDayMsg(${ac.id},${s.day})">지금 발송</button>` : ""}
+        </div>
+      `).join("")}
+      <div></div>`;
+    el.appendChild(row);
+  });
+}
+
+// ── 미리보기 모달 ──
+async function previewAftercare(acId, day) {
+  const ac = AFTERCARE_DATA.find(x => x.id === acId);
+  if (!ac) return;
+  modalContext = { acId, day };
+
+  document.getElementById("modalTitle").textContent =
+    `D+${day} 메시지 미리보기`;
+  document.getElementById("modalSub").textContent =
+    `${ac.patient.flag} ${ac.patient.name} · ${ac.proc} · ${langName(ac.patient.lang)}`;
+  document.getElementById("modalBody").innerHTML =
+    '<div class="ai-loading"><span class="spin">⟳</span> 생성 중...</div>';
+  document.getElementById("modalOverlay").classList.add("show");
+
+  let full = "";
+  try {
+    const res = await fetch("/api/aftercare-msg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        procedureId: ac.procId,
+        day,
+        targetLang: ac.patient.lang,
+        patientName: ac.patient.name,
+      }),
+    });
+    const el = document.getElementById("modalBody");
+    el.innerHTML = "";
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.text) { full += d.text; el.textContent = full; }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    document.getElementById("modalBody").textContent = "오류: " + err.message;
+  }
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById("modalOverlay")) {
+    document.getElementById("modalOverlay").classList.remove("show");
+  }
+}
+
+function confirmSendDay() {
+  if (!modalContext) return;
+  const ac = AFTERCARE_DATA.find(x => x.id === modalContext.acId);
+  const sch = ac?.schedule.find(s => s.day === modalContext.day);
+  if (sch) { sch.status = "sent"; sch.time = "방금 발송"; }
+  closeModal();
+  renderAftercareList();
+  alert("✅ 발송 완료!\n(채널 연동 후 실제 메시지가 전송됩니다)");
+}
+
+function sendDayMsg(acId, day) {
+  modalContext = { acId, day };
+  confirmSendDay();
+}
+
+// ── 헬퍼 ──
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function langName(l) {
+  return { ko:"한국어", en:"영어", ja:"일본어", zh:"중국어", ar:"아랍어" }[l] || l;
+}
+
+// ── 초기화 ──
+renderConvList();
+renderAftercareList();
+</script>
+</body>
+</html>
