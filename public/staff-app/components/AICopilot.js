@@ -1,4 +1,4 @@
-import { PencilLine, SendHorizonal, Sparkles, WandSparkles, html } from "../lib.js";
+import { PencilLine, SendHorizontal, Sparkles, WandSparkles, html } from "../lib.js";
 
 export function AICopilot({ language, suggestion, draft, onDraftChange, onInjectSuggestion, onSend }) {
   return html`
@@ -23,7 +23,7 @@ export function AICopilot({ language, suggestion, draft, onDraftChange, onInject
             onClick=${onSend}
             className="inline-flex items-center gap-2 rounded-2xl bg-brand-800 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700"
           >
-            <${SendHorizonal} size=${16} />
+            <${SendHorizontal} size=${16} />
             이대로 발송
           </button>
           <div className="ml-auto inline-flex items-center gap-2 rounded-2xl bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700">
