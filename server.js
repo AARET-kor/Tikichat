@@ -29,19 +29,26 @@ function sseStream(res) {
 }
 
 async function streamClaude(res, systemPrompt, userMessage, maxTokens = 512) {
-  const stream = client.messages.stream({
-    model: "claude-opus-4-6",
-    max_tokens: maxTokens,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
-  });
-  for await (const e of stream) {
-    if (e.type === "content_block_delta" && e.delta.type === "text_delta") {
-      res.write(`data: ${JSON.stringify({ text: e.delta.text })}\n\n`);
+  try {
+    const stream = client.messages.stream({
+      model: "claude-opus-4-6",
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    });
+    for await (const e of stream) {
+      if (e.type === "content_block_delta" && e.delta.type === "text_delta") {
+        res.write(`data: ${JSON.stringify({ delta: { text: e.delta.text } })}\n\n`);
+      }
     }
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+  } catch (err) {
+    console.error("Anthropic stream error:", err.message);
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
   }
-  res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-  res.end();
 }
 
 // ──────────────────────────────────────────
