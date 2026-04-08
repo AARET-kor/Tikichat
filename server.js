@@ -1,17 +1,19 @@
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
+import { createHash } from "crypto";
 import dotenv from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, ".env"), override: true });
 
-// ── 전역 방어막: 예상치 못한 에러 로그 후 Railway가 즉시 재시작하도록 exit(1) ─
+// ── 전역 방어막 ───────────────────────────────────────────────────────────────
+// uncaughtException은 프로세스 상태를 신뢰할 수 없으므로 exit(1) → Railway 즉시 재시작
 process.on("uncaughtException", (err) => {
-  console.error("[uncaughtException]", err.message, err.stack);
+  console.error("[FATAL uncaughtException]", err.message, "\n", err.stack);
   process.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
-  console.error("[unhandledRejection]", reason);
+  console.error("[FATAL unhandledRejection]", reason);
   process.exit(1);
 });
 
@@ -21,15 +23,19 @@ import express from "express";
 import cors from "cors";
 import { procedures, clinicInfo } from "./data/procedures.js";
 
+// ── 모델 상수 (env로 override 가능) ───────────────────────────────────────────
+const MODEL_HAIKU  = process.env.MODEL_HAIKU  || "claude-haiku-4-5-20251001";
+const MODEL_SONNET = process.env.MODEL_SONNET || "claude-sonnet-4-6-20260217";
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static(join(__dirname, "public")));
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const supabase = createClient(
-  process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_URL    || "",
   process.env.SUPABASE_ANON_KEY || ""
 );
 
@@ -38,42 +44,43 @@ const LANG_NAME = {
   zh: "Chinese (Simplified)", ar: "Arabic",
 };
 
-// ── 정적 시스템 프롬프트 (프롬프트 캐싱 대상) ────────────────────────────────
-const CLINIC_SYSTEM_BASE = `You are an expert medical aesthetics consultant AI for LIBHIB Clinic, Gangnam, Seoul.
-You assist Korean clinic staff by drafting professional Korean reply messages to patient inquiries.
+// ── 의료법 가드레일 + 시스템 프롬프트 (프롬프트 캐싱 대상) ─────────────────────
+const CLINIC_SYSTEM_BASE = `너는 서울 강남 프리미엄 미용의원 'LIBHIB 클리닉'의 AI 코디네이터다.
+클리닉 직원이 환자 문의에 답하는 한국어 초안 메시지를 작성하는 역할을 한다.
 
-CLINIC INFO:
-- Name: LIBHIB Clinic (리브히브 클리닉)
-- Location: Gangnam, Seoul, Korea
-- Specialty: Medical aesthetics, skin treatments, anti-aging procedures
+━━━ 절대 금지 사항 (의료법 위반 방지) ━━━
+• "최고", "최저가", "완벽한", "100% 효과", "부작용 없음", "확실히 낫는다" 등 과장·보장 표현 사용 금지
+• 의료적 진단, 처방, 치료 결정 권유 금지 (의료법 제27조)
+• 환자 개인 의료 정보 언급 및 추측 금지 (개인정보보호법)
+• "AI입니다", "챗봇입니다" 자기 노출 금지
+• RAG CONTEXT에 없는 정보를 사실인 것처럼 서술 금지
 
-CORE PROCEDURES:
+━━━ 필수 포함 사항 ━━━
+• 모든 시술 결정은 "전문의와 1:1 상담 후 결정해드리겠습니다" 문구 포함
+• 정보 부족 시 반드시 "정확한 정보는 1:1 상담에서 알려드리겠습니다" 로 대체
+• 답변 근거는 아래 RAG CONTEXT 내용만 사용 (없으면 상담 안내로 대체)
+• 무료 상담 예약 CTA로 마무리 (예: "편하신 시간에 무료 상담을 예약해드릴게요 😊")
+
+━━━ 답변 형식 ━━━
+• 한국어만 사용 (직원이 검토 후 발송)
+• 존댓말, 따뜻하고 전문적인 어조
+• 3~5문장 이내로 간결하게
+
+━━━ 클리닉 정보 ━━━
+• 이름: LIBHIB 클리닉 (리브히브 클리닉)
+• 위치: 서울 강남구 논현동
+• 전문: 의료 미용, 피부 시술, 항노화
+
+━━━ 시술 정보 ━━━
 ${procedures.map(p =>
   `[${p.id}] ${p.name.ko} (${p.name.en})
-  Effects: ${p.effects.join(", ")}
-  Downtime: ${p.downtime} | Duration: ${p.duration}
-  Price: ${p.price_range}
-  Cautions: ${p.cautions.join("; ")}`
-).join("\n\n")}
-
-MEDICAL LAW GUIDELINES (준수 필수):
-1. 의료광고법: 과장된 효과 표현 금지, "최고", "완벽", "100% 효과" 등 절대 사용 금지
-2. 의료법 제27조: 비의료인에 의한 의료행위 권유 금지
-3. 개인정보보호법: 환자 개인 의료정보 언급 금지
-4. 모든 의료 결정은 반드시 "전문의와 상담 후" 문구 포함
-5. 부작용/합병증 가능성 은폐 금지 — 주요 주의사항 포함 필수
-
-REPLY GUIDELINES:
-- Write in Korean ONLY (staff reviews before sending)
-- Warm, professional tone (존댓말 사용)
-- 3-5 sentences max — concise and actionable
-- Always end with: free consultation invitation or booking CTA
-- Do NOT claim you are AI, do NOT say "저는 AI입니다"
-- Include realistic price range when relevant
-- Reference specific procedure effects from clinic data`;
+  가격: ${p.price_range} | 다운타임: ${p.downtime} | 지속: ${p.duration}
+  효과: ${p.effects.join(", ")}
+  주의사항: ${p.cautions.join("; ")}`
+).join("\n\n")}`;
 
 // ── SSE 헬퍼 ─────────────────────────────────────────────────────────────────
-function sseStream(res) {
+function sseHeaders(res) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -81,325 +88,442 @@ function sseStream(res) {
 
 function sseWrite(res, payload) {
   if (!res.writableEnded) {
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {}
   }
 }
 
-// ── RAG: procedures_knowledge 키워드 검색 ──────────────────────────────────
+function sseDone(res) {
+  if (!res.writableEnded) {
+    try { res.write(`data: [DONE]\n\n`); res.end(); } catch {}
+  }
+}
+
+// ── OpenAI 임베딩 (선택적 — OPENAI_API_KEY 있을 때만 작동) ──────────────────
+async function embedQuery(text) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  try {
+    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+    });
+    if (!resp.ok) throw new Error(`OpenAI HTTP ${resp.status}`);
+    const data = await resp.json();
+    return data.data?.[0]?.embedding ?? null;
+  } catch (err) {
+    console.warn("[Embed] OpenAI embedding 실패 (키워드 검색으로 대체):", err.message);
+    return null;
+  }
+}
+
+// ── RAG: Hybrid Search (벡터+키워드 → 키워드 전용 → null) ──────────────────
 async function ragSearch(query, matchCount = 5) {
+  // 1) 임베딩이 있으면 match_procedures RRF 하이브리드 검색 시도
+  const embedding = await embedQuery(query);
+  if (embedding) {
+    try {
+      const { data, error } = await supabase.rpc("match_procedures", {
+        query_embedding: embedding,
+        query_text: query,
+        match_count: matchCount,
+      });
+      if (!error && data?.length) {
+        return {
+          context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
+          chunks: data.length,
+          method: "hybrid_rrf",
+        };
+      }
+    } catch (err) {
+      console.warn("[RAG] match_procedures 실패:", err.message);
+    }
+  }
+
+  // 2) 키워드 전용 검색 fallback
   try {
     const { data, error } = await supabase.rpc("search_procedures_keyword", {
       query_text: query,
       match_count: matchCount,
     });
-    if (error) throw error;
-    if (!data?.length) return null;
-    return data.map(row =>
-      `[${row.procedure_name}]\n${row.content}`
-    ).join("\n\n---\n\n");
+    if (!error && data?.length) {
+      return {
+        context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
+        chunks: data.length,
+        method: "keyword",
+      };
+    }
   } catch (err) {
-    console.warn("[RAG] search_procedures_keyword 실패, 로컬 데이터 사용:", err.message);
-    return null;
+    console.warn("[RAG] search_procedures_keyword 실패:", err.message);
+  }
+
+  return null; // RAG 없음 → 로컬 fallback
+}
+
+// ── 의도 분류 (Haiku 4.5, 4-category + confidence) ───────────────────────────
+async function classifyIntent(message) {
+  try {
+    const resp = await anthropic.messages.create({
+      model: MODEL_HAIKU,
+      max_tokens: 150,
+      system: `You are a medical clinic message intent classifier. Return ONLY valid JSON, no other text.
+
+Classify into one intent:
+- "greeting": hello, thanks, goodbye, compliments
+- "booking": appointment, schedule, cancellation, operating hours, location
+- "consultation": procedure effects, pricing, recovery, contraindications, side effects, comparison
+- "other": complaints, unclear, off-topic
+
+Return {"intent":"consultation","confidence":0.92,"query":"보톡스 효과 지속 기간"}
+or    {"intent":"greeting","confidence":0.98}`,
+      messages: [{ role: "user", content: `Message: "${message}"` }],
+    });
+    const text = resp.content.find(b => b.type === "text")?.text ?? "{}";
+    const parsed = JSON.parse(text.match(/\{[^{}]*\}/s)?.[0] ?? "{}");
+    return {
+      intent:     parsed.intent     ?? "other",
+      confidence: parsed.confidence ?? 0.5,
+      query:      parsed.query      ?? message,
+    };
+  } catch {
+    return { intent: "other", confidence: 0.5, query: message };
   }
 }
 
-// ── Audit log (fire-and-forget) ────────────────────────────────────────────
+// ── 로컬 fallback context ──────────────────────────────────────────────────────
+function buildLocalContext(procedureId) {
+  const p = procedures.find(x => x.id === procedureId);
+  if (!p) return null;
+  return [
+    `시술명: ${p.name.ko} (${p.name.en})`,
+    `효과: ${p.effects.join(", ")}`,
+    `다운타임: ${p.downtime} | 지속: ${p.duration}`,
+    `가격: ${p.price_range}`,
+    `주의: ${p.cautions.join("; ")}`,
+  ].join("\n");
+}
+
+// ── 전문 답변 스트리밍 (Sonnet → Haiku fallback, 프롬프트 캐싱) ───────────────
+async function streamExpertReply(req, res, ragContext, userMessage) {
+  const ac = new AbortController();
+  const onClose = () => ac.abort();
+  req.once("close", onClose);
+
+  const systemBlocks = [
+    { type: "text", text: CLINIC_SYSTEM_BASE, cache_control: { type: "ephemeral" } },
+  ];
+  if (ragContext) {
+    systemBlocks.push({
+      type: "text",
+      text: `━━━ RAG CONTEXT (이 내용만 기반으로 답변) ━━━\n\n${ragContext}`,
+    });
+  }
+
+  const startMs = Date.now();
+  let tokensIn = 0, tokensOut = 0, cacheHit = false, usedModel = MODEL_SONNET;
+
+  try {
+    const stream = anthropic.messages.stream(
+      {
+        model: MODEL_SONNET,
+        max_tokens: 600,
+        system: systemBlocks,
+        messages: [{ role: "user", content: userMessage }],
+      },
+      {
+        signal: ac.signal,
+        headers: { "anthropic-beta": "prompt-caching-2024-07-31" },
+      }
+    );
+
+    for await (const e of stream) {
+      if (res.writableEnded) break;
+      if (e.type === "message_start") {
+        const u = e.message?.usage ?? {};
+        tokensIn  = u.input_tokens ?? 0;
+        cacheHit  = (u.cache_read_input_tokens ?? 0) > 0;
+      }
+      if (e.type === "message_delta") {
+        tokensOut = e.usage?.output_tokens ?? tokensOut;
+      }
+      if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+        sseWrite(res, { delta: { text: e.delta.text } });
+      }
+    }
+  } catch (sonnetErr) {
+    if (sonnetErr.name === "AbortError") {
+      req.off("close", onClose);
+      throw sonnetErr; // 의도적 취소 — 상위로 전파
+    }
+
+    // Sonnet 실패 → Haiku로 즉시 fallback (절대 크래시 금지)
+    console.warn("[Suggest] Sonnet 실패 → Haiku fallback:", sonnetErr.message);
+    usedModel = MODEL_HAIKU;
+    sseWrite(res, { phase: "fallback" });
+
+    try {
+      const fallback = anthropic.messages.stream(
+        {
+          model: MODEL_HAIKU,
+          max_tokens: 400,
+          system: CLINIC_SYSTEM_BASE,
+          messages: [{ role: "user", content: userMessage }],
+        },
+        { signal: ac.signal }
+      );
+      for await (const e of fallback) {
+        if (res.writableEnded) break;
+        if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+          sseWrite(res, { delta: { text: e.delta.text } });
+        }
+      }
+    } catch (haikuErr) {
+      if (haikuErr.name !== "AbortError") throw haikuErr;
+    }
+  }
+
+  req.off("close", onClose);
+  return {
+    model: usedModel,
+    tokensIn, tokensOut, cacheHit,
+    durationMs: Date.now() - startMs,
+  };
+}
+
+// ── Audit log (fire-and-forget, 실패해도 무시) ────────────────────────────────
 async function auditLog(event) {
   try {
+    const msgHash = event.patientMessage
+      ? createHash("sha256").update(event.patientMessage).digest("hex").slice(0, 16)
+      : null;
+
     await supabase.from("audit_logs").insert({
-      event_type: event.type,
-      patient_lang: event.patientLang || null,
-      query_type: event.queryType || null,
-      model_used: event.model || null,
-      rag_chunks_used: event.ragChunks || 0,
-      created_at: new Date().toISOString(),
+      event_type:          event.type        || "suggest",
+      patient_lang:        event.patientLang || null,
+      query_type:          event.intent      || null,
+      model_used:          event.model       || null,
+      rag_chunks_used:     event.ragChunks   || 0,
+      tokens_in:           event.tokensIn    || 0,
+      tokens_out:          event.tokensOut   || 0,
+      duration_ms:         event.durationMs  || 0,
+      cached:              event.cacheHit    || false,
+      patient_message_hash: msgHash,
+      created_at:          new Date().toISOString(),
     });
   } catch {
     // 감사 로그 실패는 무시 (비차단)
   }
 }
 
-// ── Haiku 라우터: 쿼리 분류 ────────────────────────────────────────────────
-async function classifyQuery(patientMessage) {
+// ── 기존 streamClaude (번역·애프터케어용) ─────────────────────────────────────
+async function streamClaude(res, systemPrompt, userMessage, model = MODEL_HAIKU, maxTokens = 512) {
   try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 120,
-      system: `You are a medical query classifier. Respond ONLY with valid JSON, no other text.
-Classify the patient message as:
-- "simple": greetings, booking requests, price inquiries, operating hours, general questions
-- "complex": specific medical questions about procedure effects, contraindications, recovery timeline, interaction risks, post-procedure complications, medical history concerns
-
-JSON format: {"type":"simple"} or {"type":"complex","query":"reformulated search query in Korean focusing on the medical topic"}`,
-      messages: [{ role: "user", content: `Patient message: "${patientMessage}"` }],
-    });
-    const text = response.content.find(b => b.type === "text")?.text || '{"type":"simple"}';
-    return JSON.parse(text.match(/\{.*\}/s)?.[0] || '{"type":"simple"}');
-  } catch {
-    return { type: "simple" };
-  }
-}
-
-// ── Sonnet 스트리밍 (프롬프트 캐싱 + 클라이언트 disconnect 감지) ─────────────
-async function streamSonnetWithCache(req, res, dynamicContext, userMessage, maxTokens = 600) {
-  // 클라이언트가 연결을 끊으면 Anthropic 스트림도 즉시 취소
-  const ac = new AbortController();
-  req.on("close", () => ac.abort());
-
-  const systemBlocks = [
-    {
-      type: "text",
-      text: CLINIC_SYSTEM_BASE,
-      cache_control: { type: "ephemeral" },
-    },
-  ];
-
-  if (dynamicContext) {
-    systemBlocks.push({
-      type: "text",
-      text: `RELEVANT PROCEDURE KNOWLEDGE (RAG retrieved):\n\n${dynamicContext}`,
-    });
-  }
-
-  const stream = client.messages.stream(
-    {
-      model: "claude-sonnet-4-6",
-      max_tokens: maxTokens,
-      system: systemBlocks,
-      messages: [{ role: "user", content: userMessage }],
-    },
-    { signal: ac.signal }
-  );
-
-  let inputCached = false;
-  for await (const e of stream) {
-    if (res.writableEnded) break; // 클라이언트 끊김 — 루프 탈출
-    if (e.type === "message_start" && e.message?.usage?.cache_read_input_tokens > 0) {
-      inputCached = true;
-    }
-    if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
-      sseWrite(res, { delta: { text: e.delta.text } });
-    }
-  }
-  return inputCached;
-}
-
-// ── 기존 streamClaude (번역/애프터케어용) ──────────────────────────────────
-async function streamClaude(res, systemPrompt, userMessage, model = "claude-haiku-4-5", maxTokens = 512) {
-  try {
-    const stream = client.messages.stream({
-      model,
-      max_tokens: maxTokens,
+    const stream = anthropic.messages.stream({
+      model, max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],
     });
     for await (const e of stream) {
+      if (res.writableEnded) break;
       if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
-        res.write(`data: ${JSON.stringify({ delta: { text: e.delta.text } })}\n\n`);
+        sseWrite(res, { delta: { text: e.delta.text } });
       }
     }
-    res.write(`data: [DONE]\n\n`);
-    res.end();
+    sseDone(res);
   } catch (err) {
-    console.error("Anthropic stream error:", err.message);
-    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
-    res.write(`data: [DONE]\n\n`);
-    res.end();
+    console.error("[streamClaude]", err.message);
+    sseWrite(res, { error: err.message });
+    sseDone(res);
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 1. 환자 메시지 → 한국어 번역 (직원용)
+// ════════════════════════════════════════════════════════════════════════════
+// API ROUTES
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── 1. 환자 메시지 → 한국어 번역
 // POST /api/translate  { text, sourceLang }
-// ──────────────────────────────────────────────────────────────────────────────
 app.post("/api/translate", async (req, res) => {
   const { text, sourceLang } = req.body;
   if (!text) return res.status(400).json({ error: "text required" });
-  sseStream(res);
+  sseHeaders(res);
   const lang = LANG_NAME[sourceLang] || sourceLang || "unknown";
-  await streamClaude(res,
+  await streamClaude(
+    res,
     `You are a professional medical translator. Translate the following ${lang} patient message to Korean accurately and naturally. Output ONLY the Korean translation, no explanations.`,
-    text, "claude-haiku-4-5", 300
+    text, MODEL_HAIKU, 300
   );
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 2. AI 추천 답변 생성 — Dual Routing RAG Pipeline
+// ── 2. AI 추천 답변 — Dual Routing RAG Pipeline ──────────────────────────────
+// Flow: Haiku(classify) → [RAG search] → Sonnet(generate, cached) → audit
 // POST /api/suggest  { patientMessage, patientLang, procedureHint }
-//
-// Flow:
-//   Haiku 4.5 (classifier) → RAG search → Sonnet 4.6 (expert, cached) → audit log
-// ──────────────────────────────────────────────────────────────────────────────
-function buildFallbackContext(procedureId) {
-  const p = procedures.find(x => x.id === procedureId);
-  if (!p) return null;
-  return [
-    `시술명: ${p.name.ko} (${p.name.en})`,
-    `효과: ${p.effects.join(", ")}`,
-    `다운타임: ${p.downtime}`,
-    `지속: ${p.duration}`,
-    `가격: ${p.price_range}`,
-    `주의: ${p.cautions.join("; ")}`,
-  ].join("\n");
-}
-
 app.post("/api/suggest", async (req, res) => {
   const { patientMessage, patientLang, procedureHint } = req.body;
   if (!patientMessage) return res.status(400).json({ error: "patientMessage required" });
 
-  sseStream(res);
+  const startMs = Date.now();
+  sseHeaders(res);
 
+  // 안전한 종료 헬퍼
   const safeEnd = (errMsg) => {
-    if (errMsg) {
-      try { sseWrite(res, { error: errMsg }); } catch {}
-    }
-    try { res.write(`data: [DONE]\n\n`); res.end(); } catch {}
+    if (errMsg) sseWrite(res, { error: errMsg, code: "SUGGEST_ERROR" });
+    sseDone(res);
   };
 
   try {
-    // Phase 1: Haiku 라우팅 분류
+    // ── Phase 1: Intent classification (Haiku 4.5) ──────────────────────────
     sseWrite(res, { phase: "routing" });
-    const classification = await classifyQuery(patientMessage);
+    const { intent, confidence, query } = await classifyIntent(patientMessage);
+    console.log(`[Suggest] intent=${intent} conf=${confidence.toFixed(2)} lang=${patientLang}`);
 
-    // Phase 2: RAG 검색 (complex 쿼리인 경우)
-    sseWrite(res, { phase: "generating" });
-    let ragContext = null;
-    let ragChunks = 0;
+    // ── Phase 2: RAG search (consultation + confidence ≥ 0.70) ─────────────
+    let ragResult = null;
+    if (intent === "consultation" && confidence >= 0.70) {
+      sseWrite(res, { phase: "rag" });
+      ragResult = await ragSearch(query);
 
-    if (classification.type === "complex" && classification.query) {
-      ragContext = await ragSearch(classification.query);
-      if (ragContext) {
-        ragChunks = ragContext.split("---").length;
-        console.log(`[RAG] ${ragChunks}개 청크 검색됨: "${classification.query}"`);
+      if (!ragResult) {
+        // procedures_knowledge 비어있거나 없으면 로컬 시술 데이터 사용
+        const localCtx = buildLocalContext(procedureHint);
+        if (localCtx) {
+          ragResult = { context: localCtx, chunks: 1, method: "local_fallback" };
+          console.log("[RAG] 로컬 시술 데이터로 대체:", procedureHint);
+        } else {
+          console.log("[RAG] 학습 데이터 없음 — 가드레일 프롬프트만 사용");
+        }
       } else {
-        // procedures_knowledge 비어있거나 테이블 없음 → 로컬 fallback
-        console.log("[RAG] 학습된 매뉴얼 없음 — 로컬 시술 데이터로 대체");
-        ragContext = buildFallbackContext(procedureHint);
+        console.log(`[RAG] method=${ragResult.method} chunks=${ragResult.chunks}`);
       }
     } else {
-      ragContext = buildFallbackContext(procedureHint);
+      // 단순 인사/예약 → 빠른 경로, RAG skip
+      const localCtx = buildLocalContext(procedureHint);
+      if (localCtx) ragResult = { context: localCtx, chunks: 1, method: "local_direct" };
     }
 
-    // Phase 3: Sonnet 4.6 스트리밍 (프롬프트 캐싱)
+    // ── Phase 3: Expert reply streaming (Sonnet → Haiku fallback) ──────────
+    sseWrite(res, { phase: "generating" });
     const lang = LANG_NAME[patientLang] || patientLang || "unknown";
-    const userMessage = `환자 메시지 (${lang}): "${patientMessage}"
-환자 언어: ${lang}
-${procedureHint ? `관심 시술 힌트: ${procedureHint}` : ""}
+    const userMessage =
+      `환자 메시지 (${lang}): "${patientMessage}"\n` +
+      `환자 언어: ${lang}\n` +
+      `의도 분류: ${intent}\n` +
+      (procedureHint ? `관심 시술 힌트: ${procedureHint}\n` : "") +
+      `\n위 환자에게 보낼 한국어 답변을 작성해주세요. 의료법 가드레일을 엄수하고, 전문의 1:1 상담 예약 CTA로 마무리해주세요.`;
 
-위 환자에게 보낼 한국어 답변을 작성해주세요. 의료광고법을 준수하고, 전문의 상담을 권유하며 마무리해주세요.`;
+    const genResult = await streamExpertReply(req, res, ragResult?.context ?? null, userMessage);
 
-    const cached = await streamSonnetWithCache(req, res, ragContext, userMessage, 600);
-
-    // Phase 4: Audit log (비동기, 비차단)
+    // ── Phase 4: Audit log (비동기, 비차단) ────────────────────────────────
     auditLog({
-      type: "suggest",
+      type:          "suggest",
+      patientMessage,
       patientLang,
-      queryType: classification.type,
-      model: "claude-sonnet-4-6",
-      ragChunks,
-      cached,
+      intent,
+      model:         genResult.model,
+      ragChunks:     ragResult?.chunks ?? 0,
+      tokensIn:      genResult.tokensIn,
+      tokensOut:     genResult.tokensOut,
+      durationMs:    Date.now() - startMs,
+      cacheHit:      genResult.cacheHit,
     });
 
     safeEnd();
+
   } catch (err) {
-    console.error("[/api/suggest] 오류:", err.message);
-    // 클라이언트에 에러 이벤트 전달 후 스트림 종료
-    const userMsg = err.message?.includes("API key")
-      ? "API 키가 유효하지 않습니다. 관리자에게 문의하세요."
-      : err.message?.includes("rate_limit") || err.message?.includes("429")
-      ? "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
-      : `AI 답변 생성 중 오류가 발생했습니다: ${err.message}`;
+    const isAbort = err.name === "AbortError";
+    if (!isAbort) {
+      console.error("[Suggest] 오류:", {
+        message: err.message,
+        stack:   err.stack?.split("\n").slice(0, 4).join(" | "),
+        patientLang,
+        procedureHint,
+      });
+    }
+    const userMsg = isAbort
+      ? null // 사용자가 취소 — 에러 메시지 불필요
+      : err.message?.includes("API key") || err.message?.includes("auth")
+        ? "API 인증 오류입니다. 관리자에게 문의하세요."
+        : err.message?.includes("rate") || err.message?.includes("429")
+          ? "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
+          : `AI 답변 생성 실패: ${err.message}`;
     safeEnd(userMsg);
   }
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 3. 한국어 답변 → 환자 언어 번역 (발송 직전)
+// ── 3. 한국어 답변 → 환자 언어 번역 (발송 직전)
 // POST /api/translate-reply  { text, targetLang }
-// ──────────────────────────────────────────────────────────────────────────────
 app.post("/api/translate-reply", async (req, res) => {
   const text = req.body.text || req.body.replyText;
   const { targetLang } = req.body;
   if (!text || !targetLang) return res.status(400).json({ error: "text and targetLang required" });
   const lang = LANG_NAME[targetLang] || targetLang;
   try {
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5",
+    const response = await anthropic.messages.create({
+      model: MODEL_HAIKU,
       max_tokens: 600,
       system: `You are a professional medical translator. Translate the following Korean medical aesthetics clinic reply to ${lang}. Output ONLY the translation, no explanations, no notes.`,
       messages: [{ role: "user", content: text }],
     });
-    const translated = response.content.find(b => b.type === "text")?.text || "";
+    const translated = response.content.find(b => b.type === "text")?.text ?? "";
     res.json({ translated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 4. 애프터케어 메시지 생성 (D+1 / D+3 / D+7)
+// ── 4. 애프터케어 메시지 생성 (D+1 / D+3 / D+7)
 // POST /api/aftercare-msg  { procedureId, day, targetLang, patientName }
-// ──────────────────────────────────────────────────────────────────────────────
 const AFTERCARE_GUIDE = {
   botox: {
     1: "시술 부위를 만지거나 마사지하지 마세요. 붉어짐은 정상이며 수 시간 내 사라집니다. 격렬한 운동은 48시간 후부터 가능합니다.",
-    3: "보톡스 효과가 나타나기 시작하는 시기입니다. 표정 움직임이 자연스러워지고 있나요? 음주와 사우나는 1주일 후부터 권장합니다.",
-    7: "효과를 느끼고 계신가요? 보톡스는 2주 뒤 최종 효과가 완성됩니다. 궁금한 점이나 사진 공유를 원하시면 언제든 연락주세요!",
+    3: "보톡스 효과가 나타나기 시작하는 시기입니다. 음주와 사우나는 1주일 후부터 권장합니다.",
+    7: "보톡스는 2주 뒤 최종 효과가 완성됩니다. 궁금한 점이나 사진 공유를 원하시면 언제든 연락주세요!",
   },
   filler: {
-    1: "시술 부위에 붓기와 멍이 있을 수 있습니다. 아이스팩을 수건에 감싸 10~15분씩 간헐적으로 냉찜질해 주세요. 술과 혈액희석제는 피해주세요.",
-    3: "붓기가 빠지고 자연스러운 윤곽이 나타나는 시기입니다. 여전히 강한 압박은 피해주세요. 수분 섭취를 충분히 해주세요.",
-    7: "필러가 자리를 잡고 최종 효과가 나타납니다. 경과가 어떠신가요? 사진을 보내주시면 확인해 드리겠습니다.",
+    1: "시술 부위에 붓기와 멍이 있을 수 있습니다. 아이스팩으로 10~15분씩 냉찜질하고, 술·혈액희석제는 피해주세요.",
+    3: "붓기가 빠지고 자연스러운 윤곽이 나타나는 시기입니다. 수분 섭취를 충분히 해주세요.",
+    7: "필러가 자리를 잡고 최종 효과가 나타납니다. 경과 사진을 보내주시면 확인해 드리겠습니다.",
   },
   laser_toning: {
-    1: "자외선 차단은 필수입니다! SPF 50+ 선크림을 매일 발라주세요. 시술 부위가 민감할 수 있으니 자극적인 제품은 피해주세요.",
-    3: "피부 톤이 밝아지고 있나요? 보습에 신경 써주세요. 각질 제거제, 레티놀 등 강한 성분은 1주일 후부터 사용하세요.",
+    1: "자외선 차단 필수! SPF 50+ 선크림을 매일 발라주세요. 자극적인 스킨케어 제품은 피해주세요.",
+    3: "보습에 신경 써주세요. 각질 제거제·레티놀 등 강한 성분은 1주일 후부터 사용 가능합니다.",
     7: "레이저 효과가 안정화되고 있습니다. 꾸준한 자외선 차단으로 효과를 유지하세요. 다음 세션은 4주 후 권장합니다.",
   },
   ulthera: {
-    1: "시술 부위에 약간의 붓기와 붉어짐은 정상입니다. 충분한 수면과 수분 섭취가 도움이 됩니다.",
+    1: "시술 부위에 약간의 붓기·붉어짐은 정상입니다. 충분한 수면과 수분 섭취가 도움이 됩니다.",
     3: "초음파 에너지가 콜라겐 생성을 자극하고 있습니다. 지금은 변화가 미미하지만 1~3개월 후 효과가 본격화됩니다.",
-    7: "회복은 잘 되고 계신가요? 궁금한 점이 있으시면 언제든지 연락주세요. 최종 효과는 3개월 후 체감하실 수 있습니다.",
+    7: "회복은 잘 되고 계신가요? 최종 효과는 3개월 후 체감하실 수 있습니다. 언제든 연락주세요!",
   },
 };
 
 app.post("/api/aftercare-msg", async (req, res) => {
   const { procedureId, day, targetLang, patientName } = req.body;
   if (!day || !targetLang) return res.status(400).json({ error: "day and targetLang required" });
-  sseStream(res);
-
-  const guide = AFTERCARE_GUIDE[procedureId]?.[day] ||
-    `시술 후 ${day}일이 되었습니다. 경과는 어떠신가요? 궁금한 점이 있으시면 언제든지 연락주세요!`;
+  sseHeaders(res);
+  const guide = AFTERCARE_GUIDE[procedureId]?.[day]
+    ?? `시술 후 ${day}일이 되었습니다. 경과는 어떠신가요? 궁금한 점이 있으시면 언제든지 연락주세요!`;
   const lang = LANG_NAME[targetLang] || targetLang;
   const proc = procedures.find(p => p.id === procedureId);
   const procName = proc?.name?.[targetLang] || proc?.name?.ko || "시술";
-  const nameStr = patientName ? `${patientName}님, ` : "";
-
-  await streamClaude(res,
+  const nameStr = patientName ? `${patientName}님` : "고객님";
+  await streamClaude(
+    res,
     `You are a warm and professional medical aesthetics clinic assistant at LIBHIB Clinic, Seoul.
 Write a D+${day} aftercare message to a patient in ${lang}.
-- Warm, caring tone
-- Natural ${lang} (as if written by a native speaker)
-- 3-4 sentences max
-- Include the aftercare guideline naturally
-- Sign off from "LIBHIB Clinic Team"
-- Output ONLY the message text in ${lang}, nothing else`,
-    `Patient name: ${nameStr || "고객님"}
-Procedure: ${procName}
-Day after procedure: ${day}
-Aftercare guideline (Korean): ${guide}`,
-    "claude-sonnet-4-6", 400
+- Warm, caring tone. Natural ${lang}.
+- 3-4 sentences max. Include the aftercare guideline naturally.
+- Sign off from "LIBHIB Clinic Team". Output ONLY the message in ${lang}.`,
+    `Patient: ${nameStr}\nProcedure: ${procName}\nDay: D+${day}\nGuideline (KO): ${guide}`,
+    MODEL_SONNET, 400
   );
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 5. 환자 챗봇 (웹사이트 위젯용)
+// ── 5. 환자 챗봇 (웹사이트 위젯용)
 // POST /api/chat
-// ──────────────────────────────────────────────────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   const { messages, procedureId } = req.body;
   if (!messages?.length) return res.status(400).json({ error: "messages required" });
-  sseStream(res);
+  sseHeaders(res);
 
   const safeEnd = (errMsg) => {
     try {
@@ -409,51 +533,50 @@ app.post("/api/chat", async (req, res) => {
     } catch {}
   };
 
-  const procContext = buildFallbackContext(procedureId);
-  const systemText = `You are a structured medical aesthetics consultation AI for LIBHIB Clinic, ${clinicInfo.location}.
+  const procContext = buildLocalContext(procedureId);
+  const systemText =
+    `You are a structured medical aesthetics consultation AI for LIBHIB Clinic, ${clinicInfo.location}.
 LANGUAGE RULE: Always respond in the SAME language as the user's message.
 TONE: Warm, concise, professional. Max 3~4 sentences per reply.
 HARD LIMITS: Only discuss LIBHIB Clinic procedures. No off-topic answers.
-BOOKING: After 3 exchanges, suggest booking a free consultation.
-${procContext ? `\nFOCUS PROCEDURE:\n${procContext}` : ""}`;
+BOOKING: After 3 exchanges, suggest booking a free consultation.` +
+    (procContext ? `\n\nFOCUS PROCEDURE:\n${procContext}` : "");
 
   try {
-    const stream = client.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 512,
+    const stream = anthropic.messages.stream({
+      model: MODEL_SONNET, max_tokens: 512,
       system: systemText,
       messages: messages.map(m => ({ role: m.role, content: m.content })),
     });
     for await (const e of stream) {
+      if (res.writableEnded) break;
       if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
-        res.write(`data: ${JSON.stringify({ text: e.delta.text })}\n\n`);
+        sseWrite(res, { text: e.delta.text });
       }
     }
     safeEnd();
   } catch (err) {
-    console.error("[/api/chat] 오류:", err.message);
+    console.error("[/api/chat]", err.message);
     safeEnd(err.message);
   }
 });
 
-// GET /api/procedures
+// ── GET /api/procedures
 app.get("/api/procedures", (req, res) => res.json(procedures));
 
-// SPA fallback
+// ── Express 전역 에러 미들웨어
+app.use((err, req, res, _next) => {
+  console.error("[Express error]", err.message);
+  if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+});
+
+// ── SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(join(__dirname, "public", "index.html"));
 });
 
-// ── Express 전역 에러 미들웨어 (라우터에서 next(err) 로 전달된 에러 처리) ──
-app.use((err, req, res, next) => {
-  console.error("[Express error]", err.message);
-  if (!res.headersSent) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// ── 0.0.0.0 바인딩: Railway 라우터가 외부 접속을 정상 연결하려면 필수 ──────
+// ── 0.0.0.0 바인딩 필수 (Railway 외부 라우터 연결)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () =>
-  console.log(`LIBHIB Clinic Staff Dashboard running on 0.0.0.0:${PORT}`)
+  console.log(`✅ LIBHIB Dashboard on 0.0.0.0:${PORT} | Haiku=${MODEL_HAIKU.split("-").slice(-1)[0]} Sonnet=${MODEL_SONNET.split("-").slice(-1)[0]}`)
 );

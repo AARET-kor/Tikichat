@@ -2,10 +2,12 @@ import { useState, useRef, useEffect } from 'react';
 import { Sparkles, Send, Pencil, Loader2, ChevronDown, Copy, Check, X } from 'lucide-react';
 import { useStreamApi } from '../../hooks/useStreamApi';
 
-// 페이즈별 상태 텍스트
+// 페이즈별 상태 텍스트 (서버 SSE phase 이벤트와 1:1 매핑)
 const PHASE_LABEL = {
-  routing:    'AI가 질문을 분석하고 있습니다...',
-  generating: '답변을 작성하고 있습니다...',
+  routing:    'AI가 질문 의도를 분석하고 있습니다...',
+  rag:        '클리닉 매뉴얼을 검색하고 있습니다...',
+  generating: '지식 베이스를 바탕으로 전문 답변을 작성 중입니다...',
+  fallback:   'Haiku 모드로 빠르게 답변을 작성 중입니다...',
 };
 
 export default function ReplyArea({ conv, onMessageSent }) {
@@ -23,7 +25,7 @@ export default function ReplyArea({ conv, onMessageSent }) {
   const { streamPost, post } = useStreamApi();
 
   const lastPatientMsg = conv.messages.filter(m => m.from === 'patient').at(-1);
-  const isLoading = phase === 'routing' || phase === 'generating';
+  const isLoading = phase === 'routing' || phase === 'rag' || phase === 'generating' || phase === 'fallback';
   // 카드는 한 번이라도 로딩을 시작했으면 유지 (에러 포함)
   const cardVisible = phase !== null && showSuggestion;
 
@@ -152,8 +154,10 @@ export default function ReplyArea({ conv, onMessageSent }) {
                 <span className="text-xs font-semibold text-navy-700">AI 추천 답변</span>
                 {isLoading ? (
                   <span className="text-[10px] text-purple-500 font-medium animate-pulse">
-                    · {PHASE_LABEL[phase]}
+                    · {PHASE_LABEL[phase] ?? 'AI가 처리 중입니다...'}
                   </span>
+                ) : phase === 'done' && !loadError ? (
+                  <span className="text-[10px] text-emerald-600">· 답변 완료 — 한국어로 수정 후 발송 가능</span>
                 ) : (
                   <span className="text-[10px] text-slate-500">· 한국어로 수정 후 발송 가능</span>
                 )}
@@ -189,9 +193,9 @@ export default function ReplyArea({ conv, onMessageSent }) {
               ) : isLoading && !suggestion ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Loader2 size={13} className="animate-spin text-purple-500" />
-                    <span className="text-xs text-purple-600 font-medium">
-                      {PHASE_LABEL[phase] || 'AI가 처리 중입니다...'}
+                    <Loader2 size={13} className={`animate-spin ${phase === 'rag' ? 'text-blue-500' : 'text-purple-500'}`} />
+                    <span className={`text-xs font-medium ${phase === 'rag' ? 'text-blue-600' : 'text-purple-600'}`}>
+                      {PHASE_LABEL[phase] ?? 'AI가 처리 중입니다...'}
                     </span>
                   </div>
                   <div className="space-y-1.5 pt-1">
