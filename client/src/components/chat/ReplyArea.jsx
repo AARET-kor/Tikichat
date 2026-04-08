@@ -12,6 +12,7 @@ export default function ReplyArea({ conv, onMessageSent }) {
   const [input, setInput] = useState('');
   const [suggestion, setSuggestion] = useState('');
   const [phase, setPhase] = useState(null); // null | 'routing' | 'generating' | 'done'
+  const [loadError, setLoadError] = useState(null); // error message string | null
   const [isSending, setIsSending] = useState(false);
   const [showSuggestion, setShowSuggestion] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -22,6 +23,8 @@ export default function ReplyArea({ conv, onMessageSent }) {
 
   const lastPatientMsg = conv.messages.filter(m => m.from === 'patient').at(-1);
   const isLoading = phase === 'routing' || phase === 'generating';
+  // 카드는 한 번이라도 로딩을 시작했으면 유지 (에러 포함)
+  const cardVisible = phase !== null && showSuggestion;
 
   // Auto-load AI suggestion when conversation changes
   useEffect(() => {
@@ -29,17 +32,19 @@ export default function ReplyArea({ conv, onMessageSent }) {
     setSuggestion('');
     setShowSuggestion(true);
     setPhase(null);
+    setLoadError(null);
     loadSuggestion();
-    // cleanup: abort previous stream if conv changes
     return () => abortRef.current?.abort();
   }, [conv.id]);
 
   const loadSuggestion = async () => {
     if (!lastPatientMsg) return;
     setSuggestion('');
+    setLoadError(null);
     setCopied(false);
+    // 낙관적으로 즉시 routing 단계 표시 → 서버 연결 전에도 카드 노출
+    setPhase('routing');
 
-    // Create a fresh AbortController for this stream
     abortRef.current = new AbortController();
 
     await streamPost('/api/suggest', {
@@ -49,12 +54,16 @@ export default function ReplyArea({ conv, onMessageSent }) {
     }, {
       signal: abortRef.current.signal,
       onPhase: (p) => setPhase(p),
-      onChunk: (_, full) => {
-        setSuggestion(full);
-        if (phase !== 'done') setPhase('generating');
-      },
+      onChunk: (_, full) => setSuggestion(full),
       onDone: () => setPhase('done'),
-      onError: () => setPhase('done'),
+      onError: (err) => {
+        // 에러 시 카드를 닫지 않고, 오류 메시지를 표시
+        const msg = err?.message?.includes('fetch')
+          ? '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해 주세요.'
+          : '답변을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        setLoadError(msg);
+        setPhase('done');
+      },
     });
   };
 
@@ -123,7 +132,7 @@ export default function ReplyArea({ conv, onMessageSent }) {
   return (
     <div className="border-t border-slate-200 bg-white">
       {/* AI Suggestion Card */}
-      {(suggestion || isLoading) && showSuggestion && (
+      {cardVisible && (
         <div className="px-4 pt-3 pb-0 animate-slide-up">
           <div className="ai-card-border rounded-xl bg-white shadow-md overflow-hidden">
 
@@ -164,16 +173,20 @@ export default function ReplyArea({ conv, onMessageSent }) {
 
             {/* Suggestion text */}
             <div className="px-4 py-3 min-h-[60px]">
-              {isLoading && !suggestion ? (
+              {/* 에러 상태 */}
+              {phase === 'done' && loadError && !suggestion ? (
+                <div className="flex items-start gap-2 text-red-600">
+                  <X size={13} className="mt-0.5 shrink-0" />
+                  <span className="text-xs leading-relaxed">{loadError}</span>
+                </div>
+              ) : isLoading && !suggestion ? (
                 <div className="space-y-2">
-                  {/* Phase indicator with spinner */}
-                  <div className="flex items-center gap-2 text-slate-400">
+                  <div className="flex items-center gap-2">
                     <Loader2 size={13} className="animate-spin text-purple-500" />
                     <span className="text-xs text-purple-600 font-medium">
                       {PHASE_LABEL[phase] || 'AI가 처리 중입니다...'}
                     </span>
                   </div>
-                  {/* Skeleton lines */}
                   <div className="space-y-1.5 pt-1">
                     <div className="h-3 bg-slate-100 rounded animate-pulse w-full" />
                     <div className="h-3 bg-slate-100 rounded animate-pulse w-4/5" />
@@ -183,7 +196,6 @@ export default function ReplyArea({ conv, onMessageSent }) {
               ) : (
                 <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                   {suggestion}
-                  {/* Blinking cursor while streaming */}
                   {phase === 'generating' && (
                     <span className="inline-block w-0.5 h-4 bg-purple-500 ml-0.5 align-text-bottom animate-pulse" />
                   )}
@@ -191,48 +203,61 @@ export default function ReplyArea({ conv, onMessageSent }) {
               )}
             </div>
 
-            {/* Action buttons — shown only after generation completes */}
-            {phase === 'done' && suggestion && (
+            {/* Action buttons — 완료 또는 에러 후 표시 */}
+            {phase === 'done' && (suggestion || loadError) && (
               <div className="flex gap-2 px-4 pb-3 flex-wrap">
-                {/* Copy */}
-                <button
-                  onClick={handleCopy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
-                >
-                  {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
-                  {copied ? '복사됨' : '복사'}
-                </button>
+                {/* 에러 상태면 재시도만 표시 */}
+                {loadError && !suggestion ? (
+                  <button
+                    onClick={loadSuggestion}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-all"
+                  >
+                    <Sparkles size={11} />
+                    다시 시도
+                  </button>
+                ) : (
+                  <>
+                    {/* Copy */}
+                    <button
+                      onClick={handleCopy}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
+                    >
+                      {copied ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                      {copied ? '복사됨' : '복사'}
+                    </button>
 
-                {/* Edit */}
-                <button
-                  onClick={handleUseSuggestion}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
-                >
-                  <Pencil size={11} />
-                  수정하기
-                </button>
+                    {/* Edit */}
+                    <button
+                      onClick={handleUseSuggestion}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
+                    >
+                      <Pencil size={11} />
+                      수정하기
+                    </button>
 
-                {/* Regenerate */}
-                <button
-                  onClick={loadSuggestion}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
-                >
-                  <Sparkles size={11} />
-                  재생성
-                </button>
+                    {/* Regenerate */}
+                    <button
+                      onClick={loadSuggestion}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-all"
+                    >
+                      <Sparkles size={11} />
+                      재생성
+                    </button>
 
-                {/* Send as-is */}
-                <button
-                  onClick={handleSendSuggestion}
-                  disabled={isSending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-navy-700 hover:bg-navy-800 text-white rounded-lg transition-all shadow-sm disabled:opacity-60 ml-auto"
-                >
-                  {isSending ? <Loader2 size={11} className="animate-spin" /> : <span>🚀</span>}
-                  이대로 발송
-                  <span className="text-[10px] opacity-80 font-normal hidden sm:inline">
-                    ({conv.patient.langName}으로 번역)
-                  </span>
-                </button>
+                    {/* Send as-is */}
+                    <button
+                      onClick={handleSendSuggestion}
+                      disabled={isSending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-navy-700 hover:bg-navy-800 text-white rounded-lg transition-all shadow-sm disabled:opacity-60 ml-auto"
+                    >
+                      {isSending ? <Loader2 size={11} className="animate-spin" /> : <span>🚀</span>}
+                      이대로 발송
+                      <span className="text-[10px] opacity-80 font-normal hidden sm:inline">
+                        ({conv.patient.langName}으로 번역)
+                      </span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

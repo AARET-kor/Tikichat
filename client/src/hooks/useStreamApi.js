@@ -22,6 +22,14 @@ export function useStreamApi() {
   } = {}) => {
     setIsStreaming(true);
     let result = '';
+    let settled = false; // onDone / onError가 이미 호출됐는지 추적
+
+    const finish = (cb) => {
+      if (settled) return;
+      settled = true;
+      setIsStreaming(false);
+      cb();
+    };
 
     try {
       const response = await fetch(url, {
@@ -51,12 +59,16 @@ export function useStreamApi() {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6).trim();
           if (data === '[DONE]') {
-            onDone?.(result);
-            setIsStreaming(false);
+            finish(() => onDone?.(result));
             return result;
           }
           try {
             const parsed = JSON.parse(data);
+            // 서버가 보낸 에러 이벤트
+            if (parsed.error) {
+              finish(() => onError?.(new Error(parsed.error)));
+              return result;
+            }
             // Phase events (routing / generating)
             if (parsed.phase) {
               onPhase?.(parsed.phase);
@@ -73,19 +85,23 @@ export function useStreamApi() {
           }
         }
       }
+      // 스트림이 [DONE] 없이 닫힌 경우
+      finish(() => onDone?.(result));
     } catch (err) {
       if (err.name === 'AbortError') {
-        // 사용자가 취소함 — 지금까지 수신된 텍스트로 완료 처리
-        onDone?.(result);
+        finish(() => onDone?.(result));
       } else {
         console.error('Stream error:', err);
-        onError?.(err);
+        finish(() => onError?.(err));
       }
     } finally {
-      setIsStreaming(false);
+      // settled가 false인 경우 (예외 없이 루프 탈출) 보호
+      if (!settled) {
+        settled = true;
+        setIsStreaming(false);
+      }
     }
 
-    onDone?.(result);
     return result;
   }, []);
 

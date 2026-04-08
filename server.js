@@ -229,36 +229,45 @@ app.post("/api/suggest", async (req, res) => {
 
   sseStream(res);
 
-  // Phase 1: Haiku 라우팅 분류
-  sseWrite(res, { phase: "routing" });
-  const classification = await classifyQuery(patientMessage);
+  const safeEnd = (errMsg) => {
+    if (errMsg) {
+      try { sseWrite(res, { error: errMsg }); } catch {}
+    }
+    try { res.write(`data: [DONE]\n\n`); res.end(); } catch {}
+  };
 
-  // Phase 2: RAG 검색 (complex 쿼리인 경우)
-  sseWrite(res, { phase: "generating" });
-  let ragContext = null;
-  let ragChunks = 0;
+  try {
+    // Phase 1: Haiku 라우팅 분류
+    sseWrite(res, { phase: "routing" });
+    const classification = await classifyQuery(patientMessage);
 
-  if (classification.type === "complex" && classification.query) {
-    ragContext = await ragSearch(classification.query);
-    if (ragContext) {
-      ragChunks = ragContext.split("---").length;
+    // Phase 2: RAG 검색 (complex 쿼리인 경우)
+    sseWrite(res, { phase: "generating" });
+    let ragContext = null;
+    let ragChunks = 0;
+
+    if (classification.type === "complex" && classification.query) {
+      ragContext = await ragSearch(classification.query);
+      if (ragContext) {
+        ragChunks = ragContext.split("---").length;
+        console.log(`[RAG] ${ragChunks}개 청크 검색됨: "${classification.query}"`);
+      } else {
+        // procedures_knowledge 비어있거나 테이블 없음 → 로컬 fallback
+        console.log("[RAG] 학습된 매뉴얼 없음 — 로컬 시술 데이터로 대체");
+        ragContext = buildFallbackContext(procedureHint);
+      }
     } else {
-      // fallback to local procedure data
       ragContext = buildFallbackContext(procedureHint);
     }
-  } else {
-    ragContext = buildFallbackContext(procedureHint);
-  }
 
-  // Phase 3: Sonnet 4.6 스트리밍 (프롬프트 캐싱)
-  const lang = LANG_NAME[patientLang] || patientLang || "unknown";
-  const userMessage = `환자 메시지 (${lang}): "${patientMessage}"
+    // Phase 3: Sonnet 4.6 스트리밍 (프롬프트 캐싱)
+    const lang = LANG_NAME[patientLang] || patientLang || "unknown";
+    const userMessage = `환자 메시지 (${lang}): "${patientMessage}"
 환자 언어: ${lang}
 ${procedureHint ? `관심 시술 힌트: ${procedureHint}` : ""}
 
 위 환자에게 보낼 한국어 답변을 작성해주세요. 의료광고법을 준수하고, 전문의 상담을 권유하며 마무리해주세요.`;
 
-  try {
     const cached = await streamSonnetWithCache(res, ragContext, userMessage, 600);
 
     // Phase 4: Audit log (비동기, 비차단)
@@ -271,13 +280,16 @@ ${procedureHint ? `관심 시술 힌트: ${procedureHint}` : ""}
       cached,
     });
 
-    res.write(`data: [DONE]\n\n`);
-    res.end();
+    safeEnd();
   } catch (err) {
-    console.error("Suggest stream error:", err.message);
-    sseWrite(res, { error: err.message });
-    res.write(`data: [DONE]\n\n`);
-    res.end();
+    console.error("[/api/suggest] 오류:", err.message);
+    // 클라이언트에 에러 이벤트 전달 후 스트림 종료
+    const userMsg = err.message?.includes("API key")
+      ? "API 키가 유효하지 않습니다. 관리자에게 문의하세요."
+      : err.message?.includes("rate_limit") || err.message?.includes("429")
+      ? "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
+      : `AI 답변 생성 중 오류가 발생했습니다: ${err.message}`;
+    safeEnd(userMsg);
   }
 });
 
