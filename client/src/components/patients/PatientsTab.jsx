@@ -584,22 +584,11 @@ function PatientDrawer({ patient, onClose, onEdit, onDelete, onBooking }) {
                 <p className="text-[11px] text-slate-400 mt-0.5">{patient.country} · {patient.age}세 · {patient.gender==='F'?'여':'남'} · {patient.lang}</p>
               </div>
             </div>
-            {/* Primary action buttons + utils */}
-            <div className="flex items-center gap-2">
-              {/* 상담 바로가기 */}
-              <button onClick={handleGoToChat}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-semibold hover:from-blue-500 hover:to-indigo-500 shadow-md transition-all">
-                <MessageCircle size={12}/> 상담 바로가기
-              </button>
-              {/* 예약 잡기 */}
-              <button onClick={() => { onClose(); setTimeout(() => onBooking?.(patient), 180); }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-blue-200 text-blue-700 text-[11px] font-semibold hover:bg-blue-50 transition-all">
-                <Calendar size={12}/> 예약 잡기
-              </button>
-              <div className="w-px h-5 bg-slate-200 mx-0.5"/>
-              <button onClick={()=>onEdit(patient)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 hover:text-blue-600 text-slate-400 transition-colors" title="수정"><Edit3 size={13}/></button>
+            {/* Utility buttons only — action buttons moved to Fixed Action Bar */}
+            <div className="flex items-center gap-1">
+              <button onClick={()=>onEdit(patient)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 hover:text-blue-600 text-slate-400 transition-colors" title="환자 정보 수정"><Edit3 size={13}/></button>
               <button onClick={()=>setConfirmDelete(true)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-50 hover:text-red-500 text-slate-400 transition-colors" title="삭제"><Trash2 size={13}/></button>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400"><X size={14}/></button>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400" title="닫기"><X size={14}/></button>
             </div>
           </div>
 
@@ -662,13 +651,19 @@ function PatientDrawer({ patient, onClose, onEdit, onDelete, onBooking }) {
           {tab === 'gallery'  && <MediaGalleryTab patient={patient}/>}
         </div>
 
-        {/* ── Footer ─────────────────────────────────────────────────── */}
-        <div className="px-6 py-4 border-t border-slate-100 shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600">
+        {/* ── Fixed Action Bar ────────────────────────────────────────── */}
+        <div className="px-5 py-4 border-t border-slate-100 shrink-0 bg-white grid grid-cols-2 gap-3">
+          {/* Primary: 상담 바로가기 */}
           <button onClick={handleGoToChat}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-white/15 hover:bg-white/25 text-white text-sm font-bold transition-all border border-white/20 backdrop-blur-sm">
-            <MessageCircle size={16}/>
-            <span>{patient.name}님과의 상담 바로가기</span>
-            <ChevronRight size={14} className="ml-auto opacity-70"/>
+            className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-md active:scale-[0.97]">
+            <MessageCircle size={14}/>
+            상담 바로가기
+          </button>
+          {/* Secondary: 예약 잡기 */}
+          <button onClick={() => { onClose(); setTimeout(() => onBooking?.(patient), 180); }}
+            className="flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-50 hover:border-blue-400 transition-all active:scale-[0.97]">
+            <Calendar size={14}/>
+            예약 잡기
           </button>
         </div>
 
@@ -812,12 +807,22 @@ export default function PatientsTab({ darkMode }) {
   useEffect(() => { fetchPatients(); }, []);
 
   // ── Auto-open drawer when returning from chat (URL: ?openPid=xxx) ──────────
+  // patients.length > 0 조건으로 DB 로드 완료 후 실행 보장
   useEffect(() => {
     const openPid = urlParams.get('openPid');
-    if (!openPid || loading || patients.length === 0) return;
+    if (!openPid || patients.length === 0) return;
     const match = patients.find(p => p.id === openPid);
-    if (match) setSelectedPatient(match);
-  }, [urlParams, patients, loading]);
+    if (match) {
+      setSelectedPatient(match);
+      // URL에서 openPid 제거 (재로드 시 중복 오픈 방지)
+      // — history.replaceState로 React Router 상태를 건드리지 않고 조용히 제거
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('openPid');
+        window.history.replaceState(null, '', url.toString());
+      } catch { /* ignore */ }
+    }
+  }, [patients]); // patients가 로드될 때마다 체크 (urlParams 의존 제거로 중복 실행 방지)
 
   // ── Filtered & sorted list ──────────────────────────────────────────────────
   const filtered = useMemo(() => {

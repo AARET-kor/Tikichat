@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Phone, Video, MoreHorizontal, X, PhoneOff, Mic, MicOff, Camera, CameraOff, Maximize2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Phone, Video, MoreHorizontal, X, PhoneOff, Mic, MicOff, Camera, CameraOff, Maximize2, UserSquare2 } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import ReplyArea from './ReplyArea';
 import ChannelBadge from './ChannelBadge';
@@ -115,9 +116,25 @@ function CallModal({ type, patient, onClose }) {
 }
 
 export default function ChatWindow({ conv, onConvUpdate, darkMode }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const messagesEndRef = useRef(null);
   const [messages, setMessages] = useState(conv.messages);
   const [callType, setCallType] = useState(null); // null | 'voice' | 'video'
+
+  // URL에서 환자 ID를 읽어 환자 관리 탭으로 역방향 이동
+  const fromPid  = searchParams.get('pid')  || '';  // 환자 ID (patients 탭에서 넘어온 경우)
+  const fromName = searchParams.get('pname') ? decodeURIComponent(searchParams.get('pname')) : '';
+
+  const handleGoToPatientChart = () => {
+    if (fromPid) {
+      // 환자 ID가 있으면 해당 Drawer 바로 오픈
+      navigate(`/app?tab=patients&openPid=${encodeURIComponent(fromPid)}`);
+    } else {
+      // 직접 접근한 경우 환자 관리 탭으로만 이동
+      navigate('/app?tab=patients');
+    }
+  };
 
   useEffect(() => {
     setMessages(conv.messages);
@@ -139,35 +156,58 @@ export default function ChatWindow({ conv, onConvUpdate, darkMode }) {
   return (
     <div className={`flex flex-col flex-1 min-w-0 ${bodyBg}`}>
       {/* Chat header */}
-      <div className={`${headerBg} border-b px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm`}>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className={`w-10 h-10 rounded-full ${conv.patient.color} flex items-center justify-center text-sm font-semibold`}>
-              {conv.patient.initials}
-            </div>
-            <div className="absolute -bottom-0.5 -right-0.5">
-              <ChannelBadge channel={conv.channel} />
-            </div>
-          </div>
+      <div className={`${headerBg} border-b px-4 py-3.5 flex items-center justify-between shrink-0 shadow-sm`}>
+        <div className="flex items-center gap-3 min-w-0">
 
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className={`text-sm font-semibold ${darkMode ? 'text-zinc-100' : 'text-slate-800'}`}>{conv.patient.name}</h3>
-              <span className="text-base">{conv.patient.flag}</span>
-              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-slate-100 text-slate-500'}`}>
-                {conv.patient.langName}
-              </span>
+          {/* ── 역방향 버튼: 환자 차트로 이동 ──────────────────────────── */}
+          <button
+            onClick={handleGoToPatientChart}
+            title={fromName ? `${fromName}님의 전체 차트 보기` : '환자 관리로 이동'}
+            className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all shrink-0
+              ${darkMode
+                ? 'bg-zinc-800 hover:bg-blue-900/40 text-zinc-500 hover:text-blue-400 border border-zinc-700 hover:border-blue-800'
+                : 'bg-slate-100 hover:bg-blue-50 text-slate-500 hover:text-blue-700 border border-slate-200 hover:border-blue-200'
+              }`}
+          >
+            <UserSquare2 size={14} className="transition-colors" />
+            <span className={`text-[11px] font-semibold hidden sm:block transition-colors ${darkMode ? 'text-zinc-500 group-hover:text-blue-400' : 'text-slate-500 group-hover:text-blue-700'}`}>
+              {fromName ? `${fromName}` : '환자 차트'}
+            </span>
+          </button>
+
+          {/* ── 구분선 ── */}
+          <div className={`w-px h-6 shrink-0 ${darkMode ? 'bg-zinc-700' : 'bg-slate-200'}`}/>
+
+          {/* ── 환자 아바타 + 이름 ── */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative shrink-0">
+              <div className={`w-10 h-10 rounded-full ${conv.patient.color} flex items-center justify-center text-sm font-semibold`}>
+                {conv.patient.initials}
+              </div>
+              <div className="absolute -bottom-0.5 -right-0.5">
+                <ChannelBadge channel={conv.channel} />
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>{CHANNEL_LABEL[conv.channel]}</span>
-              <span className={darkMode ? 'text-zinc-700' : 'text-slate-300'}>·</span>
-              <span className={`text-xs font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{conv.procedureName}</span>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className={`text-sm font-semibold truncate ${darkMode ? 'text-zinc-100' : 'text-slate-800'}`}>{conv.patient.name}</h3>
+                <span className="text-base shrink-0">{conv.patient.flag}</span>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-slate-100 text-slate-500'}`}>
+                  {conv.patient.langName}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-slate-400'}`}>{CHANNEL_LABEL[conv.channel]}</span>
+                <span className={darkMode ? 'text-zinc-700' : 'text-slate-300'}>·</span>
+                <span className={`text-xs font-medium ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>{conv.procedureName}</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Header actions */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => setCallType('voice')}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${darkMode ? 'hover:bg-zinc-800 text-zinc-400 hover:text-green-400' : 'hover:bg-slate-100 text-slate-500 hover:text-green-600'}`}
