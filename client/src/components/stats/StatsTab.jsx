@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   TrendingUp, TrendingDown, MessageSquare, Users,
-  Clock, DollarSign, ChevronDown, Calendar, Zap
+  Clock, DollarSign, ChevronDown, Calendar, Zap, X, Check
 } from 'lucide-react';
 
 // ── Dummy Data ─────────────────────────────────────────────────────────────────
@@ -318,16 +318,73 @@ function TrendBadge({ value, unit = '%', invert = false }) {
   );
 }
 
+// ── Custom Date Range Picker ───────────────────────────────────────────────────
+function DateRangePicker({ onApply, onClose }) {
+  const today = new Date();
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const [start, setStart] = useState(fmt(new Date(today.getFullYear(), today.getMonth(), 1)));
+  const [end,   setEnd]   = useState(fmt(today));
+  const ref = useRef();
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const handleApply = () => {
+    if (start && end && start <= end) { onApply(start, end); onClose(); }
+  };
+
+  return (
+    <div ref={ref} className="absolute top-full mt-2 right-0 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 w-72">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-semibold text-slate-700">날짜 범위 선택</span>
+        <button onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100">
+          <X size={12} className="text-slate-400" />
+        </button>
+      </div>
+      <div className="space-y-2.5">
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">시작일</label>
+          <input type="date" value={start} onChange={e => setStart(e.target.value)} max={end}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">종료일</label>
+          <input type="date" value={end} onChange={e => setEnd(e.target.value)} min={start}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+        </div>
+      </div>
+      {start && end && start > end && (
+        <p className="text-[10px] text-red-500 mt-2">시작일이 종료일보다 늦을 수 없습니다</p>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button onClick={onClose}
+          className="flex-1 py-2 rounded-xl text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+          취소
+        </button>
+        <button onClick={handleApply} disabled={!start || !end || start > end}
+          className="flex-1 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white disabled:opacity-50 hover:from-purple-500 hover:to-fuchsia-400 transition-all flex items-center justify-center gap-1.5">
+          <Check size={11} /> 적용
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main StatsTab ──────────────────────────────────────────────────────────────
 export default function StatsTab() {
-  const [period,  setPeriod]  = useState('thisMonth');
-  const [country, setCountry] = useState('all');
-  const [channel, setChannel] = useState('all');
-  const [showCountry, setShowCountry] = useState(false);
-  const [showChannel, setShowChannel] = useState(false);
+  const [period,       setPeriod]       = useState('thisMonth');
+  const [country,      setCountry]      = useState('all');
+  const [channel,      setChannel]      = useState('all');
+  const [showCountry,  setShowCountry]  = useState(false);
+  const [showChannel,  setShowChannel]  = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customRange,  setCustomRange]  = useState(null); // { start, end }
 
   const PERIOD_LABELS = {
-    today: '오늘', '7d': '최근 7일', thisMonth: '이번 달', lastMonth: '전월',
+    today: '오늘', '7d': '최근 7일', thisMonth: '이번 달', lastMonth: '전월', custom: '직접 설정',
   };
   const COUNTRY_LABELS = {
     all:'전체 국가', JP:'🇯🇵 일본어', US:'🇺🇸 영어', CN:'🇨🇳 중국어', AR:'🇸🇦 아랍어',
@@ -413,10 +470,10 @@ export default function StatsTab() {
 
         {/* 기간 프리셋 버튼 */}
         <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
-          {Object.entries(PERIOD_LABELS).map(([k, v]) => (
+          {Object.entries(PERIOD_LABELS).filter(([k]) => k !== 'custom').map(([k, v]) => (
             <button
               key={k}
-              onClick={() => setPeriod(k)}
+              onClick={() => { setPeriod(k); setCustomRange(null); }}
               className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                 period === k
                   ? 'bg-white text-purple-700 shadow-sm border border-purple-100'
@@ -426,6 +483,30 @@ export default function StatsTab() {
               {v}
             </button>
           ))}
+        </div>
+
+        {/* 직접 설정 (custom date range) */}
+        <div className="relative">
+          <button
+            onClick={() => { setShowDatePicker(v => !v); setShowCountry(false); setShowChannel(false); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${
+              period === 'custom'
+                ? 'bg-purple-50 border-purple-300 text-purple-700'
+                : 'bg-white border-slate-200 text-slate-700 hover:border-purple-300'
+            }`}
+          >
+            <Calendar size={11} className={period === 'custom' ? 'text-purple-500' : 'text-slate-400'} />
+            {period === 'custom' && customRange
+              ? `${customRange.start} ~ ${customRange.end}`
+              : '직접 설정'}
+            <ChevronDown size={11} className="text-slate-400" />
+          </button>
+          {showDatePicker && (
+            <DateRangePicker
+              onApply={(s, e) => { setCustomRange({ start: s, end: e }); setPeriod('custom'); }}
+              onClose={() => setShowDatePicker(false)}
+            />
+          )}
         </div>
 
         {/* 국가 드롭다운 */}
@@ -478,7 +559,12 @@ export default function StatsTab() {
 
         <div className="ml-auto text-[11px] text-slate-400 flex items-center gap-1">
           <Calendar size={11} />
-          {period === 'today' ? '2026-04-07 기준' : period === '7d' ? '최근 7일' : period === 'thisMonth' ? '2026년 4월' : '2026년 3월'}
+          {period === 'today' ? '2026-04-07 기준'
+            : period === '7d' ? '최근 7일'
+            : period === 'thisMonth' ? '2026년 4월'
+            : period === 'lastMonth' ? '2026년 3월'
+            : period === 'custom' && customRange ? `${customRange.start} ~ ${customRange.end}`
+            : ''}
           {country !== 'all' && ` · ${COUNTRY_LABELS[country]}`}
           {channel !== 'all' && ` · ${CHANNEL_LABELS[channel]}`}
         </div>

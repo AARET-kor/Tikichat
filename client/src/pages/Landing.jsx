@@ -1,40 +1,59 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Languages, CalendarCheck, Sparkles, MessageSquare,
-  BarChart3, ArrowRight, Check, Star, Globe, Database
+  BarChart3, ArrowRight, Check, Star, Globe, Database, Menu, X
 } from 'lucide-react';
 
 // ── Header ────────────────────────────────────────────────────────────────────
 function Header() {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/60">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        {/* Logo */}
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-fuchsia-500 flex items-center justify-center shadow-[0_0_14px_rgba(168,85,247,0.5)]">
             <MessageSquare size={15} className="text-white" fill="white" />
           </div>
           <span className="text-lg font-bold text-zinc-100 tracking-tight">TikiChat</span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 hidden sm:inline">
             티키챗
           </span>
         </div>
-        <nav className="flex items-center gap-6">
-          <a href="#features" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors hidden md:block">기능</a>
-          <a href="#pricing" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors hidden md:block">요금제</a>
-          <Link
-            to="/login"
-            className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-all"
-          >
+
+        {/* Desktop nav */}
+        <nav className="hidden md:flex items-center gap-6">
+          <a href="#features" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">기능</a>
+          <a href="#pricing" className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors">요금제</a>
+          <Link to="/login" className="text-sm font-medium px-4 py-2 rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 hover:border-zinc-600 transition-all">
             로그인
           </Link>
-          <Link
-            to="/login"
-            className="text-sm font-semibold px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 text-white transition-all shadow-[0_0_16px_rgba(168,85,247,0.4)]"
-          >
+          <Link to="/login" className="text-sm font-semibold px-4 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 text-white transition-all shadow-[0_0_16px_rgba(168,85,247,0.4)]">
             무료 시작
           </Link>
         </nav>
+
+        {/* Mobile: CTA + hamburger */}
+        <div className="flex items-center gap-2 md:hidden">
+          <Link to="/login" className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]">
+            무료 시작
+          </Link>
+          <button onClick={() => setMobileOpen(v => !v)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors">
+            {mobileOpen ? <X size={16} /> : <Menu size={16} />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile dropdown menu */}
+      {mobileOpen && (
+        <div className="md:hidden bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex flex-col gap-3">
+          <a href="#features" onClick={() => setMobileOpen(false)} className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors py-2 border-b border-zinc-800">기능</a>
+          <a href="#pricing" onClick={() => setMobileOpen(false)} className="text-sm text-zinc-300 hover:text-zinc-100 transition-colors py-2 border-b border-zinc-800">요금제</a>
+          <Link to="/login" onClick={() => setMobileOpen(false)} className="text-sm font-medium text-zinc-300 py-2">로그인</Link>
+        </div>
+      )}
     </header>
   );
 }
@@ -201,9 +220,9 @@ function BentoFeatures() {
         <p className="text-zinc-500 mt-3 text-base">월 350만원의 다국어 코디네이터를 AI로 대체하세요.</p>
       </div>
 
-      <div className="grid grid-cols-3 auto-rows-auto gap-4">
-        {/* Card 1 — wide (2 cols) */}
-        <div className="col-span-2 bg-zinc-900 rounded-2xl border border-zinc-800 p-7 hover:-translate-y-1 transition-all duration-200 hover:border-purple-500/40 hover:shadow-[0_0_24px_rgba(168,85,247,0.12)]">
+      <div className="grid grid-cols-1 md:grid-cols-3 auto-rows-auto gap-4">
+        {/* Card 1 — wide (2 cols on md+) */}
+        <div className="md:col-span-2 bg-zinc-900 rounded-2xl border border-zinc-800 p-7 hover:-translate-y-1 transition-all duration-200 hover:border-purple-500/40 hover:shadow-[0_0_24px_rgba(168,85,247,0.12)]">
           <div className="w-11 h-11 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4 border border-purple-500/30">
             <Languages size={22} className="text-purple-400" />
           </div>
@@ -224,8 +243,8 @@ function BentoFeatures() {
           </div>
         </div>
 
-        {/* Card 2 — tall (row-span-2), aurora purple gradient */}
-        <div className="row-span-2 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-2xl p-7 text-white shadow-[0_0_40px_rgba(168,85,247,0.3)] hover:-translate-y-1 transition-transform duration-200">
+        {/* Card 2 — tall (row-span-2 on md+), aurora purple gradient */}
+        <div className="md:row-span-2 bg-gradient-to-br from-purple-600 to-fuchsia-600 rounded-2xl p-7 text-white shadow-[0_0_40px_rgba(168,85,247,0.3)] hover:-translate-y-1 transition-transform duration-200">
           <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center mb-4">
             <Sparkles size={22} className="text-white" />
           </div>
@@ -332,11 +351,11 @@ function Pricing() {
           </h2>
           <p className="text-zinc-500 mt-3">월 350만원짜리 다국어 코디네이터, 이제 필요 없습니다.</p>
         </div>
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {PLANS.map(plan => (
             <div key={plan.name}
               className={`rounded-2xl p-7 transition-transform ${plan.highlight
-                ? 'bg-gradient-to-br from-purple-600 to-fuchsia-600 ring-2 ring-purple-500 shadow-[0_0_40px_rgba(168,85,247,0.3)] scale-105'
+                ? 'bg-gradient-to-br from-purple-600 to-fuchsia-600 ring-2 ring-purple-500 shadow-[0_0_40px_rgba(168,85,247,0.3)] lg:scale-105'
                 : 'bg-zinc-900 border border-zinc-800 hover:-translate-y-1'}`}
             >
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${plan.highlight ? 'bg-white/20 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
@@ -444,7 +463,7 @@ export default function Landing() {
             ✨ TikiChat 1.0 — 이제 외국인 환자 응대가 달라집니다
           </div>
 
-          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight leading-tight mb-6">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight mb-6">
             <span className="text-zinc-100">외국인 환자와의<br />완벽한 티키타카.</span>
             {' '}
             <span className="bg-gradient-to-r from-purple-400 to-fuchsia-400 bg-clip-text text-transparent">
