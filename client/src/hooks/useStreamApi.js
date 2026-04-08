@@ -89,7 +89,12 @@ export function useStreamApi() {
       finish(() => onDone?.(result));
     } catch (err) {
       if (err.name === 'AbortError') {
-        finish(() => onDone?.(result));
+        // 의도적 취소 — 텍스트가 일부 있으면 완료 처리, 없으면 조용히 정리
+        if (result) {
+          finish(() => onDone?.(result));
+        } else {
+          finish(() => {}); // 콜백 없이 settled만 처리 → 신규 스트림 상태 보호
+        }
       } else {
         console.error('Stream error:', err);
         finish(() => onError?.(err));

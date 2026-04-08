@@ -19,6 +19,7 @@ export default function ReplyArea({ conv, onMessageSent }) {
 
   const textareaRef = useRef(null);
   const abortRef = useRef(null);
+  const generationRef = useRef(0); // 세대 카운터 — stale 콜백이 신규 상태를 덮어쓰지 못하게
   const { streamPost, post } = useStreamApi();
 
   const lastPatientMsg = conv.messages.filter(m => m.from === 'patient').at(-1);
@@ -39,11 +40,15 @@ export default function ReplyArea({ conv, onMessageSent }) {
 
   const loadSuggestion = async () => {
     if (!lastPatientMsg) return;
+
+    // 세대 번호 증가 — 이전 스트림의 stale 콜백을 무효화
+    const gen = ++generationRef.current;
+    const isCurrentGen = () => generationRef.current === gen;
+
     setSuggestion('');
     setLoadError(null);
     setCopied(false);
-    // 낙관적으로 즉시 routing 단계 표시 → 서버 연결 전에도 카드 노출
-    setPhase('routing');
+    setPhase('routing'); // 낙관적 즉시 표시 → 서버 연결 전에도 카드 노출
 
     abortRef.current = new AbortController();
 
@@ -53,14 +58,16 @@ export default function ReplyArea({ conv, onMessageSent }) {
       patientLang: conv.patient.lang,
     }, {
       signal: abortRef.current.signal,
-      onPhase: (p) => setPhase(p),
-      onChunk: (_, full) => setSuggestion(full),
-      onDone: () => setPhase('done'),
+      onPhase: (p) => { if (isCurrentGen()) setPhase(p); },
+      onChunk: (_, full) => { if (isCurrentGen()) setSuggestion(full); },
+      onDone: () => { if (isCurrentGen()) setPhase('done'); },
       onError: (err) => {
-        // 에러 시 카드를 닫지 않고, 오류 메시지를 표시
-        const msg = err?.message?.includes('fetch')
+        if (!isCurrentGen()) return; // 이전 세대 에러는 무시
+        // 서버가 보낸 실제 에러 메시지를 그대로 표시
+        const raw = err?.message || '';
+        const msg = raw.includes('fetch') || raw.includes('Failed to fetch')
           ? '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해 주세요.'
-          : '답변을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+          : `AI 답변 생성 실패: ${raw || '알 수 없는 오류'}`;
         setLoadError(msg);
         setPhase('done');
       },

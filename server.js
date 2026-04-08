@@ -5,12 +5,14 @@ import dotenv from "dotenv";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, ".env"), override: true });
 
-// ── 전역 방어막: 예상치 못한 에러에도 프로세스가 절대 죽지 않도록 ──────────
+// ── 전역 방어막: 예상치 못한 에러 로그 후 Railway가 즉시 재시작하도록 exit(1) ─
 process.on("uncaughtException", (err) => {
-  console.error("[uncaughtException] 프로세스 종료 방지:", err.message, err.stack);
+  console.error("[uncaughtException]", err.message, err.stack);
+  process.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
-  console.error("[unhandledRejection] 프로세스 종료 방지:", reason);
+  console.error("[unhandledRejection]", reason);
+  process.exit(1);
 });
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -78,7 +80,9 @@ function sseStream(res) {
 }
 
 function sseWrite(res, payload) {
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  if (!res.writableEnded) {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  }
 }
 
 // ── RAG: procedures_knowledge 키워드 검색 ──────────────────────────────────
@@ -136,8 +140,12 @@ JSON format: {"type":"simple"} or {"type":"complex","query":"reformulated search
   }
 }
 
-// ── Sonnet 스트리밍 (프롬프트 캐싱 포함) ──────────────────────────────────
-async function streamSonnetWithCache(res, dynamicContext, userMessage, maxTokens = 600) {
+// ── Sonnet 스트리밍 (프롬프트 캐싱 + 클라이언트 disconnect 감지) ─────────────
+async function streamSonnetWithCache(req, res, dynamicContext, userMessage, maxTokens = 600) {
+  // 클라이언트가 연결을 끊으면 Anthropic 스트림도 즉시 취소
+  const ac = new AbortController();
+  req.on("close", () => ac.abort());
+
   const systemBlocks = [
     {
       type: "text",
@@ -153,15 +161,19 @@ async function streamSonnetWithCache(res, dynamicContext, userMessage, maxTokens
     });
   }
 
-  const stream = client.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: maxTokens,
-    system: systemBlocks,
-    messages: [{ role: "user", content: userMessage }],
-  });
+  const stream = client.messages.stream(
+    {
+      model: "claude-sonnet-4-6",
+      max_tokens: maxTokens,
+      system: systemBlocks,
+      messages: [{ role: "user", content: userMessage }],
+    },
+    { signal: ac.signal }
+  );
 
   let inputCached = false;
   for await (const e of stream) {
+    if (res.writableEnded) break; // 클라이언트 끊김 — 루프 탈출
     if (e.type === "message_start" && e.message?.usage?.cache_read_input_tokens > 0) {
       inputCached = true;
     }
@@ -276,7 +288,7 @@ ${procedureHint ? `관심 시술 힌트: ${procedureHint}` : ""}
 
 위 환자에게 보낼 한국어 답변을 작성해주세요. 의료광고법을 준수하고, 전문의 상담을 권유하며 마무리해주세요.`;
 
-    const cached = await streamSonnetWithCache(res, ragContext, userMessage, 600);
+    const cached = await streamSonnetWithCache(req, res, ragContext, userMessage, 600);
 
     // Phase 4: Audit log (비동기, 비차단)
     auditLog({
