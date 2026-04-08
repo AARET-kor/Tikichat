@@ -6,7 +6,20 @@ import { useState, useCallback } from 'react';
 export function useStreamApi() {
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const streamPost = useCallback(async (url, body, { onChunk, onDone, onError } = {}) => {
+  /**
+   * @param {string} url
+   * @param {object} body
+   * @param {{
+   *   onChunk?: (text: string, fullText: string) => void,
+   *   onDone?: (fullText: string) => void,
+   *   onError?: (err: Error) => void,
+   *   onPhase?: (phase: string) => void,
+   *   signal?: AbortSignal,
+   * }} options
+   */
+  const streamPost = useCallback(async (url, body, {
+    onChunk, onDone, onError, onPhase, signal
+  } = {}) => {
     setIsStreaming(true);
     let result = '';
 
@@ -15,6 +28,7 @@ export function useStreamApi() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       });
 
       if (!response.ok) {
@@ -43,6 +57,12 @@ export function useStreamApi() {
           }
           try {
             const parsed = JSON.parse(data);
+            // Phase events (routing / generating)
+            if (parsed.phase) {
+              onPhase?.(parsed.phase);
+              continue;
+            }
+            // Text delta
             const text = parsed.delta?.text || '';
             if (text) {
               result += text;
@@ -54,8 +74,13 @@ export function useStreamApi() {
         }
       }
     } catch (err) {
-      console.error('Stream error:', err);
-      onError?.(err);
+      if (err.name === 'AbortError') {
+        // 사용자가 취소함 — 지금까지 수신된 텍스트로 완료 처리
+        onDone?.(result);
+      } else {
+        console.error('Stream error:', err);
+        onError?.(err);
+      }
     } finally {
       setIsStreaming(false);
     }
