@@ -1,9 +1,11 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search, Plus, Upload, X, ChevronDown,
   Edit3, Save, Phone, MessageSquare,
-  Calendar, DollarSign, Trash2, Check, AlertCircle, FileText
+  Calendar, DollarSign, Trash2, Check, AlertCircle, FileText,
+  RefreshCw
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 // ── Dummy Patient Data ─────────────────────────────────────────────────────────
 const INITIAL_PATIENTS = [
@@ -531,9 +533,69 @@ function PatientDrawer({ patient, onClose, onEdit, onDelete }) {
   );
 }
 
+// ── Skeleton Row ──────────────────────────────────────────────────────────────
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-slate-100">
+      {[140, 90, 80, 80, 90, 80].map((w, i) => (
+        <td key={i} className="px-4 py-3.5">
+          <div className={`h-3 bg-slate-200 rounded-full animate-pulse`} style={{ width: w }} />
+          {i === 0 && <div className="h-2.5 bg-slate-100 rounded-full animate-pulse mt-1.5" style={{ width: 80 }} />}
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+// ── Error Alert ───────────────────────────────────────────────────────────────
+function ErrorAlert({ message, onRetry }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <div className="flex items-center gap-3 px-5 py-4 bg-red-50 border border-red-200 rounded-2xl max-w-md">
+        <AlertCircle size={18} className="text-red-500 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-red-700">데이터를 불러오지 못했습니다</p>
+          <p className="text-xs text-red-500 mt-0.5">{message}</p>
+        </div>
+      </div>
+      <button onClick={onRetry}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-purple-600 to-fuchsia-500 text-white hover:from-purple-500 hover:to-fuchsia-400 transition-all">
+        <RefreshCw size={12} /> 다시 시도
+      </button>
+    </div>
+  );
+}
+
+// ── DB row → app 객체 변환 ────────────────────────────────────────────────────
+function mapDbRow(row) {
+  return {
+    id:          row.id           ?? `p-${Date.now()}`,
+    name:        row.name         ?? row.name_ko ?? '',
+    nameEn:      row.name_en      ?? row.name    ?? '',
+    flag:        row.flag         ?? (COUNTRY_FLAGS[row.country] ?? '🌏'),
+    country:     row.country      ?? '기타',
+    lang:        (row.lang        ?? 'EN').toUpperCase(),
+    gender:      (row.gender      ?? 'F').toUpperCase(),
+    age:         row.age          ?? 0,
+    channel:     row.channel      ?? 'whatsapp',
+    procedure:   row.procedure    ?? row.procedure_name ?? '기타',
+    lastVisit:   row.last_visit   ?? row.created_at?.slice(0,10) ?? '',
+    nextBooking: row.next_booking ?? null,
+    status:      row.status       ?? 'consulting',
+    totalSpent:  row.total_spent  ?? 0,
+    phone:       row.phone        ?? '',
+    email:       row.email        ?? '',
+    note:        row.note         ?? row.notes ?? '',
+    tags:        Array.isArray(row.tags) ? row.tags : (row.tags ? [row.tags] : []),
+    timeline:    Array.isArray(row.timeline) ? row.timeline : [],
+  };
+}
+
 // ── Main PatientsTab ──────────────────────────────────────────────────────────
 export default function PatientsTab({ darkMode }) {
   const [patients, setPatients] = useState(INITIAL_PATIENTS);
+  const [loading,  setLoading]  = useState(true);
+  const [dbError,  setDbError]  = useState(null);
   const [search, setSearch] = useState('');
   const [filterCountry, setFilterCountry] = useState('전체');
   const [filterChannel, setFilterChannel] = useState('전체');
@@ -543,6 +605,36 @@ export default function PatientsTab({ darkMode }) {
   const [showCSVModal, setShowCSVModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [editingPatient, setEditingPatient] = useState(null);
+
+  // ── Supabase fetch ──────────────────────────────────────────────────────────
+  const fetchPatients = async () => {
+    setLoading(true);
+    setDbError(null);
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setPatients(data.map(mapDbRow));
+      } else {
+        // DB가 비어있으면 더미 데이터 유지 (개발 편의)
+        setPatients(INITIAL_PATIENTS);
+      }
+    } catch (err) {
+      console.error('[Supabase] patients fetch error:', err);
+      setDbError(err.message ?? '알 수 없는 오류');
+      // 에러 시에도 더미 데이터로 폴백
+      setPatients(INITIAL_PATIENTS);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchPatients(); }, []);
 
   const filtered = useMemo(() => patients
     .filter(p => {
@@ -567,20 +659,60 @@ export default function PatientsTab({ darkMode }) {
   const channels  = ['전체', ...Object.keys(CHANNELS)];
   const statuses  = ['전체', ...Object.keys(STATUS)];
 
-  const handleImportCSV = (newPatients) => {
+  const handleImportCSV = async (newPatients) => {
+    // 로컬 상태 즉시 반영
     setPatients(prev => [...newPatients, ...prev]);
+    // Supabase에 bulk upsert (실패해도 로컬은 유지)
+    try {
+      const rows = newPatients.map(p => ({
+        name: p.name, name_en: p.nameEn, flag: p.flag,
+        country: p.country, lang: p.lang, gender: p.gender, age: p.age,
+        channel: p.channel, procedure: p.procedure, last_visit: p.lastVisit,
+        next_booking: p.nextBooking, status: p.status, total_spent: p.totalSpent,
+        phone: p.phone, email: p.email, note: p.note, tags: p.tags,
+      }));
+      await supabase.from('patients').insert(rows);
+    } catch (err) {
+      console.warn('[Supabase] CSV import error (local only):', err.message);
+    }
   };
 
-  const handleSavePatient = (data) => {
+  const handleSavePatient = async (data) => {
+    // 로컬 즉시 반영
     setPatients(prev => {
       const idx = prev.findIndex(p=>p.id===data.id);
       if (idx >= 0) return prev.map(p=>p.id===data.id ? data : p);
       return [data, ...prev];
     });
+    // Supabase upsert
+    try {
+      const row = {
+        name: data.name, name_en: data.nameEn, flag: data.flag,
+        country: data.country, lang: data.lang, gender: data.gender, age: data.age,
+        channel: data.channel, procedure: data.procedure, last_visit: data.lastVisit,
+        next_booking: data.nextBooking, status: data.status, total_spent: data.totalSpent,
+        phone: data.phone, email: data.email, note: data.note, tags: data.tags,
+      };
+      // 기존 id가 UUID 형식이면 update, 아니면(더미/신규) insert
+      const isUUID = /^[0-9a-f-]{36}$/.test(data.id);
+      if (isUUID) {
+        await supabase.from('patients').update(row).eq('id', data.id);
+      } else {
+        await supabase.from('patients').insert(row);
+      }
+    } catch (err) {
+      console.warn('[Supabase] save error (local only):', err.message);
+    }
   };
 
-  const handleDeletePatient = (id) => {
+  const handleDeletePatient = async (id) => {
     setPatients(prev=>prev.filter(p=>p.id!==id));
+    try {
+      const isUUID = /^[0-9a-f-]{36}$/.test(id);
+      if (isUUID) await supabase.from('patients').delete().eq('id', id);
+    } catch (err) {
+      console.warn('[Supabase] delete error (local only):', err.message);
+    }
   };
 
   const handleEdit = (p) => {
@@ -600,7 +732,22 @@ export default function PatientsTab({ darkMode }) {
       <div className={`px-6 pt-5 pb-4 border-b ${cardBg} shrink-0`}>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className={`text-lg font-extrabold ${headText}`}>환자 관리</h1>
+            <div className="flex items-center gap-2">
+              <h1 className={`text-lg font-extrabold ${headText}`}>환자 관리</h1>
+              {loading ? (
+                <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  <RefreshCw size={9} className="animate-spin" /> DB 로딩 중
+                </span>
+              ) : dbError ? (
+                <span className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                  <AlertCircle size={9} /> DB 오류 (로컬 데이터)
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <Check size={9} /> Supabase 연결됨
+                </span>
+              )}
+            </div>
             <p className={`text-xs mt-0.5 ${subText}`}>전체 {patients.length}명 등록됨</p>
           </div>
           <div className="flex gap-2">
@@ -677,7 +824,18 @@ export default function PatientsTab({ darkMode }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => {
+              {loading ? (
+                [...Array(6)].map((_, i) => <SkeletonRow key={i} />)
+              ) : dbError ? (
+                <tr><td colSpan={6}><ErrorAlert message={dbError} onRetry={fetchPatients} /></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6}>
+                  <div className="flex flex-col items-center justify-center h-40 text-slate-400">
+                    <p className="text-sm">검색 결과가 없습니다</p>
+                  </div>
+                </td></tr>
+              ) : null}
+              {!loading && !dbError && filtered.map(p => {
                 const st = STATUS[p.status]||STATUS.consulting;
                 const ch = CHANNELS[p.channel]||{icon:'💬',label:p.channel,color:'text-slate-600',bg:'bg-slate-50'};
                 return (
