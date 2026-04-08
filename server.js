@@ -23,12 +23,21 @@ import express from "express";
 import cors from "cors";
 import { procedures, clinicInfo } from "./data/procedures.js";
 
+// ── Phase 3: 새 모듈 import ───────────────────────────────────────────────────
+import metaWebhookRouter            from "./src/api/webhook/meta.js";
+import { startMessageWorker }       from "./src/workers/messageWorker.js";
+import { startAftercareScheduler }  from "./src/scheduler/aftercare.js";
+
 // ── 모델 상수 (env로 override 가능) ───────────────────────────────────────────
 const MODEL_HAIKU  = process.env.MODEL_HAIKU  || "claude-haiku-4-5-20251001";
 const MODEL_SONNET = process.env.MODEL_SONNET || "claude-sonnet-4-6-20260217";
 
 const app = express();
 app.use(cors());
+
+// ⚠️  Meta Webhook은 raw body가 필요 (HMAC 검증) — express.json() 보다 먼저 등록
+app.use("/webhook/meta", express.raw({ type: "application/json" }), metaWebhookRouter);
+
 app.use(express.json());
 app.use(express.static(join(__dirname, "public")));
 
@@ -290,7 +299,8 @@ async function streamExpertReply(req, res, ragContext, userMessage) {
   };
 }
 
-// ── Audit log (fire-and-forget, 실패해도 무시) ────────────────────────────────
+// ── Audit log (fire-and-forget) ───────────────────────────────────────────────
+// supabase-server.js의 writeAuditLog와 동일 스키마 사용
 async function auditLog(event) {
   try {
     const msgHash = event.patientMessage
@@ -298,17 +308,21 @@ async function auditLog(event) {
       : null;
 
     await supabase.from("audit_logs").insert({
-      event_type:          event.type        || "suggest",
-      patient_lang:        event.patientLang || null,
-      query_type:          event.intent      || null,
-      model_used:          event.model       || null,
-      rag_chunks_used:     event.ragChunks   || 0,
-      tokens_in:           event.tokensIn    || 0,
-      tokens_out:          event.tokensOut   || 0,
-      duration_ms:         event.durationMs  || 0,
-      cached:              event.cacheHit    || false,
+      event_type:           event.type        || "suggest",
+      clinic_id:            process.env.CLINIC_ID || null,
+      patient_lang:         event.patientLang || null,
+      channel:              "dashboard",
+      direction:            "outbound",
+      query_type:           event.intent      || null,
+      model_used:           event.model       || null,
+      rag_chunks_used:      event.ragChunks   || 0,
+      tokens_in:            event.tokensIn    || 0,
+      tokens_out:           event.tokensOut   || 0,
+      duration_ms:          event.durationMs  || 0,
+      cached:               event.cacheHit    || false,
+      status:               "success",
       patient_message_hash: msgHash,
-      created_at:          new Date().toISOString(),
+      created_at:           new Date().toISOString(),
     });
   } catch {
     // 감사 로그 실패는 무시 (비차단)
@@ -575,8 +589,13 @@ app.get("*", (req, res) => {
   res.sendFile(join(__dirname, "public", "index.html"));
 });
 
-// ── 0.0.0.0 바인딩 필수 (Railway 외부 라우터 연결)
+// ── 0.0.0.0 바인딩 필수 (Railway 외부 라우터 연결) ───────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () =>
-  console.log(`✅ LIBHIB Dashboard on 0.0.0.0:${PORT} | Haiku=${MODEL_HAIKU.split("-").slice(-1)[0]} Sonnet=${MODEL_SONNET.split("-").slice(-1)[0]}`)
-);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ LIBHIB Dashboard on 0.0.0.0:${PORT} | Haiku=${MODEL_HAIKU.split("-").slice(-1)[0]} Sonnet=${MODEL_SONNET.split("-").slice(-1)[0]}`);
+
+  // ── Phase 3: 백그라운드 서비스 시작 ─────────────────────────────────────
+  // Redis 없으면 각 모듈이 알아서 graceful degradation 처리
+  try { startMessageWorker(); }      catch (e) { console.error("[Startup] messageWorker 실패:", e.message); }
+  try { startAftercareScheduler(); } catch (e) { console.error("[Startup] aftercareScheduler 실패:", e.message); }
+});
