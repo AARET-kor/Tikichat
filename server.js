@@ -21,6 +21,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import express from "express";
 import cors from "cors";
+import multer from "multer";
+import pdfParse from "pdf-parse";
+import mammoth from "mammoth";
 import { procedures, clinicInfo } from "./data/procedures.js";
 import { PROCEDURE_TEMPLATES } from "./data/procedure-templates.js";
 
@@ -200,21 +203,25 @@ async function embedQuery(text) {
 }
 
 // ── RAG: Hybrid Search (벡터+키워드 → 키워드 전용 → null) ──────────────────
-async function ragSearch(query, matchCount = 5) {
-  // 1) 임베딩이 있으면 match_procedures RRF 하이브리드 검색 시도
+// ragSearch: clinicId 파라미터 추가 → 멀티테넌트 격리
+async function ragSearch(query, matchCount = 5, clinicId = null) {
+  const filter = clinicId || null;
+
+  // 1) 벡터 + 키워드 하이브리드 (OpenAI 키 있을 때)
   const embedding = await embedQuery(query);
   if (embedding) {
     try {
       const { data, error } = await supabase.rpc("match_procedures", {
-        query_embedding: embedding,
-        query_text: query,
-        match_count: matchCount,
+        query_embedding:  embedding,
+        query_text:       query,
+        match_count:      matchCount,
+        clinic_id_filter: filter,          // ← 병원 격리
       });
       if (!error && data?.length) {
         return {
           context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
-          chunks: data.length,
-          method: "hybrid_rrf",
+          chunks:  data.length,
+          method:  "hybrid_rrf",
         };
       }
     } catch (err) {
@@ -222,17 +229,18 @@ async function ragSearch(query, matchCount = 5) {
     }
   }
 
-  // 2) 키워드 전용 검색 fallback
+  // 2) 키워드 전용 fallback
   try {
     const { data, error } = await supabase.rpc("search_procedures_keyword", {
-      query_text: query,
-      match_count: matchCount,
+      query_text:       query,
+      match_count:      matchCount,
+      clinic_id_filter: filter,            // ← 병원 격리
     });
     if (!error && data?.length) {
       return {
         context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
-        chunks: data.length,
-        method: "keyword",
+        chunks:  data.length,
+        method:  "keyword",
       };
     }
   } catch (err) {
@@ -240,6 +248,54 @@ async function ragSearch(query, matchCount = 5) {
   }
 
   return null; // RAG 없음 → 로컬 fallback
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 지식 베이스 업로드 헬퍼
+// ─────────────────────────────────────────────────────────────────────────────
+
+// multer: 메모리 스토리지 (디스크 미사용)
+const knowledgeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = /\.(pdf|docx|txt|csv)$/i.test(file.originalname);
+    cb(ok ? null : new Error("PDF/DOCX/TXT/CSV만 업로드 가능합니다"), ok);
+  },
+});
+
+// 파일 버퍼 → 텍스트 추출
+async function extractText(buffer, originalname) {
+  const ext = originalname.toLowerCase().split(".").pop();
+  try {
+    if (ext === "pdf") {
+      const data = await pdfParse(buffer);
+      return data.text;
+    }
+    if (ext === "docx") {
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value;
+    }
+    // txt / csv
+    return buffer.toString("utf-8");
+  } catch (err) {
+    console.warn("[extractText]", err.message);
+    return buffer.toString("utf-8");
+  }
+}
+
+// 텍스트 → 청크 배열 (500자, 50자 오버랩)
+function chunkText(text, size = 500, overlap = 50) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  const chunks = [];
+  let start = 0;
+  while (start < cleaned.length) {
+    const end = Math.min(start + size, cleaned.length);
+    const chunk = cleaned.slice(start, end).trim();
+    if (chunk.length > 30) chunks.push(chunk); // 너무 짧은 청크 제외
+    start += size - overlap;
+  }
+  return chunks;
 }
 
 // ── 의도 분류 (Haiku 4.5, 4-category + confidence) ───────────────────────────
@@ -482,7 +538,7 @@ app.post("/api/suggest", async (req, res) => {
     let ragResult = null;
     if (intent === "consultation" && confidence >= 0.70) {
       sseWrite(res, { phase: "rag" });
-      ragResult = await ragSearch(query);
+      ragResult = await ragSearch(query, 5, resolvedClinicId);  // ← clinic 격리
 
       if (!ragResult) {
         // procedures_knowledge 비어있거나 없으면 로컬 시술 데이터 사용
@@ -741,6 +797,140 @@ BOOKING: After 3 exchanges, suggest booking a free consultation.` +
 
 // ── GET /api/procedures  (기존 — 로컬 fallback 데이터)
 app.get("/api/procedures", (req, res) => res.json(procedures));
+
+// ════════════════════════════════════════════════════════════════════════════
+// AI 지식 베이스 — 파일 업로드 / 목록 / 삭제
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── POST /api/knowledge/upload
+// multipart/form-data: file + clinic_id
+app.post("/api/knowledge/upload",
+  knowledgeUpload.single("file"),
+  async (req, res) => {
+    const clinic_id = req.body.clinic_id || process.env.CLINIC_ID;
+    if (!clinic_id)  return res.status(400).json({ error: "clinic_id required" });
+    if (!req.file)   return res.status(400).json({ error: "file required" });
+
+    const { originalname, buffer, size } = req.file;
+    const ext = originalname.toLowerCase().split(".").pop();
+
+    try {
+      // 1. 텍스트 추출
+      const rawText = await extractText(buffer, originalname);
+      if (!rawText?.trim()) throw new Error("텍스트를 추출할 수 없습니다");
+
+      // 2. 청킹
+      const chunks = chunkText(rawText);
+      if (!chunks.length) throw new Error("청킹 결과가 없습니다");
+
+      // 3. 기존 동일 파일 청크 삭제 (재업로드 지원)
+      await supabaseAdmin
+        .from("procedures_knowledge")
+        .delete()
+        .eq("clinic_id", clinic_id)
+        .eq("file_name",  originalname);
+
+      // 4. 임베딩 생성 + 행 구성
+      const procName = originalname.replace(/\.[^.]+$/, ""); // 확장자 제거
+      const rows = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const embedding = await embedQuery(chunks[i]); // null if no OpenAI key
+        rows.push({
+          clinic_id,
+          file_name:      originalname,
+          file_type:      ext,
+          file_size:      size,
+          procedure_name: procName,
+          chunk_index:    i,
+          content:        chunks[i],
+          embedding:      embedding ?? undefined,
+        });
+      }
+
+      // 5. Supabase upsert (배치 100개씩)
+      const BATCH = 100;
+      for (let b = 0; b < rows.length; b += BATCH) {
+        const { error } = await supabaseAdmin
+          .from("procedures_knowledge")
+          .insert(rows.slice(b, b + BATCH));
+        if (error) throw error;
+      }
+
+      console.log(`[Knowledge] 업로드 완료: ${originalname} → ${chunks.length}청크 | clinic=${clinic_id}`);
+      res.json({
+        ok:        true,
+        file_name: originalname,
+        chunks:    chunks.length,
+        embedded:  rows.some(r => r.embedding != null),
+      });
+
+    } catch (err) {
+      console.error("[Knowledge/upload]", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// ── GET /api/knowledge/files?clinic_id=xxx
+// 업로드된 파일 목록 (파일당 1행 — chunk_index=0 기준)
+app.get("/api/knowledge/files", async (req, res) => {
+  const clinic_id = req.query.clinic_id || process.env.CLINIC_ID;
+  if (!clinic_id) return res.status(400).json({ error: "clinic_id required" });
+
+  try {
+    // 파일별 집계: 청크 수, 임베딩 여부, 업로드 시각
+    const { data, error } = await supabaseAdmin
+      .from("procedures_knowledge")
+      .select("file_name, file_type, file_size, chunk_index, embedding, created_at")
+      .eq("clinic_id", clinic_id)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    // 파일명 기준으로 그룹핑
+    const fileMap = new Map();
+    for (const row of (data || [])) {
+      if (!fileMap.has(row.file_name)) {
+        fileMap.set(row.file_name, {
+          file_name:  row.file_name,
+          file_type:  row.file_type,
+          file_size:  row.file_size || 0,
+          chunks:     0,
+          embedded:   false,
+          created_at: row.created_at,
+        });
+      }
+      const f = fileMap.get(row.file_name);
+      f.chunks++;
+      if (row.embedding) f.embedded = true;
+    }
+
+    res.json({ files: Array.from(fileMap.values()) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/knowledge/files  { clinic_id, file_name }
+app.delete("/api/knowledge/files", async (req, res) => {
+  const clinic_id = req.body.clinic_id || req.query.clinic_id || process.env.CLINIC_ID;
+  const file_name = req.body.file_name || req.query.file_name;
+  if (!clinic_id || !file_name)
+    return res.status(400).json({ error: "clinic_id and file_name required" });
+
+  try {
+    const { error } = await supabaseAdmin
+      .from("procedures_knowledge")
+      .delete()
+      .eq("clinic_id", clinic_id)
+      .eq("file_name",  file_name);
+    if (error) throw error;
+    console.log(`[Knowledge] 삭제: ${file_name} | clinic=${clinic_id}`);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // 멀티테넌트 시술 관리 API
