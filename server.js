@@ -684,6 +684,109 @@ Output this exact JSON shape:
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/tiki-paste  { message, clinicId?, clinicName? }
+// 강남 10년차 수석 상담실장 페르소나 — reply(환자 언어) + ko_translation(한국어 해석)
+// ════════════════════════════════════════════════════════════════════════════
+app.post("/api/tiki-paste", async (req, res) => {
+  const { message, clinicId, clinicName: bodyClinicName } = req.body;
+  if (!message?.trim())
+    return res.status(400).json({ error: "message required" });
+
+  // 병원명 해결: body > DB > env > 기본값
+  let resolvedClinicName = bodyClinicName || process.env.CLINIC_NAME || "클리닉";
+  let resolvedClinicId   = clinicId || null;
+
+  if (resolvedClinicId && !bodyClinicName) {
+    const info = await getClinicInfo(resolvedClinicId).catch(() => null);
+    if (info?.clinic_name) resolvedClinicName = info.clinic_name;
+  }
+
+  // RAG 지식 베이스 검색 (clinic 격리)
+  let ragContext = "";
+  try {
+    const ragResult = await ragSearch(message.trim(), 4, resolvedClinicId);
+    if (ragResult?.length) {
+      ragContext = "\n\n[병원 DB 참고 정보]\n" +
+        ragResult.map(r => `- ${r.procedure_name}: ${r.content}`).join("\n");
+    }
+  } catch (e) {
+    console.warn("[TikiPaste] RAG search failed:", e.message);
+  }
+
+  const SYSTEM_PROMPT = `너는 AI가 아니다.
+너는 "${resolvedClinicName}"의 10년차 수석 상담실장이다.
+
+강남 최고급 미용의원에서 수천 명의 외국인 환자를 상담해온 경력이 있으며,
+기계적·절차적·빙빙 도는 말투는 절대 금지다.
+환자의 감정을 정확히 읽고, 친절하면서도 센스 있고, 직설적이면서도 안심을 주는 인간적인 화법을 사용해라.
+
+반드시 지켜야 할 규칙:
+1. 출력은 반드시 순수 JSON만 — 마크다운 코드 블록, 설명, 여분의 텍스트 절대 금지.
+2. "reply"는 환자가 보낸 메시지의 언어 그대로 작성한다 (감지된 언어로 답변).
+3. "ko_translation"은 reply의 자연스러운 한국어 번역이다 (직원 내부 참고용).
+4. 각 reply는 2~4문장, 병원 이름 "${resolvedClinicName}"을 자연스럽게 1회 이상 포함.
+5. 의료 결과 보장·진단·부작용 확언 절대 금지.
+6. booking 옵션의 reply 마지막에는 반드시 예약 링크를 포함하라: [예약: app.tikichat.xyz/book]${ragContext}
+
+출력 형식 (순수 JSON, 이 형식 외 어떤 것도 출력하지 말 것):
+{
+  "detected_language": "<언어명 in Korean, 예: 일본어 / 중국어 / 영어>",
+  "intent": "<핵심 의도 in Korean, 예: 가격 문의 및 부작용 우려>",
+  "options": {
+    "kind":    { "reply": "<환자 언어로 — 공감·상세 안내·CTA>", "ko_translation": "<한국어 해석>" },
+    "firm":    { "reply": "<환자 언어로 — 규정 기반, 단호하지만 친절>", "ko_translation": "<한국어 해석>" },
+    "booking": { "reply": "<환자 언어로 — 가치 강조·예약 유도·링크 포함>", "ko_translation": "<한국어 해석>" }
+  }
+}`;
+
+  try {
+    const resp = await anthropic.messages.create({
+      model:      MODEL_HAIKU,
+      max_tokens: 1800,
+      system:     SYSTEM_PROMPT,
+      messages:   [{ role: "user", content: `환자 메시지:\n"${message.trim()}"` }],
+    });
+
+    const raw = resp.content.find(b => b.type === "text")?.text ?? "";
+
+    // JSON 파싱 — 모델이 코드 블록을 감쌀 경우 대비
+    const jsonStr = raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      parsed = {
+        detected_language: "알 수 없음",
+        intent: "분석 실패",
+        options: {
+          kind:    { reply: raw, ko_translation: "" },
+          firm:    { reply: raw, ko_translation: "" },
+          booking: { reply: raw, ko_translation: "" },
+        },
+      };
+    }
+
+    // 필수 필드 보정 — 구버전 string 응답도 호환
+    parsed.options = parsed.options ?? {};
+    const normalize = (opt, fallback = "") => {
+      if (!opt) return { reply: fallback, ko_translation: "" };
+      if (typeof opt === "string") return { reply: opt, ko_translation: "" };
+      return { reply: opt.reply || fallback, ko_translation: opt.ko_translation || "" };
+    };
+    parsed.options.kind    = normalize(parsed.options.kind);
+    parsed.options.firm    = normalize(parsed.options.firm);
+    parsed.options.booking = normalize(parsed.options.booking);
+
+    console.log(`[TikiPaste] clinic="${resolvedClinicName}" lang="${parsed.detected_language}" intent="${parsed.intent}"`);
+    res.json(parsed);
+
+  } catch (err) {
+    console.error("[TikiPaste]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 3. 한국어 답변 → 환자 언어 번역 (발송 직전)
 // POST /api/translate-reply  { text, targetLang }
 app.post("/api/translate-reply", async (req, res) => {

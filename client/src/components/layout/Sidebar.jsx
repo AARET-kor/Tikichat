@@ -116,31 +116,30 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
       {/* ── 메인 네비게이션 ────────────────────────────────────────────────── */}
       <nav className="flex flex-col items-center gap-1 flex-1 w-full px-2">
 
-        {/* ✨ Magic Paste — 포인트 버튼 (상단 고정) */}
+        {/* ✨ Tiki Paste — 포인트 버튼 (상단 고정) */}
         <button
-          onClick={() => onTabChange('magic_paste')}
-          title="Magic Paste — API 없이 즉시 답변 3종 생성"
+          onClick={() => onTabChange('tiki_paste')}
+          title="Tiki Paste — 붙여넣기 즉시 AI 답변 3종 자동 생성"
           className={`
             w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl
             transition-all duration-150 relative
-            ${activeTab === 'magic_paste'
-              ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-orange-300/40'
+            ${activeTab === 'tiki_paste'
+              ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-400/40'
               : darkMode
-                ? 'bg-gradient-to-br from-amber-500/10 to-orange-500/10 text-amber-400 border border-amber-600/25 hover:from-amber-500/20 hover:to-orange-500/20'
-                : 'bg-gradient-to-br from-amber-50 to-orange-50 text-amber-600 border border-amber-200/70 hover:from-amber-100 hover:to-orange-100'
+                ? 'bg-gradient-to-br from-blue-600/10 to-indigo-600/10 text-blue-400 border border-blue-600/25 hover:from-blue-600/20 hover:to-indigo-600/20'
+                : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 border border-blue-200/70 hover:from-blue-100 hover:to-indigo-100'
             }
           `}
         >
           <Sparkles
             size={18}
-            strokeWidth={activeTab === 'magic_paste' ? 2.5 : 1.8}
-            className={activeTab === 'magic_paste' ? '' : ''}
+            strokeWidth={activeTab === 'tiki_paste' ? 2.5 : 1.8}
           />
-          <span className="text-[9px] font-bold tracking-tight leading-none">매직</span>
-          {/* 활성 시 글로우 링 */}
-          {activeTab !== 'magic_paste' && (
+          <span className="text-[9px] font-bold tracking-tight leading-none">티키</span>
+          {/* 활성 아닐 때 글로우 도트 */}
+          {activeTab !== 'tiki_paste' && (
             <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
-              darkMode ? 'bg-amber-400' : 'bg-amber-400'
+              darkMode ? 'bg-blue-400' : 'bg-blue-400'
             }`} />
           )}
         </button>

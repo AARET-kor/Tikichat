@@ -9,7 +9,7 @@ import StatsTab from '../components/stats/StatsTab';
 import PatientsTab from '../components/patients/PatientsTab';
 import SettingsTab from '../components/settings/SettingsTab';
 import ProceduresTab from '../components/procedures/ProceduresTab';
-import MagicPasteTab from '../components/magic/MagicPasteTab';
+import TikiPasteTab from '../components/magic/TikiPasteTab';
 import { conversations as initialConversations } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -216,7 +216,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Tab state — synced with URL param ?tab=xxx ────────────────────────────
-  const activeTab = searchParams.get('tab') || 'chat';
+  const activeTab = searchParams.get('tab') || 'tiki_paste';
   const setActiveTab = (tab) => {
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
@@ -224,7 +224,7 @@ export default function Dashboard() {
       // Clear cross-tab params when switching manually
       if (tab !== 'chat') { p.delete('pid'); p.delete('pname'); p.delete('pflag'); }
       if (tab !== 'patients') { p.delete('openPid'); }
-      // magic_paste는 별도 파라미터 없음
+      // tiki_paste는 별도 파라미터 없음
       return p;
     });
   };
@@ -365,9 +365,9 @@ export default function Dashboard() {
             </>
           )}
 
-          {/* ── Magic Paste ── */}
-          {activeTab === 'magic_paste' && (
-            <MagicPasteTab darkMode={darkMode} />
+          {/* ── Tiki Paste ── */}
+          {activeTab === 'tiki_paste' && (
+            <TikiPasteTab darkMode={darkMode} />
           )}
 
           {/* ── 환자 관리 ── */}

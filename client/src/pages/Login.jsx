@@ -7,7 +7,7 @@ export default function Login() {
   const { login, loginError, isLoggingIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || '/app/chat';
+  const from = location.state?.from?.pathname || '/app?tab=tiki_paste';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
