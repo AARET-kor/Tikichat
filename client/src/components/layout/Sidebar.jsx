@@ -121,17 +121,18 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
           onClick={() => onTabChange('tiki_paste')}
           title="Tiki Paste — 붙여넣기 즉시 AI 답변 3종 자동 생성"
           style={activeTab === 'tiki_paste' ? {
-            background: 'linear-gradient(135deg, #c49832 0%, #8a6520 50%, #c49832 100%)',
+            background: 'linear-gradient(135deg, #D4AF37 0%, #B8962E 50%, #F0D060 100%)',
             backgroundSize: '200% 200%',
             animation: 'goldShimmer 3s ease infinite',
-            boxShadow: '0 2px 12px rgba(196,152,50,0.45)',
+            boxShadow: '0 2px 14px rgba(212,175,55,0.50)',
             border: 'none',
           } : darkMode ? {
-            background: 'rgba(196,152,50,0.08)',
-            border: '1px solid rgba(196,152,50,0.25)',
+            background: 'rgba(212,175,55,0.07)',
+            border: '1px solid rgba(212,175,55,0.22)',
           } : {
-            background: 'linear-gradient(135deg, #fffbf0, #fef3c7)',
-            border: '1px solid #d4a843',
+            background: '#ffffff',
+            border: '1px solid #e8d878',
+            boxShadow: '0 1px 6px rgba(212,175,55,0.12)',
           }}
           className={`
             w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl
