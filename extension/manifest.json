@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "TikiChat Shadow AI",
+  "version": "1.0.0",
+  "description": "강남 하이엔드 의원 전용 글로벌 AI 비서실장 — 외국인 환자 상담 파이프라인",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "clipboardRead",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "TikiChat 열기 (Alt+C)"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+C",
+        "mac":     "Alt+C"
+      },
+      "description": "TikiChat 사이드패널 열기/닫기"
+    }
+  },
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
