@@ -1121,13 +1121,23 @@ app.get("/api/knowledge/files", async (req, res) => {
 
   try {
     // 파일별 집계: 청크 수, 임베딩 여부, 업로드 시각
+    // embedding 컬럼은 vector 타입(1536차원)이라 SELECT에서 제외 — 존재 여부만 별도 집계
     const { data, error } = await supabaseAdmin
       .from("procedures_knowledge")
-      .select("file_name, file_type, file_size, chunk_index, embedding, created_at")
+      .select("file_name, file_type, file_size, chunk_index, created_at")
       .eq("clinic_id", clinic_id)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
+
+    // 임베딩 여부: embedding IS NOT NULL 인 청크 수 별도 조회
+    const { data: embData } = await supabaseAdmin
+      .from("procedures_knowledge")
+      .select("file_name")
+      .eq("clinic_id", clinic_id)
+      .not("embedding", "is", null);
+
+    const embeddedFiles = new Set((embData || []).map(r => r.file_name));
 
     // 파일명 기준으로 그룹핑
     const fileMap = new Map();
@@ -1138,13 +1148,12 @@ app.get("/api/knowledge/files", async (req, res) => {
           file_type:  row.file_type,
           file_size:  row.file_size || 0,
           chunks:     0,
-          embedded:   false,
+          embedded:   embeddedFiles.has(row.file_name),
           created_at: row.created_at,
         });
       }
       const f = fileMap.get(row.file_name);
       f.chunks++;
-      if (row.embedding) f.embedded = true;
     }
 
     res.json({ files: Array.from(fileMap.values()) });
