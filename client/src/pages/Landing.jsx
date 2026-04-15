@@ -542,96 +542,266 @@ function HowItWorks() {
 }
 
 // ── Pricing ───────────────────────────────────────────────────────────────────
-function Pricing() {
-  const plans = [
-    {
-      name: 'Free',
-      price: '0',
-      unit: '₩/월',
-      desc: '소규모 클리닉 무료 체험',
-      highlight: false,
-      features: ['월 50회 AI 답변', '2개국어 지원', '크롬 익스텐션', '기본 시술 5개 등록'],
-    },
-    {
-      name: 'Pro',
-      price: '89,000',
-      unit: '₩/월',
-      desc: '성장하는 클리닉을 위한 완전한 솔루션',
-      highlight: true,
-      features: ['무제한 AI 답변', '8개국어 지원', '시술 DB 무제한 등록', 'RAG 지식 학습', '통계 대시보드', '직원 5명'],
-    },
-    {
-      name: 'Enterprise',
-      price: '문의',
-      unit: '',
-      desc: '다원화 병원·체인 클리닉',
-      highlight: false,
-      features: ['모든 Pro 기능', '다지점 통합 관리', '전용 AI 파인튜닝', 'API 연동', '전담 온보딩', 'SLA 보장'],
-    },
-  ];
+const PLANS = [
+  {
+    tier:      'Starter',
+    tagline:   '외국인 상담을 처음 시작하는 클리닉',
+    price:     '790,000',
+    highlight: false,
+    cta:       '1개월 무료로 시작',
+    accentColor: '#18181b',
+    groups: [
+      {
+        label: 'AI 상담',
+        items: [
+          '월 300회 AI 답변 생성',
+          '3개국어 지원 (한·중·영)',
+          '크롬 익스텐션 포함',
+          '답변 3종 자동 생성 (공감·정보·세일즈)',
+        ],
+      },
+      {
+        label: '병원 설정',
+        items: [
+          '시술 정보 20개 등록',
+          '직원 계정 3명',
+          '기본 월간 리포트',
+        ],
+      },
+      {
+        label: '지원',
+        items: [
+          '이메일 지원 (72시간 내)',
+          '온보딩 가이드 제공',
+        ],
+      },
+    ],
+  },
+  {
+    tier:      'Pro',
+    tagline:   '외국인 환자 비중이 높은 성장 클리닉',
+    price:     '1,290,000',
+    highlight: true,
+    badge:     '가장 인기',
+    cta:       '1개월 무료로 시작',
+    accentColor: '#6366f1',
+    groups: [
+      {
+        label: 'AI 상담',
+        items: [
+          '무제한 AI 답변 생성',
+          '8개국어 완전 지원 (한·중·일·영·태·베·러·아랍)',
+          '크롬 익스텐션 포함',
+          '답변 3종 + 문화권별 톤 최적화',
+          'RAG 지식베이스 — 병원 맞춤 학습',
+          'Visual Sales Mapping (시술 추천·견적)',
+        ],
+      },
+      {
+        label: '병원 설정',
+        items: [
+          '시술 정보 무제한 등록',
+          '시술별 FAQ·부작용·가격 AI 자동 학습',
+          '직원 계정 10명',
+          '역할별 접근 제어 (원장·관리자·직원)',
+        ],
+      },
+      {
+        label: '분석 & 인사이트',
+        items: [
+          '실시간 통계 대시보드',
+          '언어별 유입·전환율 분석',
+          '시술 관심도 트렌드 리포트',
+        ],
+      },
+      {
+        label: '지원',
+        items: [
+          '카카오톡 전담 지원 (24시간 내)',
+          '맞춤 온보딩 세션 1회',
+        ],
+      },
+    ],
+  },
+  {
+    tier:      'Clinic+',
+    tagline:   '다지점·체인 클리닉을 위한 엔터프라이즈',
+    price:     '1,990,000',
+    highlight: false,
+    cta:       '1개월 무료로 시작',
+    accentColor: '#8b5cf6',
+    groups: [
+      {
+        label: 'Pro 전체 포함',
+        items: [
+          'Pro 플랜 모든 기능 포함',
+          '지점 수 무제한 통합 관리',
+          '지점별 독립 시술 DB·직원 설정',
+        ],
+      },
+      {
+        label: '전용 AI',
+        items: [
+          '클리닉 전용 AI 파인튜닝',
+          '병원 브랜드 보이스 학습',
+          '경쟁사 비교 차단 로직 탑재',
+        ],
+      },
+      {
+        label: '연동 & 보안',
+        items: [
+          'REST API 제공 (CRM·EMR 연동)',
+          'HIPAA 준수 암호화 저장',
+          '감사 로그 자동 기록',
+          '전용 서버 격리 옵션',
+        ],
+      },
+      {
+        label: '지원',
+        items: [
+          '전담 CSM (Customer Success Manager)',
+          '맞춤 온보딩 4회 + 직원 교육',
+          '99.9% SLA 보장',
+          '분기별 성과 리뷰 세션',
+        ],
+      },
+    ],
+  },
+];
+
+function PlanCard({ plan }) {
+  const dark = plan.highlight;
+  const bg        = dark ? C.black       : C.bg;
+  const border    = dark ? C.black       : C.border;
+  const textMain  = dark ? '#ffffff'     : C.text;
+  const textSub2  = dark ? '#a1a1aa'     : C.textSub;
+  const textItem  = dark ? '#d4d4d8'     : C.textSub;
+  const divColor  = dark ? 'rgba(255,255,255,0.07)' : C.border;
+  const checkClr  = plan.accentColor;
 
   return (
-    <section id="요금제" style={{ padding: '100px 0', background: C.bg }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 28px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 56 }}>
+    <div style={{
+      background: bg,
+      border: `1px solid ${border}`,
+      borderRadius: 20,
+      padding: '32px 28px',
+      position: 'relative',
+      boxShadow: dark ? '0 24px 64px rgba(0,0,0,0.28)' : '0 2px 12px rgba(0,0,0,0.04)',
+      display: 'flex', flexDirection: 'column',
+    }}>
+      {/* Popular badge */}
+      {plan.badge && (
+        <div style={{
+          position: 'absolute', top: -13, left: '50%', transform: 'translateX(-50%)',
+          background: plan.accentColor, color: '#fff',
+          fontSize: 11, fontWeight: 700, padding: '4px 16px', borderRadius: 999,
+          whiteSpace: 'nowrap', letterSpacing: '0.04em',
+          boxShadow: `0 4px 12px ${plan.accentColor}55`,
+        }}>
+          {plan.badge}
+        </div>
+      )}
+
+      {/* Accent line */}
+      <div style={{ height: 3, borderRadius: 2, background: plan.accentColor, marginBottom: 24, width: 40 }} />
+
+      {/* Header */}
+      <p style={{ fontSize: 11, fontWeight: 700, color: plan.accentColor, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
+        {plan.tier}
+      </p>
+      <p style={{ fontSize: 13, color: textSub2, lineHeight: 1.5, marginBottom: 20 }}>{plan.tagline}</p>
+
+      {/* Price */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ fontSize: 13, color: textSub2, marginRight: 2 }}>₩</span>
+          <span style={{ fontSize: 38, fontWeight: 800, letterSpacing: '-0.04em', color: textMain, lineHeight: 1 }}>{plan.price}</span>
+          <span style={{ fontSize: 13, color: textSub2 }}>/월</span>
+        </div>
+        <p style={{ fontSize: 11, color: plan.accentColor, fontWeight: 600, marginTop: 6 }}>
+          ✦ 첫 1개월 무료 체험
+        </p>
+      </div>
+
+      {/* CTA */}
+      <Link to="/signup" style={{
+        display: 'block', textAlign: 'center',
+        padding: '12px 0', borderRadius: 10, marginBottom: 28, marginTop: 8,
+        fontSize: 14, fontWeight: 700,
+        background: dark ? '#ffffff' : C.black,
+        color: dark ? C.black : '#ffffff',
+        border: 'none',
+        boxShadow: dark ? '0 4px 16px rgba(0,0,0,0.3)' : '0 4px 14px rgba(0,0,0,0.14)',
+        transition: 'opacity 0.15s, transform 0.1s',
+      }}
+        onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+        onMouseLeave={e => { e.currentTarget.style.opacity = '1';    e.currentTarget.style.transform = 'translateY(0)'; }}
+      >
+        {plan.cta}
+      </Link>
+
+      {/* Feature groups */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1 }}>
+        {plan.groups.map((group, gi) => (
+          <div key={gi}>
+            {gi > 0 && <div style={{ height: 1, background: divColor, marginBottom: 16 }} />}
+            <p style={{ fontSize: 10, fontWeight: 700, color: plan.accentColor, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+              {group.label}
+            </p>
+            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {group.items.map((item, ii) => (
+                <li key={ii} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 13, color: textItem, lineHeight: 1.5 }}>
+                  <Check size={13} color={checkClr} strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 2 }} />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Pricing() {
+  return (
+    <section id="요금제" style={{ padding: '100px 0', background: C.bgSub }}>
+      <div style={{ maxWidth: 1160, margin: '0 auto', padding: '0 28px' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <p style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.1em', color: C.textMt, textTransform: 'uppercase', marginBottom: 12 }}>PRICING</p>
-          <h2 style={{ fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 800, letterSpacing: '-0.035em', color: C.text, lineHeight: 1.15, fontFamily: F.sans }}>
+          <h2 style={{ fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 800, letterSpacing: '-0.035em', color: C.text, lineHeight: 1.15, fontFamily: F.sans, marginBottom: 16 }}>
             명확한 요금, 숨겨진 비용 없음
           </h2>
+          <p style={{ fontSize: 15, color: C.textSub, maxWidth: 480, margin: '0 auto 20px' }}>
+            모든 플랜은 <strong style={{ color: C.text }}>첫 1개월 무료</strong>로 시작합니다. 신용카드 불필요.
+          </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, alignItems: 'start' }}>
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              style={{
-                background: plan.highlight ? C.black : C.bg,
-                border: `1px solid ${plan.highlight ? C.black : C.border}`,
-                borderRadius: 18,
-                padding: '32px 28px',
-                position: 'relative',
-                boxShadow: plan.highlight ? '0 20px 60px rgba(0,0,0,0.2)' : 'none',
-              }}
-            >
-              {plan.highlight && (
-                <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: '#6366f1', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 14px', borderRadius: 999 }}>
-                  가장 인기
-                </div>
-              )}
-              <p style={{ fontSize: 14, fontWeight: 700, color: plan.highlight ? '#a1a1aa' : C.textSub, marginBottom: 6 }}>{plan.name}</p>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 6 }}>
-                <span style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-0.04em', color: plan.highlight ? '#fff' : C.text, lineHeight: 1 }}>{plan.price}</span>
-                {plan.unit && <span style={{ fontSize: 13, color: plan.highlight ? '#71717a' : C.textSub }}>{plan.unit}</span>}
-              </div>
-              <p style={{ fontSize: 13, color: plan.highlight ? '#71717a' : C.textSub, marginBottom: 24, lineHeight: 1.5 }}>{plan.desc}</p>
-
-              <Link to={plan.name === 'Enterprise' ? '#' : '/signup'} style={{
-                display: 'block', textAlign: 'center',
-                padding: '11px 0', borderRadius: 9,
-                fontSize: 14, fontWeight: 600,
-                background: plan.highlight ? '#fff' : 'transparent',
-                color: plan.highlight ? C.black : C.text,
-                border: plan.highlight ? 'none' : `1px solid ${C.borderMd}`,
-                marginBottom: 24,
-                transition: 'opacity 0.15s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-              >
-                {plan.name === 'Enterprise' ? '문의하기' : '시작하기'}
-              </Link>
-
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {plan.features.map(feat => (
-                  <li key={feat} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13, color: plan.highlight ? '#d4d4d8' : C.textSub }}>
-                    <Check size={14} color={plan.highlight ? '#6366f1' : C.black} strokeWidth={2.5} />
-                    {feat}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        {/* Free trial banner */}
+        <div style={{
+          maxWidth: 560, margin: '0 auto 52px',
+          background: '#f0fdf4', border: '1px solid #86efac',
+          borderRadius: 12, padding: '14px 20px',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Check size={15} color="#16a34a" strokeWidth={2.5} />
+          </div>
+          <p style={{ fontSize: 13, color: '#15803d', lineHeight: 1.55 }}>
+            <strong>카드 없이, 약정 없이</strong> — 1개월 동안 해당 플랜의 모든 기능을 완전히 무료로 사용할 수 있습니다. 만족하지 않으면 언제든 해지하세요.
+          </p>
         </div>
+
+        {/* Plan cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 22, alignItems: 'start' }}>
+          {PLANS.map(plan => <PlanCard key={plan.tier} plan={plan} />)}
+        </div>
+
+        {/* Bottom note */}
+        <p style={{ textAlign: 'center', fontSize: 12, color: C.textMt, marginTop: 36 }}>
+          부가세(VAT) 별도 · 연간 결제 시 2개월 추가 무료 · 플랜 업그레이드 언제든 가능
+        </p>
       </div>
     </section>
   );
