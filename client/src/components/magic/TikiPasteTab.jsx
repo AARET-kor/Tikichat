@@ -27,28 +27,28 @@ const CARD_PALETTE = {
     light: {
       accent:     CORAL,
       headerBg:   'linear-gradient(90deg, #fff5f7, #fff0f3)',
-      wrapShadow: `0 2px 16px rgba(252,108,133,0.10), 0 1px 4px rgba(0,0,0,0.05)`,
-      iconBg:     'rgba(252,108,133,0.10)',
+      wrapShadow: `0 2px 16px rgba(164,119,100,0.10), 0 1px 4px rgba(0,0,0,0.05)`,
+      iconBg:     'rgba(164,119,100,0.10)',
       iconColor:  CORAL2,
       titleColor: '#09090b',
       bodyColor:  '#3f3f46',
-      koColor:    '#c04060',
+      koColor:    '#7A5545',
       btnBorder:  `1px solid ${CORAL}55`,
       btnColor:   CORAL2,
-      btnHover:   'rgba(252,108,133,0.06)',
+      btnHover:   'rgba(164,119,100,0.06)',
     },
     dark: {
       accent:     CORAL,
       headerBg:   'linear-gradient(90deg, #1c0c10, #200d12)',
       wrapShadow: '0 2px 16px rgba(0,0,0,0.5)',
-      iconBg:     'rgba(252,108,133,0.10)',
+      iconBg:     'rgba(164,119,100,0.10)',
       iconColor:  CORAL,
-      titleColor: '#ffd6de',
+      titleColor: '#F5EDE8',
       bodyColor:  '#d4b8bc',
-      koColor:    '#c04060',
-      btnBorder:  '1px solid rgba(252,108,133,0.3)',
+      koColor:    '#7A5545',
+      btnBorder:  '1px solid rgba(164,119,100,0.3)',
       btnColor:   CORAL,
-      btnHover:   'rgba(252,108,133,0.08)',
+      btnHover:   'rgba(164,119,100,0.08)',
     },
   },
   firm: {
@@ -152,6 +152,25 @@ const GLOBAL_STYLE = `
   from { opacity: 0; transform: translateY(12px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes tikiBurst {
+  0%   { opacity:0; transform:scale(0.1) rotate(-20deg); }
+  38%  { opacity:1; transform:scale(1.5) rotate(8deg);   }
+  65%  { opacity:0.85; transform:scale(1.2) rotate(-4deg); }
+  100% { opacity:0; transform:scale(1.9) rotate(14deg);  }
+}
+@keyframes tikiParticle {
+  0%   { opacity:1; transform:translate(0,0) scale(1); }
+  100% { opacity:0; transform:translate(var(--tx),var(--ty)) scale(0.1); }
+}
+@keyframes tikiRing {
+  0%   { opacity:0.5; transform:scale(0.5); }
+  100% { opacity:0;   transform:scale(2.4); }
+}
+@keyframes tikiBackdrop {
+  0%   { opacity:0; }
+  30%  { opacity:1; }
+  100% { opacity:0; }
+}
 .tiki-lang-chip {
   transition: all 0.18s ease;
   cursor: default;
@@ -188,6 +207,69 @@ function Toast({ message }) {
     >
       <Check size={14} style={{ color: GOLD }} />
       {message}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TikiFlash — signature ✦ effect (fixed, fullscreen overlay)
+// ─────────────────────────────────────────────────────────────────────────────
+const TIKI_SPARKS = [
+  { tx:'-52px', ty:'-46px', ch:'✦', sz:13, d:0    },
+  { tx:' 50px', ty:'-40px', ch:'✧', sz:11, d:50   },
+  { tx:' 58px', ty:' 28px', ch:'·', sz:17, d:90   },
+  { tx:'-50px', ty:' 36px', ch:'✦', sz:10, d:30   },
+  { tx:'  4px', ty:'-62px', ch:'✧', sz:12, d:70   },
+  { tx:'  6px', ty:' 56px', ch:'·', sz:15, d:20   },
+  { tx:'-68px', ty:' -6px', ch:'✦', sz: 9, d:110  },
+  { tx:' 64px', ty:'  2px', ch:'·', sz:10, d:10   },
+  { tx:'-28px', ty:' 54px', ch:'✧', sz: 8, d:140  },
+  { tx:' 32px', ty:'-54px', ch:'✦', sz: 9, d:60   },
+];
+
+function TikiFlash({ active }) {
+  if (!active) return null;
+  return (
+    <div style={{
+      position:'fixed', inset:0, pointerEvents:'none', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center',
+    }}>
+      {/* Radial backdrop */}
+      <div style={{
+        position:'absolute', inset:0,
+        background:`radial-gradient(circle at 50% 44%, rgba(164,119,100,0.18) 0%, transparent 55%)`,
+        animation:'tikiBackdrop 0.95s ease forwards',
+      }} />
+      {/* Outer ring */}
+      <div style={{
+        position:'absolute', width:120, height:120, borderRadius:'50%',
+        border:`2px solid ${CORAL}`,
+        animation:'tikiRing 0.9s ease-out forwards',
+      }} />
+      {/* Inner ring */}
+      <div style={{
+        position:'absolute', width:60, height:60, borderRadius:'50%',
+        border:`1.5px solid ${ORANGE}`,
+        animation:'tikiRing 0.7s ease-out 80ms forwards',
+      }} />
+      {/* Central ✦ */}
+      <div style={{
+        position:'relative', fontSize:42, lineHeight:1, color:CORAL, zIndex:1,
+        filter:`drop-shadow(0 0 14px ${CORAL}) drop-shadow(0 0 6px ${ORANGE})`,
+        animation:'tikiBurst 0.95s ease-out forwards',
+        userSelect:'none', fontFamily:'serif',
+      }}>✦</div>
+      {/* Particles */}
+      {TIKI_SPARKS.map((s, i) => (
+        <span key={i} style={{
+          position:'absolute', fontSize:s.sz, zIndex:1,
+          color: i % 3 === 0 ? CORAL : i % 3 === 1 ? ORANGE : CORAL_L,
+          top:'50%', left:'50%', transform:'translate(-50%,-50%)',
+          '--tx':s.tx, '--ty':s.ty,
+          animation:`tikiParticle 0.8s ease-out ${s.d}ms forwards`,
+          userSelect:'none', lineHeight:1,
+        }}>{s.ch}</span>
+      ))}
     </div>
   );
 }
@@ -253,7 +335,7 @@ function ResultCard({ def, option, darkMode, onCopy, index }) {
         background: darkMode ? '#18181b' : '#ffffff',
         border: darkMode ? '1px solid #222' : '1px solid #f0f0f0',
         boxShadow: hovered
-          ? `0 8px 40px rgba(252,108,133,0.18), 0 2px 8px rgba(0,0,0,0.08)`
+          ? `0 8px 40px rgba(164,119,100,0.18), 0 2px 8px rgba(0,0,0,0.08)`
           : ac.wrapShadow,
         animation: `cardIn 0.4s ease-out ${index * 80}ms both`,
         transition: 'box-shadow 0.25s ease, transform 0.25s ease',
@@ -338,7 +420,7 @@ function PasteZone({ value, onChange, onPaste, darkMode, pasting }) {
   const boxShadow = pasting
     ? undefined  // controlled by animation
     : focused
-      ? `0 0 0 3px rgba(252,108,133,0.20), 0 4px 24px rgba(252,108,133,0.12), 0 1px 3px rgba(0,0,0,0.06)`
+      ? `0 0 0 3px rgba(164,119,100,0.20), 0 4px 24px rgba(164,119,100,0.12), 0 1px 3px rgba(0,0,0,0.06)`
       : darkMode
         ? '0 2px 12px rgba(0,0,0,0.4)'
         : '0 2px 16px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)';
@@ -364,7 +446,7 @@ function PasteZone({ value, onChange, onPaste, darkMode, pasting }) {
           <div
             style={{
               position: 'absolute', inset: 0,
-              background: 'linear-gradient(105deg, transparent 35%, rgba(252,108,133,0.14) 50%, transparent 65%)',
+              background: 'linear-gradient(105deg, transparent 35%, rgba(164,119,100,0.14) 50%, transparent 65%)',
               animation: 'shimmerSweep 0.65s ease-out',
             }}
           />
@@ -394,7 +476,7 @@ function PasteZone({ value, onChange, onPaste, darkMode, pasting }) {
             background: `linear-gradient(135deg, ${GOLD}, ${GOLD2})`,
             color: '#fff',
             animation: 'sparkPop 0.3s ease-out',
-            boxShadow: `0 2px 12px rgba(252,108,133,0.4)`,
+            boxShadow: `0 2px 12px rgba(164,119,100,0.4)`,
           }}
         >
           <Sparkles size={10} />
@@ -430,6 +512,15 @@ export default function TikiPasteTab({ darkMode }) {
   const [toast,      setToast]      = useState('');
   const [lastCopied, setLastCopied] = useState('');
   const [pasting,    setPasting]    = useState(false);
+  const [tikiActive, setTikiActive] = useState(false);
+  const tikiTimer = useRef(null);
+
+  const triggerTiki = useCallback(() => {
+    clearTimeout(tikiTimer.current);
+    setTikiActive(false);
+    requestAnimationFrame(() => requestAnimationFrame(() => setTikiActive(true)));
+    tikiTimer.current = setTimeout(() => setTikiActive(false), 1050);
+  }, []);
 
   const handleGenerate = useCallback(async (text) => {
     const msg = (text ?? input).trim();
@@ -437,6 +528,7 @@ export default function TikiPasteTab({ darkMode }) {
     setLoading(true);
     setError(null);
     setResult(null);
+    triggerTiki();
     try {
       const res = await fetch('/api/tiki-paste', {
         method:  'POST',
@@ -453,7 +545,7 @@ export default function TikiPasteTab({ darkMode }) {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, clinicId, clinicName]);
+  }, [input, loading, clinicId, clinicName, triggerTiki]);
 
   const handleTextareaPaste = useCallback((e) => {
     const pastedText = e.clipboardData?.getData('text') || '';
@@ -462,9 +554,10 @@ export default function TikiPasteTab({ darkMode }) {
     setResult(null);
     setError(null);
     setPasting(true);
+    triggerTiki();
     setTimeout(() => setPasting(false), 750);
     setTimeout(() => handleGenerate(pastedText), 0);
-  }, [handleGenerate]);
+  }, [handleGenerate, triggerTiki]);
 
   const handleClipboardBtn = useCallback(async () => {
     setPasteErr(false);
@@ -475,6 +568,7 @@ export default function TikiPasteTab({ darkMode }) {
         setResult(null);
         setError(null);
         setPasting(true);
+        triggerTiki();
         setTimeout(() => setPasting(false), 750);
         handleGenerate(text);
       }
@@ -482,7 +576,7 @@ export default function TikiPasteTab({ darkMode }) {
       setPasteErr(true);
       setTimeout(() => setPasteErr(false), 3000);
     }
-  }, [handleGenerate]);
+  }, [handleGenerate, triggerTiki]);
 
   const handleReset = () => {
     setInput(''); setResult(null); setError(null); setLastCopied('');
@@ -491,6 +585,7 @@ export default function TikiPasteTab({ darkMode }) {
   const handleCardCopy = (replyText) => {
     setLastCopied(replyText);
     setToast('클립보드에 복사되었습니다');
+    triggerTiki();
     setTimeout(() => setToast(''), 2200);
   };
 
@@ -500,7 +595,8 @@ export default function TikiPasteTab({ darkMode }) {
   const divCol   = darkMode ? '#1e1e1e' : '#e4e4e7';
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto" style={{ background: pageBg }}>
+    <div className="flex-1 flex flex-col overflow-y-auto" style={{ background: pageBg, position: 'relative' }}>
+      <TikiFlash active={tikiActive} />
       <style>{GLOBAL_STYLE}</style>
 
       {/* ── Page header ─────────────────────────────────────────────────────── */}
@@ -518,7 +614,7 @@ export default function TikiPasteTab({ darkMode }) {
               background: `linear-gradient(135deg, ${GOLD} 0%, ${GOLD2} 50%, ${GOLD_L} 100%)`,
               backgroundSize: '200% 200%',
               animation: 'goldGlow 4s ease infinite',
-              boxShadow: `0 2px 16px rgba(252,108,133,0.4)`,
+              boxShadow: `0 2px 16px rgba(164,119,100,0.4)`,
             }}
           >
             <Sparkles size={16} className="text-white" fill="rgba(255,255,255,0.5)" />
@@ -532,9 +628,9 @@ export default function TikiPasteTab({ darkMode }) {
               <span
                 className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                 style={{
-                  background: darkMode ? 'rgba(252,108,133,0.12)' : '#fff0f3',
+                  background: darkMode ? 'rgba(164,119,100,0.12)' : '#F5EDE8',
                   color: darkMode ? GOLD : GOLD2,
-                  border: `1px solid ${darkMode ? 'rgba(252,108,133,0.25)' : '#ffa0b0'}`,
+                  border: `1px solid ${darkMode ? 'rgba(164,119,100,0.25)' : '#CCADA0'}`,
                 }}
               >
                 수석 상담실장 AI
@@ -621,7 +717,7 @@ export default function TikiPasteTab({ darkMode }) {
               style={input.trim() && !loading ? {
                 background: `linear-gradient(135deg, ${GOLD}, ${GOLD2})`,
                 color: '#fff',
-                boxShadow: `0 2px 12px rgba(252,108,133,0.35)`,
+                boxShadow: `0 2px 12px rgba(164,119,100,0.35)`,
               } : {
                 background: darkMode ? '#1a1a1a' : '#f5f5f5',
                 color: darkMode ? '#444' : '#ccc',
@@ -639,8 +735,8 @@ export default function TikiPasteTab({ darkMode }) {
           <div
             className="flex items-start gap-3 px-4 py-3 rounded-xl"
             style={{
-              background: darkMode ? 'rgba(252,108,133,0.05)' : '#fff5f7',
-              border: `1px solid ${darkMode ? 'rgba(252,108,133,0.15)' : '#ffc0cc'}`,
+              background: darkMode ? 'rgba(164,119,100,0.05)' : '#FAF6F3',
+              border: `1px solid ${darkMode ? 'rgba(164,119,100,0.15)' : '#E5CFC5'}`,
             }}
           >
             <ClipboardList size={13} className="shrink-0 mt-0.5" style={{ color: GOLD }} />
@@ -650,7 +746,7 @@ export default function TikiPasteTab({ darkMode }) {
               </p>
               <p
                 className="text-xs leading-relaxed line-clamp-3 whitespace-pre-wrap"
-                style={{ color: darkMode ? '#c8b880' : '#c04060' }}
+                style={{ color: darkMode ? '#c8b880' : '#7A5545' }}
               >{lastCopied}</p>
             </div>
           </div>
@@ -662,13 +758,13 @@ export default function TikiPasteTab({ darkMode }) {
             <div
               className="flex items-center gap-3 px-4 py-3.5 rounded-xl"
               style={{
-                background: darkMode ? 'rgba(252,108,133,0.05)' : '#fff5f7',
-                border: `1px solid ${darkMode ? 'rgba(252,108,133,0.15)' : '#ffc0cc'}`,
+                background: darkMode ? 'rgba(164,119,100,0.05)' : '#FAF6F3',
+                border: `1px solid ${darkMode ? 'rgba(164,119,100,0.15)' : '#E5CFC5'}`,
               }}
             >
               <Loader2 size={15} className="animate-spin shrink-0" style={{ color: GOLD }} />
               <div>
-                <p className="text-xs font-semibold" style={{ color: darkMode ? '#ffd6de' : '#c04060' }}>
+                <p className="text-xs font-semibold" style={{ color: darkMode ? '#F5EDE8' : '#7A5545' }}>
                   10년차 상담실장이 답변을 작성 중입니다...
                 </p>
                 <p className="text-[10px] mt-0.5" style={{ color: mutedCol }}>
@@ -712,8 +808,8 @@ export default function TikiPasteTab({ darkMode }) {
               <div
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
                 style={{
-                  background: darkMode ? 'rgba(252,108,133,0.10)' : '#fff0f3',
-                  border: `1px solid ${darkMode ? 'rgba(252,108,133,0.25)' : '#ffa0b0'}`,
+                  background: darkMode ? 'rgba(164,119,100,0.10)' : '#F5EDE8',
+                  border: `1px solid ${darkMode ? 'rgba(164,119,100,0.25)' : '#CCADA0'}`,
                   color: darkMode ? GOLD : GOLD2,
                 }}
               >
@@ -768,16 +864,16 @@ export default function TikiPasteTab({ darkMode }) {
               className="w-16 h-16 rounded-2xl flex items-center justify-center"
               style={{
                 background: darkMode
-                  ? 'rgba(252,108,133,0.08)'
+                  ? 'rgba(164,119,100,0.08)'
                   : 'linear-gradient(145deg, #fff5f7, #fff0f3)',
-                border: `1px solid ${darkMode ? 'rgba(252,108,133,0.15)' : '#ffc0cc'}`,
-                boxShadow: darkMode ? 'none' : '0 4px 20px rgba(252,108,133,0.12)',
+                border: `1px solid ${darkMode ? 'rgba(164,119,100,0.15)' : '#E5CFC5'}`,
+                boxShadow: darkMode ? 'none' : '0 4px 20px rgba(164,119,100,0.12)',
               }}
             >
               <Sparkles
                 size={28}
                 strokeWidth={1.4}
-                style={{ color: darkMode ? 'rgba(252,108,133,0.5)' : GOLD }}
+                style={{ color: darkMode ? 'rgba(164,119,100,0.5)' : GOLD }}
               />
             </div>
 
@@ -819,9 +915,9 @@ export default function TikiPasteTab({ darkMode }) {
             <div
               className="flex items-center gap-2 px-5 py-3 rounded-xl text-xs"
               style={{
-                background: darkMode ? 'rgba(252,108,133,0.05)' : '#fff5f7',
-                border: `1px solid ${darkMode ? 'rgba(252,108,133,0.12)' : '#f0e8b0'}`,
-                color: darkMode ? 'rgba(252,108,133,0.7)' : GOLD2,
+                background: darkMode ? 'rgba(164,119,100,0.05)' : '#FAF6F3',
+                border: `1px solid ${darkMode ? 'rgba(164,119,100,0.12)' : '#f0e8b0'}`,
+                color: darkMode ? 'rgba(164,119,100,0.7)' : GOLD2,
               }}
             >
               <span className="text-base">⚡</span>
