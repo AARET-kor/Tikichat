@@ -1,4 +1,4 @@
-import { BarChart3, Settings, Shield, Stethoscope, Sparkles, MessageSquare } from 'lucide-react';
+import { BarChart3, Settings, Shield, Stethoscope, Sparkles, MessageSquare, Users } from 'lucide-react';
 
 // ── Design tokens — Zinc base + selective accent colors ───────────────────────
 const CORAL  = '#FC6C85';   // Tiki Paste — Watermelon Splash
@@ -24,6 +24,13 @@ const NAV_ITEMS = [
     label:         '시술 관리',
     requiredRoles: ['owner', 'admin'],
     accent:        LIME,
+  },
+  {
+    id:            'insights',
+    icon:          Users,
+    label:         'VIP 인사이트',
+    requiredRoles: ['owner', 'admin'],
+    accent:        CORAL,
   },
 ];
 

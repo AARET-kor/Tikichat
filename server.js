@@ -1672,6 +1672,107 @@ app.patch("/api/patients/:id", async (req, res) => {
   }
 });
 
+// ── GET /api/patients/search?clinicId=X&q=검색어
+// name / phone / channel 부분 매칭 (ILIKE), 최대 15건
+app.get("/api/patients/search", async (req, res) => {
+  const { clinicId, q } = req.query;
+  if (!clinicId || !q?.trim()) return res.status(400).json({ error: "clinicId + q required" });
+  try {
+    const sb = getSbAdmin();
+    const safe = q.trim().replace(/[%_]/g, "\\$&");   // SQL injection guard
+    const { data, error } = await sb
+      .from("patients")
+      .select("id, name, name_en, flag, lang, phone, channel, last_visit, tags, status")
+      .eq("clinic_id", clinicId)
+      .or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,channel.ilike.%${safe}%`)
+      .order("updated_at", { ascending: false })
+      .limit(15);
+    if (error) {
+      if (error.code === "42P01") return res.json({ patients: [] });
+      throw error;
+    }
+    res.json({ patients: data || [] });
+  } catch (err) {
+    console.error("[Patients/Search]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/patients/parse  { text, clinicId }
+// Magic Paste: AI가 텍스트에서 환자 정보 자동 추출
+app.post("/api/patients/parse", async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: "text required" });
+  try {
+    const prompt = `다음 텍스트에서 환자 정보를 추출하여 JSON으로 반환해 주세요.
+텍스트: """${text.slice(0, 1000)}"""
+
+반환 형식 (값이 없으면 null):
+{
+  "name": "이름(원어)",
+  "name_en": "영문 이름 또는 로마자",
+  "phone": "전화번호 (+국가코드 포함)",
+  "lang": "언어코드 (ja/zh/en/ko/vi/th/ar 중 하나)",
+  "flag": "국기 이모지",
+  "channel": "채널명 (Line/WhatsApp/KakaoTalk/WeChat/Instagram 등)",
+  "channel_user_id": "채널 ID 또는 계정명"
+}
+
+JSON만 반환하세요. 설명 없이.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.1,
+      max_tokens: 300,
+      response_format: { type: "json_object" },
+    });
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    res.json({ parsed });
+  } catch (err) {
+    console.error("[Patients/Parse]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/save-context  { patientId, clinicId, context }
+// AI 대화에서 추출된 Context를 환자 tags/timeline에 누적 저장
+app.post("/api/save-context", async (req, res) => {
+  const { patientId, clinicId, context } = req.body;
+  if (!patientId || !clinicId || !context)
+    return res.status(400).json({ error: "patientId + clinicId + context required" });
+  try {
+    const sb = getSbAdmin();
+    const { data: patient, error: getErr } = await sb
+      .from("patients")
+      .select("tags, timeline")
+      .eq("id", patientId)
+      .eq("clinic_id", clinicId)
+      .single();
+    if (getErr) throw getErr;
+
+    const existingTags = Array.isArray(patient.tags) ? patient.tags : [];
+    const existingTimeline = Array.isArray(patient.timeline) ? patient.timeline : [];
+    const newTags = [...new Set([...existingTags, ...(context.tags || [])])];
+    const newTimeline = [
+      ...existingTimeline,
+      { ts: new Date().toISOString(), type: "context", data: context },
+    ].slice(-100);
+
+    const { error: updErr } = await sb
+      .from("patients")
+      .update({ tags: newTags, timeline: newTimeline })
+      .eq("id", patientId)
+      .eq("clinic_id", clinicId);
+    if (updErr) throw updErr;
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[SaveContext]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // AFTERCARE
 // ════════════════════════════════════════════════════════════════════════════

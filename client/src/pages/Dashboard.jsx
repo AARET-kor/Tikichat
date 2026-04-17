@@ -5,6 +5,7 @@ import StatsTab from '../components/stats/StatsTab';
 import SettingsTab from '../components/settings/SettingsTab';
 import ProceduresTab from '../components/procedures/ProceduresTab';
 import TikiPasteTab from '../components/magic/TikiPasteTab';
+import InsightsTab from '../components/insights/InsightsTab';
 import { useAuth } from '../context/AuthContext';
 import {
   MessageSquare, LogOut, ChevronDown, User, Sun, Moon, Settings
@@ -158,6 +159,13 @@ export default function Dashboard() {
             canAccess('procedures')
               ? <ProceduresTab darkMode={darkMode} />
               : <AccessDenied feature="시술 관리" darkMode={darkMode} />
+          )}
+
+          {/* ── VIP 인사이트 ── */}
+          {activeTab === 'insights' && (
+            canAccess('insights')
+              ? <InsightsTab darkMode={darkMode} />
+              : <AccessDenied feature="VIP 환자 인사이트" darkMode={darkMode} />
           )}
 
           {/* ── 설정 ── */}

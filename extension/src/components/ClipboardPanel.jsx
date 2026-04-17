@@ -7,7 +7,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTikiPaste } from '../hooks/useTikiPaste';
+import { usePatient } from '../hooks/usePatient';
 import SalesPanel from './SalesPanel';
+import PatientBar from './PatientBar';
 
 // ── Design Tokens — Zinc + Watermelon Splash + Tropical Punch (app.tikichat.xyz 동일)
 const T = {
@@ -182,6 +184,8 @@ export default function ClipboardPanel() {
   const clinicId   = session?.clinic?.id   || undefined;
   const clinicName = session?.clinic?.name || undefined;
 
+  const patientHook = usePatient(clinicId);
+
   const readClipboard = useCallback(async (autoGenerate = false) => {
     setClipStatus('reading');
     try {
@@ -228,6 +232,9 @@ export default function ClipboardPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: T.bgSub, fontFamily: SANS, color: T.text }}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* ── 환자 선택 바 (최상단 고정) ──────────────────────────────────────── */}
+      <PatientBar usePatientHook={patientHook} />
 
       {/* ── Header ───────────────────────────────────────────────────────────── */}
       <div style={{ flexShrink: 0 }}>
