@@ -80,10 +80,10 @@ function AuroraBorder({ loading, children }) {
   if (!loading) return children;
   return (
     <div style={{ position: 'relative', padding: 2, borderRadius: 14 }}>
-      {/* Gradient border — Watermelon Coral + Tropical Teal */}
+      {/* Gradient border — Mocha Mousse aurora */}
       <div style={{
         position: 'absolute', inset: 0, borderRadius: 14,
-        background: 'linear-gradient(270deg, #FC6C85, #FF8243, #069494, #FC6C85)',
+        background: 'linear-gradient(270deg, #A47764, #D09262, #C4A090, #5A8F80, #A47764)',
         backgroundSize: '400% 400%',
         animation: 'auroraGlow 2.4s ease infinite',
         zIndex: 0,
@@ -250,7 +250,7 @@ export default function ClipboardPanel() {
         }}>
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 26, height: 26, borderRadius: 7, background: T.black, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.25)' }}>
+          <div style={{ width: 26, height: 26, borderRadius: 7, background: T.coral, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 8px ${T.coral}50` }}>
             <MessageSquare size={12} color="#fff" fill="#fff" />
           </div>
           <div>
@@ -291,15 +291,15 @@ export default function ClipboardPanel() {
 
       {/* ── Status Banner ────────────────────────────────────────────────────── */}
       {clipStatus === 'done' && !result && !loading && (
-        <div style={{ background: '#f0fdf4', borderBottom: `1px solid #bbf7d0`, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <Check size={11} color="#16a34a" strokeWidth={2.5} />
-          <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 600 }}>클립보드에서 불러왔습니다 — AI 분석 중</span>
+        <div style={{ background: T.tealBg, borderBottom: `1px solid ${T.teal}30`, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <Check size={11} color={T.teal} strokeWidth={2.5} />
+          <span style={{ fontSize: 10, color: T.teal, fontWeight: 600 }}>클립보드에서 불러왔습니다 — AI 분석 중</span>
         </div>
       )}
       {clipStatus === 'denied' && (
-        <div style={{ background: '#fffbeb', borderBottom: `1px solid #fde68a`, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <Clipboard size={11} color="#d97706" strokeWidth={1.5} />
-          <span style={{ fontSize: 10, color: '#d97706' }}>클립보드 권한 필요 — 직접 붙여넣기 가능합니다</span>
+        <div style={{ background: T.orangeBg, borderBottom: `1px solid ${T.orange}30`, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <Clipboard size={11} color={T.orange} strokeWidth={1.5} />
+          <span style={{ fontSize: 10, color: T.orange }}>클립보드 권한 필요 — 직접 붙여넣기 가능합니다</span>
         </div>
       )}
 
@@ -373,7 +373,7 @@ export default function ClipboardPanel() {
             marginTop: 10,
             marginBottom: 14,
             padding: '12px 0',
-            background: canGenerate ? T.black : T.border,
+            background: canGenerate ? T.coral : T.border,
             color: canGenerate ? T.white : T.textMt,
             border: 'none',
             borderRadius: 10,
@@ -382,7 +382,7 @@ export default function ClipboardPanel() {
             letterSpacing: '0.06em',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
             transition: 'opacity 0.15s, transform 0.1s',
-            boxShadow: canGenerate ? '0 4px 18px rgba(0,0,0,0.18)' : 'none',
+            boxShadow: canGenerate ? `0 4px 18px ${T.coral}50` : 'none',
             fontFamily: SANS,
           }}
           onMouseEnter={e => { if (canGenerate) e.currentTarget.style.opacity = '0.85'; }}
@@ -410,11 +410,11 @@ export default function ClipboardPanel() {
         {result && (
           <div style={{
             marginBottom: 14,
-            background: T.black,
+            background: T.bgDark,
             borderRadius: 12,
             overflow: 'hidden',
             animation: 'cardIn 0.3s ease-out both',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+            boxShadow: `0 4px 20px ${T.coral}30`,
           }}>
             <div style={{ height: 3, background: `linear-gradient(90deg, ${T.coral}, ${T.orange}, ${T.teal})` }} />
             <div style={{ display: 'flex', minHeight: 68 }}>

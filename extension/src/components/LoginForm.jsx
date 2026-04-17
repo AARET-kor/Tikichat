@@ -2,18 +2,19 @@ import { useState } from 'react';
 import { Eye, EyeOff, Loader2, MessageSquare } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-// ── Design tokens — Zinc + Watermelon Coral accent ───────────────────────────
+// ── Design tokens — Mocha Mousse signature palette ───────────────────────────
 const T = {
-  bg:      '#fafafa',
-  white:   '#ffffff',
-  text:    '#09090b',
-  textSub: '#71717a',
-  textMt:  '#a1a1aa',
-  border:  '#e4e4e7',
-  black:   '#18181b',
-  coral:   '#FC6C85',
-  red:     '#ef4444',
-  redBg:   '#fef2f2',
+  bg:      '#FAF6F3',
+  white:   '#FFFFFF',
+  text:    '#1C0F0A',
+  textSub: '#6B4A3A',
+  textMt:  '#B09080',
+  border:  '#E5CFC5',
+  mocha:   '#A47764',
+  mochaDk: '#7A5545',
+  mochaBg: '#F5EDE8',
+  red:     '#b85c44',
+  redBg:   '#fdf2ee',
 };
 const SANS = "'Pretendard Variable', 'Inter', system-ui, -apple-system, sans-serif";
 
@@ -46,14 +47,14 @@ export default function LoginForm() {
       {/* Logo */}
       <div style={{ textAlign: 'center', marginBottom: 36 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: T.black, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.2)' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: T.mocha, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 8px ${T.mocha}50` }}>
             <MessageSquare size={14} color="#fff" fill="#fff" />
           </div>
           <span style={{ fontSize: 18, fontWeight: 800, color: T.text, letterSpacing: '-0.03em' }}>TikiDoc</span>
-          <span style={{ fontSize: 10, fontWeight: 700, background: T.coral, color: '#fff', borderRadius: 5, padding: '2px 6px', letterSpacing: '0.04em' }}>AI</span>
+          <span style={{ fontSize: 10, fontWeight: 700, background: T.mocha, color: '#fff', borderRadius: 5, padding: '2px 6px', letterSpacing: '0.04em' }}>AI</span>
         </div>
         {/* Coral accent line */}
-        <div style={{ width: 36, height: 3, borderRadius: 2, background: T.coral, margin: '0 auto 8px' }} />
+        <div style={{ width: 36, height: 3, borderRadius: 2, background: T.mocha, margin: '0 auto 8px' }} />
         <p style={{ fontSize: 11, color: T.textMt, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           Shadow AI · 다국어 상담 솔루션
         </p>
@@ -66,7 +67,7 @@ export default function LoginForm() {
         border: `1px solid ${T.border}`,
         borderRadius: 16,
         padding: '28px 24px',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.07)',
+        boxShadow: `0 4px 24px ${T.mocha}18`,
       }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4, letterSpacing: '-0.02em' }}>클리닉 로그인</p>
         <p style={{ fontSize: 11, color: T.textSub, marginBottom: 24 }}>병원 계정으로 로그인하세요</p>
@@ -90,7 +91,7 @@ export default function LoginForm() {
                 fontSize: 13, color: T.text, background: T.bg,
                 transition: 'border-color 0.15s', fontFamily: SANS,
               }}
-              onFocus={e => e.target.style.borderColor = T.coral}
+              onFocus={e => e.target.style.borderColor = T.mocha}
               onBlur={e  => e.target.style.borderColor = T.border}
             />
           </div>
@@ -138,7 +139,7 @@ export default function LoginForm() {
             type="submit"
             disabled={isLoggingIn}
             style={{
-              background: isLoggingIn ? T.textMt : T.black,
+              background: isLoggingIn ? T.textMt : T.mocha,
               color: '#fff', border: 'none',
               padding: '11px', borderRadius: 9,
               fontSize: 13, fontWeight: 700,
@@ -146,7 +147,7 @@ export default function LoginForm() {
               cursor: isLoggingIn ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               transition: 'opacity 0.15s', fontFamily: SANS,
-              boxShadow: isLoggingIn ? 'none' : '0 3px 12px rgba(0,0,0,0.18)',
+              boxShadow: isLoggingIn ? 'none' : `0 3px 12px ${T.mocha}50`,
             }}
             onMouseEnter={e => { if (!isLoggingIn) e.currentTarget.style.opacity = '0.85'; }}
             onMouseLeave={e => { if (!isLoggingIn) e.currentTarget.style.opacity = '1'; }}
