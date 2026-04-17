@@ -11,28 +11,30 @@ import { usePatient } from '../hooks/usePatient';
 import SalesPanel from './SalesPanel';
 import PatientBar from './PatientBar';
 
-// ── Design Tokens — Zinc + Watermelon Splash + Tropical Punch (app.tikichat.xyz 동일)
+// ── Design Tokens — Mocha Mousse signature palette
 const T = {
-  bg:        '#ffffff',
-  bgSub:     '#fafafa',
-  bgDark:    '#09090b',
-  text:      '#09090b',
-  textSub:   '#71717a',
-  textMt:    '#a1a1aa',
-  border:    '#e4e4e7',
-  borderMd:  '#d4d4d8',
-  black:     '#18181b',
-  white:     '#ffffff',
-  // Watermelon Splash + Tropical Punch — 웹 대시보드와 동일
-  coral:     '#FC6C85',   // Watermelon Coral — 공감형 (kind)
-  coralDk:   '#e05572',
-  coralBg:   '#fff0f3',
-  teal:      '#069494',   // Tropical Teal — 정보형 (firm)
-  tealBg:    '#f0fafa',
-  orange:    '#FF8243',   // Tropical Orange — 세일즈형 (booking)
-  orangeBg:  '#fff5f0',
-  red:       '#ef4444',
-  redBg:     '#fef2f2',
+  bg:        '#FAF6F3',
+  bgSub:     '#F0E8E3',
+  bgDark:    '#0E0704',
+  text:      '#1C0F0A',
+  textSub:   '#6B4A3A',
+  textMt:    '#B09080',
+  border:    '#E5CFC5',
+  borderMd:  '#CCADA0',
+  black:     '#1C0F0A',
+  white:     '#FFFFFF',
+  // Mocha — 공감형 (kind)
+  coral:     '#A47764',
+  coralDk:   '#7A5545',
+  coralBg:   '#F5EDE8',
+  // Sage — 정보형 (firm)
+  teal:      '#5A8F80',
+  tealBg:    '#E4F2EF',
+  // Gold — 세일즈형 (booking)
+  orange:    '#D09262',
+  orangeBg:  '#FBF0E6',
+  red:       '#b85c44',
+  redBg:     '#fdf2ee',
 };
 
 const SANS = "'Pretendard Variable', 'Inter', system-ui, -apple-system, sans-serif";
@@ -61,9 +63,9 @@ const GLOBAL_CSS = `
     100% { background-position: 0%   50%; }
   }
   @keyframes pulseRing {
-    0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(252,108,133,0.4); }
-    70%  { transform: scale(1);    box-shadow: 0 0 0 8px rgba(252,108,133,0); }
-    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(252,108,133,0); }
+    0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(164,119,100,0.4); }
+    70%  { transform: scale(1);    box-shadow: 0 0 0 8px rgba(164,119,100,0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(164,119,100,0); }
   }
   * { box-sizing: border-box; }
   textarea { outline: none; resize: vertical; }

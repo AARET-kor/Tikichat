@@ -8,8 +8,8 @@
   }
   body {
     font-family: 'Inter', system-ui, sans-serif;
-    background-color: #f8fafc;
-    color: #0f172a;
+    background-color: #FAF6F3;
+    color: #1C0F0A;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -37,10 +37,10 @@
     background-color: #94a3b8;
   }
 
-  /* AI Gradient border */
+  /* AI Gradient border — mocha palette */
   .ai-card-border {
     background: linear-gradient(white, white) padding-box,
-                linear-gradient(135deg, #5470e8, #a78bfa, #ec4899) border-box;
+                linear-gradient(135deg, #A47764, #D09262, #C4A090) border-box;
     border: 1.5px solid transparent;
   }
 

@@ -1,9 +1,9 @@
 import { BarChart3, Settings, Shield, Stethoscope, Sparkles, MessageSquare, Users } from 'lucide-react';
 
 // ── Design tokens — Zinc base + selective accent colors ───────────────────────
-const CORAL  = '#FC6C85';   // Tiki Paste — Watermelon Splash
-const TEAL   = '#069494';   // Stats — Tropical Punch
-const LIME   = '#89F336';   // Procedures — Watermelon Splash
+const MOCHA  = '#A47764';   // Signature — Mocha Mousse
+const SAGE   = '#5A8F80';   // Stats — Complementary sage
+const GOLD   = '#D09262';   // Procedures — Warm gold
 const F      = { sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif" };
 import { useAuth } from '../../context/AuthContext';
 
@@ -16,21 +16,21 @@ const NAV_ITEMS = [
     icon:          BarChart3,
     label:         '통계',
     requiredRoles: ['owner', 'admin'],
-    accent:        TEAL,
+    accent:        SAGE,
   },
   {
     id:            'procedures',
     icon:          Stethoscope,
     label:         '시술 관리',
     requiredRoles: ['owner', 'admin'],
-    accent:        LIME,
+    accent:        GOLD,
   },
   {
     id:            'insights',
     icon:          Users,
     label:         'VIP 인사이트',
     requiredRoles: ['owner', 'admin'],
-    accent:        CORAL,
+    accent:        MOCHA,
   },
 ];
 
@@ -122,17 +122,17 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
           onClick={() => onTabChange('tiki_paste')}
           title="Tiki Paste — 붙여넣기 즉시 AI 답변 3종 자동 생성"
           style={activeTab === 'tiki_paste'
-            ? { background: CORAL, border: 'none', boxShadow: `0 4px 14px ${CORAL}55`, color: '#fff' }
+            ? { background: MOCHA, border: 'none', boxShadow: `0 4px 14px ${MOCHA}55`, color: '#fff' }
             : darkMode
-              ? { background: `${CORAL}10`, border: `1px solid ${CORAL}25`, color: CORAL }
-              : { background: '#fff', border: `1px solid ${CORAL}30`, color: CORAL, boxShadow: `0 1px 5px ${CORAL}15` }
+              ? { background: `${MOCHA}10`, border: `1px solid ${MOCHA}25`, color: MOCHA }
+              : { background: '#fff', border: `1px solid ${MOCHA}30`, color: MOCHA, boxShadow: `0 1px 5px ${MOCHA}15` }
           }
           className="w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl transition-all duration-150 relative"
         >
           <Sparkles size={17} strokeWidth={activeTab === 'tiki_paste' ? 2.5 : 1.8} />
           <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1 }}>티키</span>
           {activeTab !== 'tiki_paste' && (
-            <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: CORAL }} />
+            <span style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: MOCHA }} />
           )}
         </button>
 
