@@ -27,10 +27,14 @@ import cors from "cors";
 import multer from "multer";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
-// pdf-parse v2.x — ESM named export (PDFParse 클래스)
-import { PDFParse } from "pdf-parse";
+// pdf-parse v2.x — default import으로 안전하게 가져옴
+// Node.js 22에서 CJS named export ({ PDFParse }) 방식이 깨지는 문제 방어
+import pdfParseModule from "pdf-parse";
+const PDFParse = pdfParseModule?.PDFParse          // v2.x CJS object export
+  ?? pdfParseModule?.default?.PDFParse             // ESM re-export path
+  ?? pdfParseModule;                               // fallback: module is the class
 
-// v1.x 호환 래퍼: pdfParse(buffer) → { text }
+// v2.x wrapper: pdfParse(buffer) → { text }
 async function pdfParse(buffer) {
   const parser = new PDFParse({ data: buffer });
   await parser.load();

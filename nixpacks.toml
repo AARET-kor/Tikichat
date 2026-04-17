@@ -1,0 +1,4 @@
+# Pin Node.js 20 LTS — prevents Nixpacks from auto-upgrading to Node 22
+# which breaks the pdf-parse CJS named export (PDFParse) in strict ESM mode.
+[phases.setup]
+nixPkgs = ["nodejs_20"]
