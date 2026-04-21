@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Sparkles, Clipboard, Copy, Check, AlertCircle, Loader2,
   RefreshCcw, Globe, Brain, Monitor, ScanLine,
   ChevronRight, BookOpen, ShieldAlert, Zap, Heart,
-  TrendingUp, Save,
+  TrendingUp, Save, Search, UserPlus, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -557,53 +557,253 @@ function ReplyCard({ type, option, onCopy, delay }) {
 }
 
 // ── Save to memory bar ────────────────────────────────────────────────────────
-function SaveToMemoryBar({ result, input }) {
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
+// States: idle → selecting (patient picker) → saving → saved | error
+function SaveToMemoryBar({ result, input, clinicId }) {
+  const [phase,        setPhase]        = useState('idle');  // idle|selecting|saving|saved|error
+  const [query,        setQuery]        = useState('');
+  const [searchRes,    setSearchRes]    = useState([]);
+  const [searching,    setSearching]    = useState(false);
+  const [savedPatient, setSavedPatient] = useState(null);   // { id, name }
+  const [errorMsg,     setErrorMsg]     = useState('');
+  const [sessionCount, setSessionCount] = useState(null);
+  const searchTimer = useRef(null);
+  const inputRef    = useRef(null);
 
-  const handleSave = async () => {
-    setSaving(true);
-    // TODO: POST to /api/memory
-    await new Promise(r => setTimeout(r, 800));
-    setSaved(true);
-    setSaving(false);
+  // Reset when a new analysis result arrives (new paste)
+  useEffect(() => {
+    if (!result) return;
+    setPhase('idle');
+    setQuery('');
+    setSearchRes([]);
+    setSavedPatient(null);
+    setSessionCount(null);
+    setErrorMsg('');
+  }, [result]);
+
+  // Focus the search input when picker opens
+  useEffect(() => {
+    if (phase === 'selecting') {
+      setTimeout(() => inputRef.current?.focus(), 60);
+    }
+  }, [phase]);
+
+  // Debounced patient search
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    if (!query.trim() || phase !== 'selecting') { setSearchRes([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const params = new URLSearchParams({ q: query.trim(), ...(clinicId ? { clinicId } : {}) });
+        const r = await fetch(`/api/patients/search?${params}`);
+        const d = await r.json();
+        setSearchRes(d.patients || []);
+      } catch {
+        setSearchRes([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }, [query, phase, clinicId]);
+
+  const doSave = async (patient) => {
+    setPhase('saving');
+    try {
+      const r = await fetch('/api/memory', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId:          patient.id,
+          clinicId:           clinicId || undefined,
+          koSummary:          result?.ko_summary          || null,
+          riskLevel:          result?.risk_level           || 'none',
+          procedureInterests: result?.procedure_interests  || [],
+          concerns:           result?.concerns             || [],
+          riskFlags:          result?.risk_level === 'high'
+            ? [{ type: 'flagged', detail: result.intent, severity: 'high' }]
+            : [],
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      setSavedPatient(patient);
+      setSessionCount(d.session_count);
+      setPhase('saved');
+    } catch (err) {
+      setErrorMsg(err.message);
+      setPhase('error');
+    }
   };
 
-  return (
-    <div style={{
-      display:'flex', alignItems:'center', gap:12,
-      padding:'14px 18px', borderRadius:12,
-      background: saved ? C.sagePale : C.bgSub,
-      animation:'fadeSlideUp 0.3s ease-out',
-      transition:'all 0.2s',
-    }}>
-      <div style={{ width:32, height:32, borderRadius:9, background: saved ? C.sage + '20' : C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-        <Brain size={14} color={saved ? C.sage : C.mocha} />
+  const createAndSave = async () => {
+    if (!query.trim()) return;
+    setPhase('saving');
+    try {
+      const r = await fetch('/api/patients', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clinicId: clinicId || undefined,
+          patient: {
+            name: query.trim(),
+            lang: result?.detected_language
+              ? ({ '중국어':'zh', '일본어':'ja', '영어':'en', '아랍어':'ar', '한국어':'ko' }[result.detected_language] || null)
+              : null,
+          },
+        }),
+      });
+      const patient = await r.json();
+      if (!r.ok) throw new Error(patient.error || `HTTP ${r.status}`);
+      await doSave(patient);
+    } catch (err) {
+      setErrorMsg(err.message);
+      setPhase('error');
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const baseStyle = {
+    padding:'14px 18px', borderRadius:12,
+    animation:'fadeSlideUp 0.3s ease-out',
+    transition:'background 0.25s',
+  };
+
+  // Saved state
+  if (phase === 'saved') return (
+    <div style={{ ...baseStyle, background:C.sagePale, display:'flex', alignItems:'center', gap:12 }}>
+      <div style={{ width:32, height:32, borderRadius:9, background:C.sage+'22', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <Brain size={14} color={C.sage} />
       </div>
       <div style={{ flex:1 }}>
-        <p style={{ fontSize:12, fontWeight:700, color:saved ? C.sage : C.textSub, letterSpacing:'-0.01em' }}>
-          {saved ? 'Tiki Memory에 저장되었습니다' : '이 상담을 환자 기록에 저장'}
+        <p style={{ fontSize:12, fontWeight:700, color:C.sage, letterSpacing:'-0.01em' }}>
+          {savedPatient.name}님 Tiki Memory에 저장되었습니다
         </p>
         <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
-          {saved ? '환자 기록 → Tiki Memory에서 확인할 수 있습니다' : '환자 언어, 의도, 시술 관심사가 자동으로 기록됩니다'}
+          {sessionCount > 1 ? `총 ${sessionCount}회 상담 기록됨` : '첫 번째 상담 기록됨'}
+          {' · '}Insights에서 확인할 수 있습니다
         </p>
       </div>
-      {!saved && (
-        <button className="action-btn" onClick={handleSave} disabled={saving} style={{
-          display:'flex', alignItems:'center', gap:5,
-          padding:'7px 16px', borderRadius:8,
-          background: C.mocha, color:'#fff',
-          border:'none', fontSize:11, fontWeight:700,
-          boxShadow:`0 3px 12px rgba(164,120,100,0.35)`,
-          opacity: saving ? 0.7 : 1,
-          cursor: saving ? 'default' : 'pointer',
-          letterSpacing:'-0.01em', flexShrink:0,
-        }}>
-          {saving ? <Loader2 size={11} style={{ animation:'spin 1s linear infinite' }} /> : <Save size={11} />}
-          {saving ? '저장 중...' : 'Memory 저장'}
+      <Check size={16} color={C.sage} />
+    </div>
+  );
+
+  // Error state
+  if (phase === 'error') return (
+    <div style={{ ...baseStyle, background:C.redPale, display:'flex', alignItems:'center', gap:12 }}>
+      <AlertCircle size={15} color={C.red} style={{ flexShrink:0 }} />
+      <div style={{ flex:1 }}>
+        <p style={{ fontSize:11, fontWeight:700, color:C.red }}>저장 실패</p>
+        <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>{errorMsg}</p>
+      </div>
+      <button onClick={() => { setPhase('idle'); setErrorMsg(''); }} style={{ border:'none', background:'none', cursor:'pointer', padding:4 }}>
+        <X size={13} color={C.textMt} />
+      </button>
+    </div>
+  );
+
+  // Saving spinner
+  if (phase === 'saving') return (
+    <div style={{ ...baseStyle, background:C.bgSub, display:'flex', alignItems:'center', gap:12 }}>
+      <Loader2 size={15} color={C.mocha} style={{ animation:'spin 0.8s linear infinite', flexShrink:0 }} />
+      <p style={{ fontSize:12, fontWeight:600, color:C.textSub }}>Tiki Memory에 저장 중...</p>
+    </div>
+  );
+
+  // Patient selector (selecting phase)
+  if (phase === 'selecting') return (
+    <div style={{ ...baseStyle, background:C.bgSub }}>
+      {/* Header row */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+        <div style={{ width:28, height:28, borderRadius:8, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Brain size={13} color={C.mocha} />
+        </div>
+        <p style={{ flex:1, fontSize:12, fontWeight:700, color:C.textSub, letterSpacing:'-0.01em' }}>
+          어느 환자의 기록에 저장할까요?
+        </p>
+        <button onClick={() => { setPhase('idle'); setQuery(''); setSearchRes([]); }}
+          style={{ border:'none', background:'none', cursor:'pointer', padding:4 }}>
+          <X size={13} color={C.textMt} />
         </button>
+      </div>
+
+      {/* Search input */}
+      <div style={{ position:'relative' }}>
+        <Search size={12} color={C.textMt} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && query.trim() && !searchRes.length) createAndSave(); }}
+          placeholder="환자 이름 검색..."
+          style={{
+            width:'100%', boxSizing:'border-box',
+            padding:'8px 10px 8px 30px',
+            borderRadius:8, border:`1px solid ${C.border}`,
+            background:C.white, fontSize:12, color:C.text,
+            outline:'none',
+          }}
+          onFocus={e => e.target.style.borderColor = C.mocha}
+          onBlur={e => e.target.style.borderColor = C.border}
+        />
+        {searching && <Loader2 size={11} color={C.textMt} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', animation:'spin 0.8s linear infinite' }} />}
+      </div>
+
+      {/* Results dropdown */}
+      {(searchRes.length > 0 || query.trim()) && (
+        <div style={{ marginTop:6, borderRadius:8, border:`1px solid ${C.border}`, background:C.white, overflow:'hidden' }}>
+          {searchRes.map(p => (
+            <button key={p.id} onClick={() => doSave(p)}
+              style={{ width:'100%', display:'flex', alignItems:'center', gap:8, padding:'8px 12px', border:'none', background:'none', cursor:'pointer', textAlign:'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = C.mochaPale}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize:12, fontWeight:600, color:C.text, flex:1 }}>{p.name}</span>
+              {p.lang && <span style={{ fontSize:10, color:C.textMt, background:C.bgSub, padding:'2px 6px', borderRadius:4 }}>{p.lang}</span>}
+              {p.flag && <span style={{ fontSize:10, color:C.red, fontWeight:700 }}>⚠</span>}
+            </button>
+          ))}
+
+          {/* New patient option */}
+          {query.trim() && (
+            <button onClick={createAndSave}
+              style={{ width:'100%', display:'flex', alignItems:'center', gap:8, padding:'8px 12px', border:'none', borderTop: searchRes.length ? `1px solid ${C.border}` : 'none', background:'none', cursor:'pointer', textAlign:'left' }}
+              onMouseEnter={e => e.currentTarget.style.background = C.sagePale}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <UserPlus size={11} color={C.sage} style={{ flexShrink:0 }} />
+              <span style={{ fontSize:11, color:C.sage, fontWeight:600 }}>
+                &ldquo;{query.trim()}&rdquo; 로 새 환자 등록 후 저장
+              </span>
+            </button>
+          )}
+        </div>
       )}
-      {saved && <Check size={16} color={C.sage} />}
+    </div>
+  );
+
+  // Idle state (default)
+  return (
+    <div style={{ ...baseStyle, background:C.bgSub, display:'flex', alignItems:'center', gap:12 }}>
+      <div style={{ width:32, height:32, borderRadius:9, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <Brain size={14} color={C.mocha} />
+      </div>
+      <div style={{ flex:1 }}>
+        <p style={{ fontSize:12, fontWeight:700, color:C.textSub, letterSpacing:'-0.01em' }}>
+          이 상담을 환자 기록에 저장
+        </p>
+        <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
+          의도, 시술 관심사, 위험도가 Tiki Memory에 누적됩니다
+        </p>
+      </div>
+      <button onClick={() => setPhase('selecting')} style={{
+        display:'flex', alignItems:'center', gap:5,
+        padding:'7px 16px', borderRadius:8,
+        background:C.mocha, color:'#fff',
+        border:'none', fontSize:11, fontWeight:700,
+        boxShadow:`0 3px 12px rgba(164,120,100,0.3)`,
+        cursor:'pointer', letterSpacing:'-0.01em', flexShrink:0,
+      }}>
+        <Save size={11} />
+        Memory 저장
+      </button>
     </div>
   );
 }
@@ -917,7 +1117,7 @@ export default function TikiPasteTab() {
 
         {/* ── Save to memory ─────────────────────────────────────────────────── */}
         {result && !loading && (
-          <SaveToMemoryBar result={result} input={input} />
+          <SaveToMemoryBar result={result} input={input} clinicId={clinicId} />
         )}
 
         {/* ── Empty state ────────────────────────────────────────────────────── */}

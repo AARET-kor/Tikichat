@@ -132,36 +132,61 @@ const supabaseAdmin = new Proxy({}, {
   },
 });
 
-// ── 클리닉 정보 캐시 (TTL 5분) ────────────────────────────────────────────────
-const _clinicCache = new Map(); // clinicId → { data, exp }
+// ── v2: CLINIC_SLUG → UUID 스타트업 해결 ─────────────────────────────────────
+// CLINIC_SLUG env var (e.g. "tiki-demo") → clinics.id UUID
+// 스타트업 시 1회 해결 후 캐시. 이후 모든 쿼리는 CLINIC_UUID 사용.
+let CLINIC_UUID    = null;   // UUID string, set on listen()
+let _clinicInfo    = null;   // { id, clinic_name, clinic_short_name, location, settings }
 
-async function getClinicInfo(clinicId) {
-  if (!clinicId) return null;
-  const hit = _clinicCache.get(clinicId);
-  if (hit && Date.now() < hit.exp) return hit.data;
+async function resolveClinicSlug(slug) {
+  if (!slug) return null;
+  const sb = getSbAdmin();
+  if (!sb) return null;
   try {
-    const { data } = await supabaseAdmin
+    const { data, error } = await sb
       .from("clinics")
-      .select("clinic_id, clinic_name, clinic_short_name, location, specialties")
-      .eq("clinic_id", clinicId)
+      .select("id, clinic_name, clinic_short_name, location, settings")
+      .eq("slug", slug)
       .maybeSingle();
-    if (data) {
-      _clinicCache.set(clinicId, { data, exp: Date.now() + 5 * 60_000 });
-      return data;
-    }
+    if (error) throw error;
+    return data ?? null;
+  } catch (e) {
+    console.error("[resolveClinicSlug]", e.message);
+    return null;
+  }
+}
+
+// 하위 호환: clinicId 파라미터가 있으면 그 clinicId로, 없으면 CLINIC_UUID 사용
+// v2 완전 이전 후 인자 없이 호출하도록 수정 가능
+async function getClinicInfo(clinicId) {
+  // v2 fully-migrated path: return cached startup info
+  if (!clinicId || clinicId === CLINIC_UUID) {
+    return _clinicInfo;
+  }
+  // legacy path: per-request lookup (for multi-clinic admin routes)
+  try {
+    const sb = getSbAdmin();
+    if (!sb) return null;
+    const { data } = await sb
+      .from("clinics")
+      .select("id, clinic_name, clinic_short_name, location, settings")
+      .eq("id", clinicId)
+      .maybeSingle();
+    return data ?? null;
   } catch (e) {
     console.warn("[getClinicInfo]", e.message);
+    return null;
   }
-  return null;
 }
 
 async function getClinicProcedures(clinicId) {
-  if (!clinicId) return null;
+  const id = clinicId ?? CLINIC_UUID;
+  if (!id) return null;
   try {
     const { data } = await supabaseAdmin
       .from("procedures")
       .select("*")
-      .eq("clinic_id", clinicId)
+      .eq("clinic_id", id)
       .eq("is_active", true)
       .order("sort_order", { ascending: true });
     return data?.length ? data : null;
@@ -277,25 +302,26 @@ async function embedQuery(text) {
 }
 
 // ── RAG: Hybrid Search (벡터+키워드 → 키워드 전용 → null) ──────────────────
-// ragSearch: clinicId 파라미터 추가 → 멀티테넌트 격리
+// v2: 파라미터명 변경 (clinic_id_filter TEXT → p_clinic_id UUID)
+// clinicId 인자 없으면 CLINIC_UUID 사용
 async function ragSearch(query, matchCount = 5, clinicId = null) {
-  const filter = clinicId || null;
+  const filter = clinicId ?? CLINIC_UUID ?? null;
 
-  // 1) 벡터 + 키워드 하이브리드 (OpenAI 키 있을 때)
+  // 1) 벡터 검색 (OpenAI 키 있을 때)
   const embedding = await embedQuery(query);
   if (embedding) {
     try {
-      const { data, error } = await getSbClient().rpc("match_procedures", {
-        query_embedding:  embedding,
-        query_text:       query,
-        match_count:      matchCount,
-        clinic_id_filter: filter,          // ← 병원 격리
+      const { data, error } = await getSbAdmin().rpc("match_procedures", {
+        p_clinic_id:       filter,           // UUID (v2)
+        p_query_embedding: embedding,
+        p_match_threshold: 0.75,
+        p_match_count:     matchCount,
       });
       if (!error && data?.length) {
         return {
-          context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
+          context: data.map(r => r.content).join("\n\n---\n\n"),
           chunks:  data.length,
-          method:  "hybrid_rrf",
+          method:  "vector",
         };
       }
     } catch (err) {
@@ -305,14 +331,14 @@ async function ragSearch(query, matchCount = 5, clinicId = null) {
 
   // 2) 키워드 전용 fallback
   try {
-    const { data, error } = await getSbClient().rpc("search_procedures_keyword", {
-      query_text:       query,
-      match_count:      matchCount,
-      clinic_id_filter: filter,            // ← 병원 격리
+    const { data, error } = await getSbAdmin().rpc("search_procedures_keyword", {
+      p_clinic_id:   filter,               // UUID (v2)
+      p_query:       query,
+      p_match_count: matchCount,
     });
     if (!error && data?.length) {
       return {
-        context: data.map(r => `[${r.procedure_name}]\n${r.content}`).join("\n\n---\n\n"),
+        context: data.map(r => r.content).join("\n\n---\n\n"),
         chunks:  data.length,
         method:  "keyword",
       };
@@ -560,24 +586,21 @@ async function auditLog(event) {
       ? createHash("sha256").update(event.patientMessage).digest("hex").slice(0, 16)
       : null;
 
-    const _sb = getSbClient();
+    const _sb = getSbAdmin();   // v2: use admin client (service_role bypasses RLS)
     if (!_sb) return;
+    // audit_logs.clinic_id is TEXT in v2 — CLINIC_UUID auto-casts from UUID to text
     await _sb.from("audit_logs").insert({
-      event_type:           event.type        || "suggest",
-      clinic_id:            process.env.CLINIC_ID || null,
-      patient_lang:         event.patientLang || null,
-      channel:              "dashboard",
-      direction:            "outbound",
-      query_type:           event.intent      || null,
-      model_used:           event.model       || null,
-      rag_chunks_used:      event.ragChunks   || 0,
-      tokens_in:            event.tokensIn    || 0,
-      tokens_out:           event.tokensOut   || 0,
-      duration_ms:          event.durationMs  || 0,
-      cached:               event.cacheHit    || false,
-      status:               "success",
-      patient_message_hash: msgHash,
-      created_at:           new Date().toISOString(),
+      clinic_id:       CLINIC_UUID || process.env.CLINIC_SLUG || null,
+      endpoint:        event.endpoint      || null,
+      action:          event.type          || "suggest",
+      model_used:      event.model         || null,
+      tokens_in:       event.tokensIn      || 0,
+      tokens_out:      event.tokensOut     || 0,
+      duration_ms:     event.durationMs    || 0,
+      patient_id:      event.patientId     || null,
+      session_type:    event.sessionType   || event.type || null,
+      lang:            event.patientLang   || null,
+      rag_chunks_used: event.ragChunks     || 0,
     });
   } catch {
     // 감사 로그 실패는 무시 (비차단)
@@ -642,7 +665,7 @@ app.post("/api/suggest", async (req, res) => {
 
   try {
     // ── 클리닉 동적 시스템 프롬프트 빌드 ────────────────────────────────────
-    const resolvedClinicId = clinicId || process.env.CLINIC_ID;
+    const resolvedClinicId = clinicId ?? CLINIC_UUID;
     const [clinicInfo_, clinicProcs] = await Promise.all([
       getClinicInfo(resolvedClinicId),
       getClinicProcedures(resolvedClinicId),
@@ -818,7 +841,8 @@ app.post("/api/tiki-paste", async (req, res) => {
   if (!message?.trim())
     return res.status(400).json({ error: "message required" });
 
-  const resolvedClinicId = clinicId || null;
+  // v2: resolve to UUID — body clinicId overrides only if it's a valid UUID
+  const resolvedClinicId = clinicId ?? CLINIC_UUID;
 
   // ── 병원 정보 + 실제 시술 DB 병렬 조회 ──────────────────────────────────
   const [clinicInfoData, clinicProcs] = await Promise.all([
@@ -890,6 +914,8 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   "intent": "<환자 의도 in Korean — 예: 보톡스 가격 문의>",
   "ko_summary": "<환자 메시지 한국어 요약 1~2문장 — 직원 참고용. 진단·처방 표현 금지>",
   "risk_level": "<none | low | medium | high — 의료 위험도: high=부작용·알레르기 우려, medium=민감 질문, low=일반 문의>",
+  "procedure_interests": ["<언급된 시술명만, 예: 보톡스, 필러, 리프팅. 없으면 []>"],
+  "concerns": ["<환자가 표현한 우려·걱정 키워드, 예: 붓기, 통증, 자연스러움. 없으면 []>"],
   "options": {
     "kind":    { "reply": "<환자 언어로 — 공감·상세·CTA 포함>", "ko_translation": "<자연스러운 한국어 번역>" },
     "firm":    { "reply": "<환자 언어로 — 규정 기반·단호하지만 친절>", "ko_translation": "<자연스러운 한국어 번역>" },
@@ -928,9 +954,11 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
 
     // 필수 필드 보정 — 구버전 string 응답도 호환
     parsed.options   = parsed.options   ?? {};
-    parsed.ko_summary  = parsed.ko_summary  || "";
-    parsed.risk_level  = ["none","low","medium","high"].includes(parsed.risk_level)
+    parsed.ko_summary         = parsed.ko_summary  || "";
+    parsed.risk_level         = ["none","low","medium","high"].includes(parsed.risk_level)
       ? parsed.risk_level : "low";
+    parsed.procedure_interests = Array.isArray(parsed.procedure_interests) ? parsed.procedure_interests.filter(Boolean) : [];
+    parsed.concerns            = Array.isArray(parsed.concerns)            ? parsed.concerns.filter(Boolean)            : [];
     const normalize = (opt, fallback = "") => {
       if (!opt) return { reply: fallback, ko_translation: "" };
       if (typeof opt === "string") return { reply: opt, ko_translation: "" };
@@ -1072,7 +1100,7 @@ app.get("/api/procedures", (req, res) => res.json(procedures));
 app.post("/api/knowledge/upload",
   knowledgeUpload.single("file"),
   async (req, res) => {
-    const clinic_id = req.body.clinic_id || process.env.CLINIC_ID;
+    const clinic_id = req.body.clinic_id || CLINIC_UUID;
     if (!clinic_id)  return res.status(400).json({ error: "clinic_id required" });
     if (!req.file)   return res.status(400).json({ error: "file required" });
 
@@ -1143,7 +1171,7 @@ app.post("/api/knowledge/upload",
 // ── GET /api/knowledge/files?clinic_id=xxx
 // 업로드된 파일 목록 (파일당 1행 — chunk_index=0 기준)
 app.get("/api/knowledge/files", async (req, res) => {
-  const clinic_id = req.query.clinic_id || process.env.CLINIC_ID;
+  const clinic_id = req.query.clinic_id || CLINIC_UUID;
   if (!clinic_id) return res.status(400).json({ error: "clinic_id required" });
 
   try {
@@ -1181,7 +1209,7 @@ app.get("/api/knowledge/files", async (req, res) => {
 
 // ── DELETE /api/knowledge/files  { clinic_id, file_name }
 app.delete("/api/knowledge/files", async (req, res) => {
-  const clinic_id = req.body.clinic_id || req.query.clinic_id || process.env.CLINIC_ID;
+  const clinic_id = req.body.clinic_id || req.query.clinic_id || CLINIC_UUID;
   const file_name = req.body.file_name || req.query.file_name;
   if (!clinic_id || !file_name)
     return res.status(400).json({ error: "clinic_id and file_name required" });
@@ -1223,7 +1251,7 @@ app.get("/api/procedure-templates", async (req, res) => {
 
 // ── GET /api/clinic-procedures — 병원별 시술 목록
 app.get("/api/clinic-procedures", async (req, res) => {
-  const clinicId = req.query.clinic_id || process.env.CLINIC_ID;
+  const clinicId = req.query.clinic_id || CLINIC_UUID;
   if (!clinicId) return res.status(400).json({ error: "clinic_id required" });
   try {
     const { data, error } = await supabaseAdmin
@@ -1595,78 +1623,51 @@ app.post("/api/conversations/:id/messages", async (req, res) => {
 
 // GET /api/patients?clinicId=X
 app.get("/api/patients", async (req, res) => {
-  const { clinicId } = req.query;
+  const clinicId = req.query.clinicId || CLINIC_UUID;
   if (!clinicId) return res.status(400).json({ error: "clinicId required" });
   try {
     const sb = getSbAdmin();
     const { data, error } = await sb
       .from("patients")
-      .select("*")
+      .select("id, name, birth_year, gender, nationality, channel_refs, tags, flag, lang, notes, created_at, updated_at")
       .eq("clinic_id", clinicId)
       .order("updated_at", { ascending: false });
     if (error) {
       if (error.code === "42P01") return res.json([]);
       throw error;
     }
-    const patients = (data || []).map(r => ({
-      id:          r.id,
-      name:        r.name,
-      nameEn:      r.name_en,
-      flag:        r.flag,
-      country:     r.country,
-      lang:        r.lang,
-      gender:      r.gender,
-      age:         r.age,
-      channel:     r.channel,
-      procedure:   r.procedure,
-      lastVisit:   r.last_visit,
-      nextBooking: r.next_booking,
-      status:      r.status,
-      totalSpent:  r.total_spent,
-      phone:       r.phone,
-      email:       r.email,
-      note:        r.note,
-      tags:        r.tags || [],
-      timeline:    r.timeline || [],
-    }));
-    res.json(patients);
+    res.json(data || []);
   } catch (err) {
     console.error("[Patients/Get]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/patients  { clinicId, patient }
+// POST /api/patients  { clinicId?, patient: { name, birth_year?, gender?, nationality?, lang?, tags?, flag?, notes?, channel_refs? } }
 app.post("/api/patients", async (req, res) => {
   const { clinicId, patient } = req.body;
-  if (!clinicId || !patient) return res.status(400).json({ error: "clinicId + patient required" });
+  const clinic_id = clinicId || CLINIC_UUID;
+  if (!clinic_id || !patient?.name?.trim()) return res.status(400).json({ error: "name required" });
   try {
     const sb = getSbAdmin();
-    const row = {
-      id:          patient.id || crypto.randomUUID(),
-      clinic_id:   clinicId,
-      name:        patient.name,
-      name_en:     patient.nameEn,
-      flag:        patient.flag,
-      country:     patient.country,
-      lang:        patient.lang,
-      gender:      patient.gender,
-      age:         patient.age,
-      channel:     patient.channel,
-      procedure:   patient.procedure,
-      last_visit:  patient.lastVisit,
-      next_booking: patient.nextBooking,
-      status:      patient.status || "consulting",
-      total_spent: patient.totalSpent || 0,
-      phone:       patient.phone,
-      email:       patient.email,
-      note:        patient.note,
-      tags:        patient.tags || [],
-      timeline:    patient.timeline || [],
-    };
-    const { data, error } = await sb.from("patients").upsert(row).select().single();
+    const { data, error } = await sb
+      .from("patients")
+      .insert({
+        clinic_id,
+        name:         patient.name.trim(),
+        birth_year:   patient.birth_year   || null,
+        gender:       patient.gender       || null,
+        nationality:  patient.nationality  || null,
+        lang:         patient.lang         || null,
+        tags:         patient.tags         || [],
+        flag:         patient.flag         || null,
+        notes:        patient.notes        || null,
+        channel_refs: patient.channel_refs || {},
+      })
+      .select("id, name, lang, flag, tags")
+      .single();
     if (error) throw error;
-    res.json({ id: data.id });
+    res.json(data);
   } catch (err) {
     console.error("[Patients/Post]", err.message);
     res.status(500).json({ error: err.message });
@@ -1699,19 +1700,21 @@ app.patch("/api/patients/:id", async (req, res) => {
   }
 });
 
-// ── GET /api/patients/search?clinicId=X&q=검색어
-// name / phone / channel 부분 매칭 (ILIKE), 최대 15건
+// ── GET /api/patients/search?q=검색어&clinicId=X  (clinicId optional, falls back to CLINIC_UUID)
+// name 부분 매칭 (ILIKE), 최대 15건
 app.get("/api/patients/search", async (req, res) => {
-  const { clinicId, q } = req.query;
-  if (!clinicId || !q?.trim()) return res.status(400).json({ error: "clinicId + q required" });
+  const clinic_id = req.query.clinicId || CLINIC_UUID;
+  const q = req.query.q;
+  if (!q?.trim()) return res.status(400).json({ error: "q required" });
+  if (!clinic_id) return res.status(400).json({ error: "clinicId required" });
   try {
     const sb = getSbAdmin();
-    const safe = q.trim().replace(/[%_]/g, "\\$&");   // SQL injection guard
+    const safe = q.trim().replace(/[%_]/g, "\\$&");
     const { data, error } = await sb
       .from("patients")
-      .select("id, name, name_en, flag, lang, phone, channel, last_visit, tags, status")
-      .eq("clinic_id", clinicId)
-      .or(`name.ilike.%${safe}%,phone.ilike.%${safe}%,channel.ilike.%${safe}%`)
+      .select("id, name, lang, flag, tags, birth_year, nationality")
+      .eq("clinic_id", clinic_id)
+      .ilike("name", `%${safe}%`)
       .order("updated_at", { ascending: false })
       .limit(15);
     if (error) {
@@ -1801,11 +1804,13 @@ app.post("/api/save-context", async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// AFTERCARE
+// AFTERCARE (v1 table — deferred to Phase C migration)
+// These routes return 501 on v2 until aftercare_records is migrated.
 // ════════════════════════════════════════════════════════════════════════════
 
 // GET /api/aftercare?clinicId=X
 app.get("/api/aftercare", async (req, res) => {
+  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
   const { clinicId } = req.query;
   if (!clinicId) return res.status(400).json({ error: "clinicId required" });
   try {
@@ -1839,6 +1844,7 @@ app.get("/api/aftercare", async (req, res) => {
 
 // POST /api/aftercare  { clinicId, record }
 app.post("/api/aftercare", async (req, res) => {
+  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
   const { clinicId, record } = req.body;
   if (!clinicId || !record) return res.status(400).json({ error: "clinicId + record required" });
   try {
@@ -1866,6 +1872,7 @@ app.post("/api/aftercare", async (req, res) => {
 
 // PATCH /api/aftercare/:id  { updates }
 app.patch("/api/aftercare/:id", async (req, res) => {
+  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
   const { id } = req.params;
   const u = req.body;
   try {
@@ -1980,6 +1987,8 @@ ${ragContext ? `지식베이스 참고:\n${ragContext.slice(0, 1000)}` : ""}
 // 견적서 생성 → Supabase quotations 테이블 저장 → URL 반환
 // ════════════════════════════════════════════════════════════════════════════
 app.post("/api/quotes", async (req, res) => {
+  // quotations table deferred from v2 core schema — add when billing module is ready
+  return res.status(501).json({ error: "quotations not yet migrated to v2 schema", deferred: true });
   const { clinicId, clinicName, patientMessage, patientLanguage, procedures, notes } = req.body;
   if (!clinicId || !procedures?.length)
     return res.status(400).json({ error: "clinicId and procedures are required" });
@@ -2027,8 +2036,8 @@ app.post("/api/quotes", async (req, res) => {
 // 공개 견적서 조회 (견적서 공유 링크용)
 // ════════════════════════════════════════════════════════════════════════════
 app.get("/api/quotes/:id", async (req, res) => {
+  return res.status(501).json({ error: "quotations not yet migrated to v2 schema", deferred: true });
   const { id } = req.params;
-  // UUID 형식 간단 검증
   if (!/^[0-9a-f-]{36}$/i.test(id))
     return res.status(400).json({ error: "유효하지 않은 견적서 ID입니다." });
 
@@ -2095,15 +2104,16 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
       .from("patient_links")
       .insert({
         clinic_id,
-        patient_id:    visit.patient_id,
-        visit_id:      visitId,
-        token_hash:    tokenHash,
-        status:        "active",
-        expires_at:    expiresAt,
-        patient_lang:  patientLang,
-        sent_via:      sentVia || null,
+        patient_id:     visit.patient_id,
+        visit_id:       visitId,
+        token_hash:     tokenHash,
+        link_type:      "portal",        // v2: link_type (not status)
+        status:         "active",        // v2 added status column (patched in 009)
+        expires_at:     expiresAt,
+        patient_lang:   patientLang,
+        sent_via:       sentVia || null,
         custom_message: customMessage || null,
-        created_by:    req.staff_user_id,
+        generated_by:   req.staff_user_id,  // v2: generated_by (was created_by)
       })
       .select("id, expires_at, status")
       .single();
@@ -2140,7 +2150,7 @@ app.get("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
       .select(`
         id, visit_id, patient_id, status, expires_at,
         first_opened_at, last_accessed_at, access_count,
-        patient_lang, sent_via, created_at, created_by
+        patient_lang, sent_via, created_at, generated_by
       `)
       .eq("clinic_id", clinic_id)
       .order("created_at", { ascending: false })
@@ -2184,31 +2194,125 @@ app.post("/api/my-tiki/links/:id/revoke", requireStaffAuth, async (req, res) => 
   }
 });
 
-// ── GET /api/my-tiki/visits  — clinic 방문 목록
+// ── GET /api/my-tiki/visits  — clinic 방문 목록 (ops board — link_status, forms, check-in 포함)
+// Query params:
+//   dateRange = today (default) | tomorrow | week | all
+//   stage     = booked | pre_visit | treatment | ... | all (default: all)
+//   limit     = integer (default 200)
 app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
-  const { stage, limit = 50 } = req.query;
+  const { dateRange = "today", stage, limit = 200 } = req.query;
   const clinic_id = req.clinic_id;
   const sb = getSbAdmin();
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  // ── Date range boundaries (UTC; clinic TZ refinement is future work) ──────
+  function addUTCDays(d, n) {
+    const nd = new Date(d);
+    nd.setUTCDate(nd.getUTCDate() + n);
+    return nd;
+  }
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
 
   try {
     let q = sb
       .from("visits")
       .select(`
-        id, patient_id, procedure_name, stage,
-        booking_date, treatment_date,
-        intake_submitted_at, consent_submitted_at,
-        channel, staff_note, created_at, updated_at
+        id, patient_id, procedure_id, stage,
+        visit_date, checked_in_at, room,
+        intake_done, consent_done, followup_done,
+        coordinator_id, internal_tags, notes,
+        created_at, updated_at,
+        patients ( id, name, lang, flag, channel_refs ),
+        procedures ( id, name_ko )
       `)
       .eq("clinic_id", clinic_id)
-      .order("updated_at", { ascending: false })
+      .order("visit_date", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
       .limit(Number(limit));
 
-    if (stage) q = q.eq("stage", stage);
+    if (stage && stage !== "all") q = q.eq("stage", stage);
 
-    const { data, error } = await q;
+    if (dateRange === "today") {
+      q = q
+        .gte("visit_date", todayUTC.toISOString())
+        .lt("visit_date",  addUTCDays(todayUTC, 1).toISOString());
+    } else if (dateRange === "tomorrow") {
+      const tom = addUTCDays(todayUTC, 1);
+      q = q
+        .gte("visit_date", tom.toISOString())
+        .lt("visit_date",  addUTCDays(todayUTC, 2).toISOString());
+    } else if (dateRange === "week") {
+      q = q
+        .gte("visit_date", todayUTC.toISOString())
+        .lt("visit_date",  addUTCDays(todayUTC, 7).toISOString());
+    }
+    // dateRange === "all" → no date filter
+
+    const { data: visits, error } = await q;
     if (error) throw error;
-    res.json({ visits: data || [] });
+
+    if (!visits || visits.length === 0) {
+      return res.json({
+        visits: [],
+        summary: { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0 },
+      });
+    }
+
+    const visitIds = visits.map(v => v.id);
+
+    // ── Latest patient_link per visit ─────────────────────────────────────
+    const { data: links } = await sb
+      .from("patient_links")
+      .select("visit_id, id, status, expires_at, first_opened_at, last_accessed_at, created_at")
+      .in("visit_id", visitIds)
+      .eq("clinic_id", clinic_id)
+      .order("created_at", { ascending: false });
+
+    const linksMap = {};
+    for (const lnk of (links || [])) {
+      if (!linksMap[lnk.visit_id]) linksMap[lnk.visit_id] = lnk;
+    }
+
+    // ── Unreviewed form_submissions count per visit ───────────────────────
+    const { data: unreviewedRows } = await sb
+      .from("form_submissions")
+      .select("visit_id")
+      .in("visit_id", visitIds)
+      .eq("status", "submitted")
+      .is("reviewed_at", null);
+
+    const unreviewedMap = {};
+    for (const row of (unreviewedRows || [])) {
+      unreviewedMap[row.visit_id] = (unreviewedMap[row.visit_id] || 0) + 1;
+    }
+
+    // ── Compute link_status ───────────────────────────────────────────────
+    function linkStatus(lnk) {
+      if (!lnk) return "none";
+      if (lnk.status === "revoked") return "revoked";
+      if (lnk.status === "expired" || new Date(lnk.expires_at) < new Date()) return "expired";
+      if (lnk.first_opened_at) return "opened";
+      return "active";
+    }
+
+    const enriched = visits.map(v => ({
+      ...v,
+      link:             linksMap[v.id] || null,
+      link_status:      linkStatus(linksMap[v.id]),
+      unreviewed_forms: unreviewedMap[v.id] || 0,
+    }));
+
+    // ── Summary counts (computed from current filtered result) ────────────
+    const summary = {
+      total:        enriched.length,
+      formsPending: enriched.filter(v => !v.intake_done || !v.consent_done).length,
+      checkedIn:    enriched.filter(v => v.checked_in_at).length,
+      activeLinks:  enriched.filter(v => v.link_status === "active" || v.link_status === "opened").length,
+    };
+
+    res.json({ visits: enriched, summary });
+
   } catch (err) {
     console.error("[MyTiki/visits]", err.message);
     res.status(500).json({ error: err.message });
@@ -2218,11 +2322,11 @@ app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
 // ── POST /api/my-tiki/visits  — 방문 생성
 app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
   const {
-    patientId, procedureName, procedureId,
-    bookingDate, treatmentDate, channel, staffNote,
+    patientId, procedureId,
+    visitDate, notes,
   } = req.body;
   const clinic_id = req.clinic_id;
-  if (!procedureName) return res.status(400).json({ error: "procedureName required" });
+  if (!patientId) return res.status(400).json({ error: "patientId required" });
 
   const sb = getSbAdmin();
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
@@ -2232,15 +2336,12 @@ app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
       .from("visits")
       .insert({
         clinic_id,
-        patient_id:     patientId || null,
+        patient_id:     patientId,
         procedure_id:   procedureId || null,
-        procedure_name: procedureName,
-        booking_date:   bookingDate || null,
-        treatment_date: treatmentDate || null,
-        channel:        channel || null,
-        staff_note:     staffNote || null,
+        visit_date:     visitDate || null,
+        notes:          notes || null,
         stage:          "booked",
-        created_by:     req.staff_user_id,
+        coordinator_id: req.staff_user_id || null,
       })
       .select("*")
       .single();
@@ -2279,48 +2380,552 @@ app.patch("/api/my-tiki/visits/:id/stage", requireStaffAuth, async (req, res) =>
   }
 });
 
-// ── POST /api/memory  — Tiki Paste 상호작용 → patient_interactions 저장
-// body: { clinicId, patientId?, visitId?, source, detectedLanguage, intent,
-//          koSummary, riskLevel, procedureInterests[], riskFlags[], rawMessageHash }
-app.post("/api/memory", async (req, res) => {
-  const {
-    clinicId, patientId, visitId, source = "tiki_paste",
-    detectedLanguage, intent, koSummary, riskLevel,
-    procedureInterests = [], riskFlags = [], rawMessageHash,
-  } = req.body;
-
-  const clinic_id = clinicId || process.env.CLINIC_ID;
-  if (!clinic_id) return res.status(400).json({ error: "clinicId required" });
-
+// ── POST /api/my-tiki/visits/:id/check-in  — 환자 체크인 처리
+// Sets checked_in_at = now(). Idempotent: 409 if already checked in.
+app.post("/api/my-tiki/visits/:id/check-in", requireStaffAuth, async (req, res) => {
+  const { id } = req.params;
+  const clinic_id = req.clinic_id;
   const sb = getSbAdmin();
-  if (!sb) {
-    // Supabase 미설정 시 graceful skip (기존 mock 흐름 보호)
-    return res.json({ ok: true, skipped: true, reason: "db_unavailable" });
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const now = new Date().toISOString();
+    // Only update if checked_in_at is still null (prevents double check-in)
+    const { data, error } = await sb
+      .from("visits")
+      .update({ checked_in_at: now })
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .is("checked_in_at", null)
+      .select("id, checked_in_at")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(409).json({ error: "Already checked in" });
+
+    console.log(`[MyTiki/check-in] visit=${id} at=${now}`);
+    res.json({ ok: true, checked_in_at: data.checked_in_at });
+  } catch (err) {
+    console.error("[MyTiki/check-in]", err.message);
+    res.status(500).json({ error: err.message });
   }
+});
+
+// ── PATCH /api/my-tiki/visits/:id/room  — 방 배정 / 변경 / 해제
+// body: { room: "1호실" | null }
+app.patch("/api/my-tiki/visits/:id/room", requireStaffAuth, async (req, res) => {
+  const { id } = req.params;
+  const { room } = req.body;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
   try {
     const { data, error } = await sb
-      .from("patient_interactions")
-      .insert({
-        clinic_id,
-        patient_id:           patientId || null,
-        visit_id:             visitId || null,
-        source,
-        detected_language:    detectedLanguage || null,
-        intent:               intent || null,
-        ko_summary:           koSummary || null,
-        risk_level:           ["none","low","medium","high"].includes(riskLevel) ? riskLevel : null,
-        procedure_interests:  procedureInterests,
-        risk_flags:           riskFlags,
-        raw_message_hash:     rawMessageHash || null,
-      })
-      .select("id")
+      .from("visits")
+      .update({ room: room || null })
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select("id, room")
       .single();
 
     if (error) throw error;
-    res.json({ ok: true, id: data.id });
+    res.json({ ok: true, room: data.room });
+  } catch (err) {
+    console.error("[MyTiki/room]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/my-tiki/import  — CSV bulk import: create patients + visits + links
+//
+// Client parses CSV, normalises dates to YYYY-MM-DD, sends:
+//   { rows: [{ name, visit_date, lang?, procedure?, phone?, email?, nationality?, note? }, ...] }
+// Max 500 rows per request.
+//
+// Batch strategy (minimises round-trips):
+//   1. Validate rows client-side before sending; server re-validates as defence
+//   2. One bulk patient lookup by name → batch insert new patients
+//   3. One bulk visit dedup query  → batch insert new visits
+//   4. Generate tokens in memory   → batch insert patient_links
+//
+// Dedup rule:
+//   exact name match (case-sensitive, trimmed) + same calendar date (UTC)
+//   → mark as "duplicate", skip creation, no link generated
+//
+// Returns results[] in the same order as the input rows[] so the client
+// can zip them with the original CSV for the download.
+
+app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
+  const { rows: inputRows } = req.body;
+  const clinic_id = req.clinic_id;
+
+  if (!Array.isArray(inputRows) || inputRows.length === 0)
+    return res.status(400).json({ error: "rows array required" });
+  if (inputRows.length > 500)
+    return res.status(400).json({ error: "Maximum 500 rows per import" });
+
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const baseUrl = process.env.APP_BASE_URL || "https://app.tikidoc.xyz";
+
+  // ── Helper: derive flag emoji from lang/nationality ───────────────────────
+  function deriveFlag(lang, nationality) {
+    const n = String(nationality || '').toLowerCase();
+    if (n.includes('중국') || n.includes('china')) return '🇨🇳';
+    if (n.includes('일본') || n.includes('japan')) return '🇯🇵';
+    if (n.includes('베트남') || n.includes('vietnam')) return '🇻🇳';
+    if (n.includes('태국') || n.includes('thai')) return '🇹🇭';
+    if (n.includes('러시아') || n.includes('russia')) return '🇷🇺';
+    if (n.includes('아랍') || n.includes('saudi') || n.includes('arab')) return '🇸🇦';
+    if (n.includes('한국') || n.includes('korea')) return '🇰🇷';
+    if (n.includes('미국') || n.includes('america') || n.includes('usa')) return '🇺🇸';
+    const map = { zh:'🇨🇳', ja:'🇯🇵', ko:'🇰🇷', en:'🇺🇸', vi:'🇻🇳', th:'🇹🇭', ar:'🇸🇦', ru:'🇷🇺' };
+    return map[lang] || null;
+  }
+
+  // ── Helper: add N calendar days to a YYYY-MM-DD string (UTC) ─────────────
+  function addDay(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // ── Phase 1: Validate all rows ────────────────────────────────────────────
+  // Keep results as a sparse array indexed by input position.
+  const results = new Array(inputRows.length).fill(null);
+  const validByIdx = []; // { _i, name, visit_date, lang, procedure, phone, email, nationality, note }
+
+  for (let i = 0; i < inputRows.length; i++) {
+    const raw = inputRows[i];
+    const name      = String(raw.name      || '').trim();
+    const visitDate = String(raw.visit_date || '').trim();
+
+    if (!name) {
+      results[i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'이름 누락' };
+      continue;
+    }
+    if (!visitDate || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) {
+      results[i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'방문일 형식 오류 (YYYY-MM-DD 필요)' };
+      continue;
+    }
+    validByIdx.push({
+      _i:          i,
+      name,
+      visit_date:  visitDate,
+      lang:        String(raw.lang        || '').trim() || null,
+      procedure:   String(raw.procedure   || '').trim() || null,
+      phone:       String(raw.phone       || '').trim() || null,
+      email:       String(raw.email       || '').trim() || null,
+      nationality: String(raw.nationality || '').trim() || null,
+      note:        String(raw.note        || '').trim() || null,
+    });
+  }
+
+  if (validByIdx.length === 0) {
+    const summary = { total: inputRows.length, created: 0, visit_created: 0, duplicates: 0,
+                      failed: inputRows.length };
+    return res.json({ results, summary });
+  }
+
+  try {
+    // ── Phase 2: Bulk patient lookup (exact name, case-sensitive) ─────────────
+    const uniqueNames = [...new Set(validByIdx.map(r => r.name))];
+
+    const { data: existingPatients } = await sb
+      .from("patients")
+      .select("id, name")
+      .eq("clinic_id", clinic_id)
+      .in("name", uniqueNames);
+
+    const patientByName = {}; // name → { id, isNew }
+    for (const p of (existingPatients || [])) {
+      patientByName[p.name] = { id: p.id, isNew: false };
+    }
+
+    // ── Phase 3: Bulk insert new patients ─────────────────────────────────────
+    // Use first occurrence of each name to source the metadata.
+    const firstRowByName = {};
+    for (const row of validByIdx) {
+      if (!firstRowByName[row.name]) firstRowByName[row.name] = row;
+    }
+
+    const namesToCreate = uniqueNames.filter(n => !patientByName[n]);
+    if (namesToCreate.length > 0) {
+      const patientPayload = namesToCreate.map(name => {
+        const row = firstRowByName[name];
+        const channelRefs = {};
+        if (row.phone) channelRefs.phone = row.phone;
+        if (row.email) channelRefs.email = row.email;
+        return {
+          clinic_id,
+          name,
+          lang:         row.lang        || null,
+          nationality:  row.nationality || null,
+          channel_refs: channelRefs,
+          notes:        row.note        || null,
+          tags:         [],
+          flag:         deriveFlag(row.lang, row.nationality),
+        };
+      });
+
+      const { data: newPatients, error: pErr } = await sb
+        .from("patients")
+        .insert(patientPayload)
+        .select("id, name");
+
+      if (pErr) {
+        // Bulk insert failed — mark all rows that needed a new patient as failed.
+        console.error("[Import/patients]", pErr.message);
+        for (const name of namesToCreate) {
+          patientByName[name] = null; // null = failed
+        }
+      } else {
+        for (const p of (newPatients || [])) {
+          patientByName[p.name] = { id: p.id, isNew: true };
+        }
+      }
+    }
+
+    // Assign resolved patients; mark rows whose patient failed.
+    for (const row of validByIdx) {
+      row._patient = patientByName[row.name] || null;
+      if (!row._patient) {
+        results[row._i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'환자 생성 실패' };
+      }
+    }
+
+    const rowsWithPatient = validByIdx.filter(r => r._patient?.id);
+    if (rowsWithPatient.length === 0) throw new Error("No valid patients"); // will be caught below
+
+    // ── Phase 4: Bulk visit dedup check ───────────────────────────────────────
+    const allPatientIds = [...new Set(rowsWithPatient.map(r => r._patient.id))];
+    const allDates      = rowsWithPatient.map(r => r.visit_date).sort();
+    const minDate = allDates[0] + 'T00:00:00.000Z';
+    const maxDate = allDates[allDates.length - 1] + 'T23:59:59.999Z';
+
+    const { data: existingVisits } = await sb
+      .from("visits")
+      .select("id, patient_id, visit_date")
+      .eq("clinic_id", clinic_id)
+      .in("patient_id", allPatientIds)
+      .gte("visit_date", minDate)
+      .lte("visit_date", maxDate);
+
+    const existVisitMap = {}; // `${patient_id}_${YYYY-MM-DD}` → visit_id
+    for (const v of (existingVisits || [])) {
+      const dk = new Date(v.visit_date).toISOString().slice(0, 10);
+      existVisitMap[`${v.patient_id}_${dk}`] = v.id;
+    }
+
+    const dupeRows = rowsWithPatient.filter(r => existVisitMap[`${r._patient.id}_${r.visit_date}`]);
+    const newRows  = rowsWithPatient.filter(r => !existVisitMap[`${r._patient.id}_${r.visit_date}`]);
+
+    for (const row of dupeRows) {
+      results[row._i] = {
+        patient_id:    row._patient.id,
+        visit_id:      existVisitMap[`${row._patient.id}_${row.visit_date}`],
+        portal_url:    '',    // existing link not re-exposed
+        status:        'duplicate',
+        error_message: '',
+      };
+    }
+
+    // ── Phase 5: Bulk insert new visits ───────────────────────────────────────
+    if (newRows.length > 0) {
+      const visitPayload = newRows.map(row => ({
+        clinic_id,
+        patient_id:    row._patient.id,
+        visit_date:    row.visit_date + 'T00:00:00.000Z',
+        notes:         row.note || null,
+        stage:         'booked',
+        internal_tags: row.procedure ? [`시술: ${row.procedure}`] : [],
+        coordinator_id: req.staff_user_id || null,
+      }));
+
+      const { data: newVisits, error: vErr } = await sb
+        .from("visits")
+        .insert(visitPayload)
+        .select("id, patient_id, visit_date");
+
+      if (vErr) {
+        console.error("[Import/visits]", vErr.message);
+        for (const row of newRows) {
+          results[row._i] = { patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 생성 실패' };
+        }
+      } else {
+        // Map returned visits back to rows via (patient_id, date) key
+        const newVisitMap = {};
+        for (const v of (newVisits || [])) {
+          const dk = new Date(v.visit_date).toISOString().slice(0, 10);
+          newVisitMap[`${v.patient_id}_${dk}`] = v.id;
+        }
+
+        // ── Phase 6: Generate tokens in-memory, bulk insert links ───────────
+        const tokenByVisitId = {};
+        const linkPayload = [];
+
+        for (const row of newRows) {
+          const visitId = newVisitMap[`${row._patient.id}_${row.visit_date}`];
+          if (!visitId) continue;
+          const { token, tokenHash } = generatePatientToken();
+          tokenByVisitId[visitId] = token;
+          linkPayload.push({
+            clinic_id,
+            patient_id:   row._patient.id,
+            visit_id:     visitId,
+            token_hash:   tokenHash,
+            link_type:    'portal',
+            status:       'active',
+            expires_at:   new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+            patient_lang: row.lang || 'ko',
+            generated_by: req.staff_user_id || null,
+          });
+        }
+
+        if (linkPayload.length > 0) {
+          const { error: lErr } = await sb.from("patient_links").insert(linkPayload);
+          if (lErr) console.error("[Import/links]", lErr.message);
+        }
+
+        // Build results for new visits
+        for (const row of newRows) {
+          const visitId = newVisitMap[`${row._patient.id}_${row.visit_date}`];
+          if (!visitId) {
+            results[row._i] = { patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 ID 없음' };
+            continue;
+          }
+          const token = tokenByVisitId[visitId];
+          results[row._i] = {
+            patient_id:    row._patient.id,
+            visit_id:      visitId,
+            portal_url:    token ? `${baseUrl}/t/${token}` : '',
+            status:        row._patient.isNew ? 'created' : 'visit_created',
+            error_message: '',
+          };
+        }
+      }
+    }
+
+  } catch (err) {
+    console.error("[Import]", err.message);
+    // Fill any still-null results as failed
+    results.forEach((r, i) => {
+      if (r === null) {
+        results[i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message: err.message };
+      }
+    });
+  }
+
+  // Fill remaining nulls (shouldn't happen but defensive)
+  results.forEach((r, i) => {
+    if (r === null) results[i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'처리 누락' };
+  });
+
+  const summary = {
+    total:         inputRows.length,
+    created:       results.filter(r => r.status === 'created').length,
+    visit_created: results.filter(r => r.status === 'visit_created').length,
+    duplicates:    results.filter(r => r.status === 'duplicate').length,
+    failed:        results.filter(r => r.status === 'failed').length,
+  };
+
+  console.log(`[Import] clinic=${clinic_id} total=${inputRows.length} created=${summary.created} visit_created=${summary.visit_created} dupes=${summary.duplicates} failed=${summary.failed}`);
+  res.json({ results, summary });
+});
+
+// ── POST /api/memory  — Tiki Paste 결과 → patient_interactions UPSERT
+// v2 schema: one row per (clinic_id, patient_id). UPSERT merges arrays, takes max risk.
+//
+// body: {
+//   patientId:          UUID string (required — skip gracefully if missing)
+//   clinicId?:          UUID string (falls back to CLINIC_UUID)
+//   koSummary?:         string — Korean summary of this session
+//   riskLevel?:         "none" | "low" | "medium" | "high"
+//   procedureInterests?: string[] — procedure names/slugs of interest
+//   concerns?:          string[] — patient-reported concerns (Korean)
+//   riskFlags?:         { type, detail, severity }[] — structured risk info
+// }
+app.post("/api/memory", async (req, res) => {
+  const {
+    patientId,
+    clinicId,
+    koSummary,
+    riskLevel       = "none",
+    procedureInterests = [],
+    concerns        = [],
+    riskFlags       = [],
+  } = req.body;
+
+  const clinic_id = clinicId || CLINIC_UUID;
+  if (!clinic_id) return res.status(400).json({ error: "clinicId required" });
+
+  // No patient identified → skip DB write, client handles the UX
+  if (!patientId) {
+    return res.json({ ok: true, skipped: true, reason: "no_patient_id" });
+  }
+
+  const sb = getSbAdmin();
+  if (!sb) return res.json({ ok: true, skipped: true, reason: "db_unavailable" });
+
+  const RISK_ORDER = ["none", "low", "medium", "high"];
+  const safeRisk = RISK_ORDER.includes(riskLevel) ? riskLevel : "none";
+
+  try {
+    // ── 1. Load existing record (null = first session for this patient) ──────
+    const { data: existing } = await sb
+      .from("patient_interactions")
+      .select("procedure_interests, concerns, risk_flags, risk_level, session_count, ai_summary")
+      .eq("clinic_id", clinic_id)
+      .eq("patient_id", patientId)
+      .maybeSingle();
+
+    // ── 2. Merge arrays (union, deduplicated) ─────────────────────────────────
+    const mergedInterests = [
+      ...new Set([...(existing?.procedure_interests || []), ...procedureInterests]),
+    ];
+    const mergedConcerns = [
+      ...new Set([...(existing?.concerns || []), ...concerns]),
+    ];
+    // Risk flags: append new ones (no dedup — each flag is a distinct event)
+    const mergedRiskFlags = [...(existing?.risk_flags || []), ...riskFlags];
+
+    // ── 3. Max risk level ────────────────────────────���─────────────────────��──
+    const existingIdx = RISK_ORDER.indexOf(existing?.risk_level ?? "none");
+    const newIdx      = RISK_ORDER.indexOf(safeRisk);
+    const finalRisk   = RISK_ORDER[Math.max(existingIdx, newIdx)];
+
+    // ── 4. UPSERT ──────────────────────────────────────────────────────────���──
+    const { data, error } = await sb
+      .from("patient_interactions")
+      .upsert({
+        clinic_id,
+        patient_id:          patientId,
+        procedure_interests: mergedInterests,
+        concerns:            mergedConcerns,
+        risk_flags:          mergedRiskFlags,
+        risk_level:          finalRisk,
+        ai_summary:          koSummary || existing?.ai_summary || null,
+        session_count:       (existing?.session_count ?? 0) + 1,
+        last_session_at:     new Date().toISOString(),
+      }, { onConflict: "clinic_id,patient_id" })
+      .select("id, session_count, risk_level")
+      .single();
+
+    if (error) throw error;
+
+    console.log(`[Memory] patient=${patientId} sessions=${data.session_count} risk=${data.risk_level}`);
+
+    res.json({
+      ok:            true,
+      id:            data.id,
+      session_count: data.session_count,
+      risk_level:    data.risk_level,
+      is_new:        !existing,
+    });
   } catch (err) {
     console.error("[Memory/POST]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// TIKI BRIEF — 예약 메모 / DM 텍스트 → 구조화된 환자+방문 초안 파싱
+// POST /api/intake/parse  (requireStaffAuth)
+// body: { text: string }
+// ════════════════════════════════════════════════════════════════════════════
+app.post("/api/intake/parse", requireStaffAuth, async (req, res) => {
+  const { text } = req.body;
+  if (!text?.trim())       return res.status(400).json({ error: "text required" });
+  if (text.length > 4000)  return res.status(400).json({ error: "text too long (max 4000 chars)" });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const year  = new Date().getFullYear();
+
+  const SYSTEM = `You are a clinical intake data extractor for a Korean aesthetic medicine clinic.
+Extract structured patient and visit data from raw booking notes, DM snippets, or coordinator messages.
+
+TODAY: ${today}  CURRENT_YEAR: ${year}
+
+RULES:
+1. Extract only what is clearly stated. NEVER guess or infer uncertain values.
+2. Use null for any field not mentioned or ambiguous.
+3. Confidence: "high"=explicitly stated, "medium"=clearly implied (e.g. 중국인→zh), "low"=weakly inferred.
+4. Only include a field in "confidence" if that field is non-null.
+5. birth_year: compute from age if given ("35세"→${year}-35=${year-35}). null if age not stated.
+6. visit_date: interpret Korean/Chinese/Japanese date formats and relative dates against TODAY. Output YYYY-MM-DD.
+7. lang: infer from nationality only when unambiguous (중국인→zh, 일본인→ja, 베트남인→vi, 태국인→th). Otherwise null.
+8. procedure_interests: Korean medical terms (보톡스, 필러, 리프팅, 실리프팅, 지방분해, 레이저, 피부관리 등).
+9. concerns: patient-stated worries (붓기, 통증, 회복기간, 자연스러움, 비용, 부작용 등).
+10. channel_refs: detect WeChat ID, LINE ID/@handle, Instagram @handle, KakaoTalk ID, phone (+82 or local), email.
+11. internal_notes: coordinator/agent commentary verbatim — NOT patient-stated concerns.
+12. Return ONLY valid JSON. No markdown. No explanation outside JSON.
+
+Output exactly:
+{
+  "patient": {
+    "name": string|null,
+    "birth_year": number|null,
+    "gender": "M"|"F"|null,
+    "nationality": string|null,
+    "lang": "zh"|"ja"|"en"|"ko"|"vi"|"ar"|"th"|"ru"|null,
+    "channel_refs": { "wechat":string|null, "kakao":string|null, "line":string|null, "instagram":string|null, "phone":string|null, "email":string|null }
+  },
+  "visit": {
+    "visit_date": "YYYY-MM-DD"|null,
+    "procedure_interests": string[],
+    "concerns": string[],
+    "internal_notes": string|null
+  },
+  "confidence": { "fieldName": "high"|"medium"|"low" },
+  "raw_evidence": { "fieldName": "exact text fragment that produced this value" },
+  "warnings": string[]
+}`;
+
+  try {
+    const resp = await anthropic.messages.create({
+      model:      MODEL_HAIKU,
+      max_tokens: 900,
+      system:     SYSTEM,
+      messages:   [{ role: "user", content: `Raw intake text:\n"""\n${text.trim()}\n"""` }],
+    });
+
+    const raw     = resp.content.find(b => b.type === "text")?.text ?? "{}";
+    const jsonStr = raw.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
+
+    let parsed;
+    try { parsed = JSON.parse(jsonStr); }
+    catch { return res.status(422).json({ error: "Model did not return valid JSON" }); }
+
+    // Normalize — guard against hallucinated structure
+    const result = {
+      patient: {
+        name:         parsed.patient?.name         ?? null,
+        birth_year:   parsed.patient?.birth_year   ?? null,
+        gender:       ["M","F"].includes(parsed.patient?.gender) ? parsed.patient.gender : null,
+        nationality:  parsed.patient?.nationality   ?? null,
+        lang:         parsed.patient?.lang          ?? null,
+        channel_refs: Object.fromEntries(
+          Object.entries(parsed.patient?.channel_refs ?? {}).filter(([, v]) => v != null && v !== "")
+        ),
+      },
+      visit: {
+        visit_date:          parsed.visit?.visit_date          ?? null,
+        procedure_interests: Array.isArray(parsed.visit?.procedure_interests) ? parsed.visit.procedure_interests.filter(Boolean) : [],
+        concerns:            Array.isArray(parsed.visit?.concerns)            ? parsed.visit.concerns.filter(Boolean)            : [],
+        internal_notes:      parsed.visit?.internal_notes      ?? null,
+      },
+      confidence:   parsed.confidence   ?? {},
+      raw_evidence: parsed.raw_evidence ?? {},
+      warnings:     Array.isArray(parsed.warnings) ? parsed.warnings : [],
+    };
+
+    console.log(`[intake/parse] name=${result.patient.name} lang=${result.patient.lang} date=${result.visit.visit_date}`);
+    res.json(result);
+
+  } catch (err) {
+    console.error("[intake/parse]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2339,18 +2944,27 @@ app.get("/api/patient/me", requirePatientToken, async (req, res) => {
   try {
     const [patientRes, visitRes, clinicRes] = await Promise.all([
       patient_id
-        ? sb.from("patients").select("id,name,name_en,flag,lang,country").eq("id", patient_id).maybeSingle()
+        ? sb.from("patients")
+             .select("id, name, flag, lang, nationality, birth_year")
+             .eq("id", patient_id)
+             .maybeSingle()
         : Promise.resolve({ data: null }),
       visit_id
-        ? sb.from("visits").select("id,procedure_name,stage,booking_date,treatment_date,intake_submitted_at,consent_submitted_at").eq("id", visit_id).maybeSingle()
+        ? sb.from("visits")
+             .select("id, procedure_id, stage, visit_date, intake_done, consent_done, followup_done, procedures ( name_ko, name_en )")
+             .eq("id", visit_id)
+             .maybeSingle()
         : Promise.resolve({ data: null }),
-      sb.from("clinics").select("clinic_id,clinic_name,clinic_short_name,location").eq("clinic_id", clinic_id).maybeSingle(),
+      sb.from("clinics")
+        .select("id, clinic_name, clinic_short_name, location")
+        .eq("id", clinic_id)
+        .maybeSingle(),
     ]);
 
     res.json({
-      patient:     patientRes.data,
-      visit:       visitRes.data,
-      clinic:      clinicRes.data,
+      patient:      patientRes.data,
+      visit:        visitRes.data,
+      clinic:       clinicRes.data,
       patient_lang: req.patient_lang,
     });
   } catch (err) {
@@ -2366,27 +2980,37 @@ app.get("/api/patient/forms", requirePatientToken, async (req, res) => {
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
   try {
-    // 1. 이미 제출된 폼 확인
-    const { data: subs } = await sb
-      .from("form_submissions")
-      .select("form_type, submitted_at")
-      .eq("clinic_id", clinic_id)
-      .eq("visit_id", visit_id);
+    // 1. 이미 제출된 폼 확인 (visit_id가 없으면 제출 기록 없음으로 처리)
+    const { data: subs } = visit_id
+      ? await sb
+          .from("form_submissions")
+          .select("form_type, submitted_at")
+          .eq("clinic_id", clinic_id)
+          .eq("visit_id", visit_id)
+          .eq("status", "submitted")
+      : { data: [] };
 
-    const submitted = new Set((subs || []).map(s => s.form_type));
+    const submittedMap = new Map((subs || []).map(s => [s.form_type, s.submitted_at]));
 
-    // 2. 클리닉 활성 폼 템플릿 조회
-    const { data: templates } = await sb
+    // 2. 클리닉 활성 폼 템플릿 조회 (v2 컬럼명: form_type, title_ko, title_en)
+    const { data: templates, error } = await sb
       .from("form_templates")
-      .select("id, type, title_ko, title_en, title_ja, title_zh, description_ko, fields, version")
+      .select("id, form_type, title_ko, title_en, fields, version")
       .eq("clinic_id", clinic_id)
       .eq("is_active", true)
-      .in("type", ["intake", "consent"]);
+      .in("form_type", ["intake", "consent"]);
+
+    if (error) throw error;
 
     const forms = (templates || []).map(t => ({
-      ...t,
-      submitted:    submitted.has(t.type),
-      submitted_at: subs?.find(s => s.form_type === t.type)?.submitted_at || null,
+      id:           t.id,
+      form_type:    t.form_type,
+      title_ko:     t.title_ko,
+      title_en:     t.title_en || t.title_ko,
+      fields:       t.fields || [],
+      version:      t.version,
+      submitted:    submittedMap.has(t.form_type),
+      submitted_at: submittedMap.get(t.form_type) || null,
     }));
 
     res.json({ forms });
@@ -2426,26 +3050,30 @@ app.post("/api/patient/form-submit", requirePatientToken, async (req, res) => {
       .from("form_submissions")
       .insert({
         clinic_id,
-        patient_id:   patient_id || null,
-        visit_id:     visit_id || null,
-        link_id:      req.patient_link.id,
-        template_id:  templateId || null,
-        form_type:    formType,
-        data:         formData,
+        patient_id:      patient_id || null,
+        visit_id:        visit_id || null,
+        submitted_via:   req.patient_link.id,  // v2: submitted_via (was link_id)
+        template_id:     templateId || null,
+        form_type:       formType,              // v2: patched into 011
+        data:            formData,
         patient_lang,
+        submitted_at:    new Date().toISOString(),
+        status:          "submitted",
       })
       .select("id, submitted_at")
       .single();
 
     if (sErr) throw sErr;
 
-    // visit의 intake/consent 타임스탬프 갱신
-    const tsField = formType === "intake" ? "intake_submitted_at"
-      : formType === "consent" ? "consent_submitted_at" : null;
+    // v2: visit 완료 플래그 갱신 (intake_done / consent_done / followup_done)
+    const doneField = formType === "intake"   ? "intake_done"
+                    : formType === "consent"  ? "consent_done"
+                    : formType === "followup" ? "followup_done"
+                    : null;
 
-    if (tsField && visit_id) {
+    if (doneField && visit_id) {
       await sb.from("visits")
-        .update({ [tsField]: sub.submitted_at })
+        .update({ [doneField]: true })
         .eq("id", visit_id);
     }
 
@@ -2474,11 +3102,26 @@ app.get("*", (req, res) => {
 
 // ── 0.0.0.0 바인딩 필수 (Railway 외부 라우터 연결) ───────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ LIBHIB Dashboard on 0.0.0.0:${PORT} | Haiku=${MODEL_HAIKU.split("-").slice(-1)[0]} Sonnet=${MODEL_SONNET.split("-").slice(-1)[0]}`);
+app.listen(PORT, "0.0.0.0", async () => {
+  // ── v2: CLINIC_SLUG → UUID 해결 ────────────────────────────────────────
+  const slug = process.env.CLINIC_SLUG;
+  if (slug) {
+    const resolved = await resolveClinicSlug(slug);
+    if (resolved) {
+      CLINIC_UUID  = resolved.id;
+      _clinicInfo  = resolved;
+      console.log(`✅ Clinic resolved: "${resolved.clinic_name}" | id=${CLINIC_UUID}`);
+    } else {
+      console.error(`[FATAL] CLINIC_SLUG="${slug}" not found in clinics table — DB queries will fail`);
+      // Don't exit: let health check endpoint still respond so Railway shows a clear error
+    }
+  } else {
+    console.warn("[Startup] CLINIC_SLUG not set — clinic-scoped queries will fail");
+  }
+
+  console.log(`✅ Server on 0.0.0.0:${PORT} | Haiku=${MODEL_HAIKU.split("-").slice(-1)[0]} Sonnet=${MODEL_SONNET.split("-").slice(-1)[0]}`);
 
   // ── Phase 3: 백그라운드 서비스 시작 ─────────────────────────────────────
-  // Redis 없으면 각 모듈이 알아서 graceful degradation 처리
   try { startMessageWorker(); }      catch (e) { console.error("[Startup] messageWorker 실패:", e.message); }
   try { startAftercareScheduler(); } catch (e) { console.error("[Startup] aftercareScheduler 실패:", e.message); }
 });

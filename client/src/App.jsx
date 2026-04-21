@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import QuotePage from './pages/QuotePage';
 import OverlayPrototype from './pages/OverlayPrototype';
 import TikiRoomPage from './pages/TikiRoomPage';
+import MyTikiPortal from './pages/MyTikiPortal';
 
 export default function App() {
   return (
@@ -27,6 +28,9 @@ export default function App() {
 
           {/* Public — Tiki Room tablet prototype (no auth required) */}
           <Route path="/room" element={<TikiRoomPage />} />
+
+          {/* Public — My Tiki patient portal (magic link) */}
+          <Route path="/t/:token" element={<MyTikiPortal />} />
 
           {/* Protected — /app/* */}
           <Route

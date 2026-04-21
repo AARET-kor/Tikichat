@@ -54,8 +54,10 @@ function getSbAnon() {
 export async function requireStaffAuth(req, res, next) {
   // ── Supabase 미설정 → 개발 모드 fallback ─────────────────────────────────
   if (!process.env.SUPABASE_URL) {
-    req.clinic_id    = req.body?.clinicId ?? req.query?.clinicId ?? process.env.CLINIC_ID ?? null;
-    req.staff_role   = "owner";       // dev: 모든 권한 허용
+    // dev fallback: clinicId from body/query, or CLINIC_UUID set at startup
+    // Import CLINIC_UUID isn't possible from middleware (circular), so use env hint
+    req.clinic_id     = req.body?.clinicId ?? req.query?.clinicId ?? process.env.CLINIC_UUID_DEV ?? null;
+    req.staff_role    = "owner";       // dev: 모든 권한 허용
     req.staff_user_id = "dev";
     return next();
   }
