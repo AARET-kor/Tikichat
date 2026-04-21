@@ -2220,6 +2220,7 @@ app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
       .select(`
         id, patient_id, procedure_id, stage,
         visit_date, checked_in_at, room,
+        patient_arrived_at,
         intake_done, consent_done, followup_done,
         coordinator_id, internal_tags, notes,
         created_at, updated_at,
@@ -2309,6 +2310,7 @@ app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
       formsPending: enriched.filter(v => !v.intake_done || !v.consent_done).length,
       checkedIn:    enriched.filter(v => v.checked_in_at).length,
       activeLinks:  enriched.filter(v => v.link_status === "active" || v.link_status === "opened").length,
+      arrived:      enriched.filter(v => v.patient_arrived_at).length,
     };
 
     res.json({ visits: enriched, summary });
@@ -2951,7 +2953,7 @@ app.get("/api/patient/me", requirePatientToken, async (req, res) => {
         : Promise.resolve({ data: null }),
       visit_id
         ? sb.from("visits")
-             .select("id, procedure_id, stage, visit_date, intake_done, consent_done, followup_done, procedures ( name_ko, name_en )")
+             .select("id, procedure_id, stage, visit_date, intake_done, consent_done, followup_done, patient_arrived_at, procedures ( name_ko, name_en )")
              .eq("id", visit_id)
              .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -3081,6 +3083,62 @@ app.post("/api/patient/form-submit", requirePatientToken, async (req, res) => {
     res.json({ ok: true, id: sub.id, submitted_at: sub.submitted_at });
   } catch (err) {
     console.error("[Patient/form-submit]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/patient/arrive  — 환자 자가 도착 신호
+// 환자가 My Tiki 포털에서 "I'm here" 버튼을 탭했을 때 호출됨.
+// visits.patient_arrived_at = NOW() 기록 + patient_journey_events 이벤트 삽입.
+// 멱등: 이미 도착 신호를 보냈으면 409 반환.
+app.post("/api/patient/arrive", requirePatientToken, async (req, res) => {
+  const { clinic_id, patient_id, visit_id } = req;
+  if (!visit_id) return res.status(400).json({ error: "No visit associated with this link" });
+
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    // 이미 도착 신호를 보냈는지 확인
+    const { data: existing } = await sb
+      .from("visits")
+      .select("patient_arrived_at")
+      .eq("id", visit_id)
+      .maybeSingle();
+
+    if (existing?.patient_arrived_at) {
+      return res.status(409).json({
+        error: "Already arrived",
+        patient_arrived_at: existing.patient_arrived_at,
+      });
+    }
+
+    const arrivedAt = new Date().toISOString();
+
+    // visits.patient_arrived_at 업데이트 (멱등: 이미 설정된 경우 조건으로 방지)
+    const { error: updateErr } = await sb
+      .from("visits")
+      .update({ patient_arrived_at: arrivedAt })
+      .eq("id", visit_id)
+      .is("patient_arrived_at", null);
+
+    if (updateErr) throw updateErr;
+
+    // patient_journey_events 기록 (append-only)
+    await sb.from("patient_journey_events").insert({
+      clinic_id,
+      patient_id:  patient_id || null,
+      visit_id,
+      event_type:  "patient_arrived",
+      actor_type:  "patient",
+      actor_id:    patient_id ? String(patient_id) : null,
+      payload:     { source: "self_checkin", portal: "my_tiki" },
+    });
+
+    console.log(`[Patient/arrive] visit=${visit_id} clinic=${clinic_id} at=${arrivedAt}`);
+    res.json({ ok: true, patient_arrived_at: arrivedAt });
+  } catch (err) {
+    console.error("[Patient/arrive]", err.message);
     res.status(500).json({ error: err.message });
   }
 });

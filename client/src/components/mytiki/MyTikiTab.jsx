@@ -20,7 +20,7 @@ import {
   Users, Link2, RefreshCw, XCircle, CheckCircle2,
   AlertTriangle, Clock, Eye, Send, Plus, Search,
   ChevronRight, FileText, ClipboardCheck, Copy, Check, Loader2,
-  LogIn, DoorOpen, ChevronDown, X,
+  LogIn, DoorOpen, ChevronDown, X, Navigation,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -85,8 +85,9 @@ function normalizeVisit(v) {
     consent_done:     v.consent_done       || false,
     followup_done:    v.followup_done      || false,
     unreviewed_forms: v.unreviewed_forms   || 0,
-    checked_in_at:    v.checked_in_at      || null,
-    room:             v.room               || null,
+    checked_in_at:       v.checked_in_at      || null,
+    room:                v.room               || null,
+    patient_arrived_at:  v.patient_arrived_at || null,
   };
 }
 
@@ -106,7 +107,49 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+// ── Time helpers ──────────────────────────────────────────────────────────────
+
+function fmtAgo(iso) {
+  if (!iso) return '';
+  const diffMs  = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1)  return '방금';
+  if (diffMin < 60) return `${diffMin}분 전`;
+  const diffHr = Math.floor(diffMin / 60);
+  return `${diffHr}시간 전`;
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+// ArrivalBadge: shown when patient self-reported arrival via My Tiki portal
+function ArrivalBadge({ arrivedAt, formsReady, darkMode }) {
+  if (!arrivedAt) return null;
+  const agoLabel   = fmtAgo(arrivedAt);
+  const readyColor = '#16A34A';
+  const arrColor   = '#D09262';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+      <span
+        className="inline-flex items-center gap-0.5"
+        style={{ fontSize: 10, fontWeight: 700, color: arrColor }}
+        title={`환자 도착 신호: ${new Date(arrivedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`}
+      >
+        <Navigation size={9} strokeWidth={2.5} />
+        도착 {agoLabel}
+      </span>
+      {formsReady && (
+        <span
+          className="inline-flex items-center gap-0.5"
+          style={{ fontSize: 9, fontWeight: 700, color: readyColor }}
+        >
+          <CheckCircle2 size={9} strokeWidth={2.5} />
+          룸 준비
+        </span>
+      )}
+    </div>
+  );
+}
 
 function StageBadge({ stage, onClick }) {
   const m = STAGE_META[stage] || STAGE_META.booked;
@@ -335,6 +378,7 @@ function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction,
 
   const canGenerate = visit.link_status === 'none' || visit.link_status === 'expired';
   const canRevoke   = visit.link_status === 'active' || visit.link_status === 'opened';
+  const formsReady  = visit.intake_done && visit.consent_done;
 
   const timeLabel = fmtVisitTime(visit.visit_date, dateRange);
   const isCheckedIn = !!visit.checked_in_at;
@@ -353,6 +397,11 @@ function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction,
         <div className={`text-[10px] mt-0.5 font-medium ${isCheckedIn ? 'text-emerald-600' : textS}`}>
           {timeLabel}
         </div>
+        <ArrivalBadge
+          arrivedAt={visit.patient_arrived_at}
+          formsReady={formsReady}
+          darkMode={darkMode}
+        />
       </div>
 
       {/* Procedure */}
@@ -548,7 +597,7 @@ export default function MyTikiTab({ darkMode }) {
   const { clinicId } = useAuth();
 
   const [visits,          setVisits]          = useState([]);
-  const [summary,         setSummary]         = useState({ total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0 });
+  const [summary,         setSummary]         = useState({ total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0 });
   const [loading,         setLoading]         = useState(true);
   const [fetchError,      setFetchError]      = useState(null);
   const [search,          setSearch]          = useState('');
@@ -585,7 +634,7 @@ export default function MyTikiTab({ darkMode }) {
       }
       const data = await res.json();
       setVisits((data.visits || []).map(normalizeVisit));
-      setSummary(data.summary || { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0 });
+      setSummary(data.summary || { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0 });
     } catch (err) {
       setFetchError(err.message);
     } finally {
@@ -711,11 +760,12 @@ export default function MyTikiTab({ darkMode }) {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
+        <div className="grid grid-cols-5 gap-2 mt-4">
           <SummaryCard label="방문 수"     value={loading ? '…' : summary.total}        color={TEAL}    sub={dateRange === 'today' ? '오늘' : DATE_RANGES.find(d => d.key === dateRange)?.label} darkMode={darkMode} />
-          <SummaryCard label="폼 미완료"   value={loading ? '…' : summary.formsPending}  color="#D09262" sub="문진 또는 동의서" darkMode={darkMode} />
-          <SummaryCard label="체크인 완료" value={loading ? '…' : summary.checkedIn}     color={SAGE}    sub="도착 확인됨"     darkMode={darkMode} />
-          <SummaryCard label="활성 링크"   value={loading ? '…' : summary.activeLinks}   color="#5B72A8" sub="발송됨 + 열람됨"  darkMode={darkMode} />
+          <SummaryCard label="폼 미완료"   value={loading ? '…' : summary.formsPending}  color="#D09262" sub="문진·동의서"      darkMode={darkMode} />
+          <SummaryCard label="도착 신호"   value={loading ? '…' : summary.arrived}       color="#D09262" sub="환자 자가 도착"   darkMode={darkMode} />
+          <SummaryCard label="체크인 완료" value={loading ? '…' : summary.checkedIn}     color={SAGE}    sub="데스크 확인"     darkMode={darkMode} />
+          <SummaryCard label="활성 링크"   value={loading ? '…' : summary.activeLinks}   color="#5B72A8" sub="발송·열람됨"     darkMode={darkMode} />
         </div>
       </div>
 

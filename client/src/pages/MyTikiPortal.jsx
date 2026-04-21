@@ -19,6 +19,7 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, MapPin, ChevronRight, ChevronLeft,
   FileText, Loader2, AlertTriangle, ClipboardCheck,
+  Navigation,
 } from 'lucide-react';
 
 // ── Design tokens ─────────────────────────────────────────────
@@ -91,6 +92,14 @@ const I18N = {
     contactStaff:   '문의사항이 있으시면 병원으로 연락해 주세요.',
     loadingPortal:  '포털을 불러오는 중…',
     duplicateForm:  '이미 제출된 서류입니다.',
+    arrivalCard:    '오늘 내원하셨나요?',
+    arrivalSub:     '버튼을 탭하면 코디네이터에게 도착 알림이 전송됩니다',
+    arrivalBtn:     '저 왔어요!',
+    arrivalSending: '전송 중…',
+    arrivedTitle:   '도착 알림을 보냈습니다 ✓',
+    arrivedSub:     '코디네이터가 곧 안내해 드릴 것입니다',
+    showFrontDesk:  '프런트 데스크에 아래 화면을 보여주세요',
+    phrase:         '저 왔어요. 예약했어요.',
   },
   en: {
     greeting:       (name) => `Hello, ${name} 👋`,
@@ -134,6 +143,14 @@ const I18N = {
     contactStaff:   'Please contact the clinic if you need assistance.',
     loadingPortal:  'Loading your portal…',
     duplicateForm:  'This form has already been submitted.',
+    arrivalCard:    'Have you arrived today?',
+    arrivalSub:     'Tap the button to notify the coordinator of your arrival',
+    arrivalBtn:     "I'm here!",
+    arrivalSending: 'Notifying…',
+    arrivedTitle:   'Arrival confirmed ✓',
+    arrivedSub:     'The coordinator will be with you shortly',
+    showFrontDesk:  'Show this screen to the front desk',
+    phrase:         "I'm here for my appointment.",
   },
   ja: {
     greeting:       (name) => `こんにちは、${name}様 👋`,
@@ -177,6 +194,14 @@ const I18N = {
     contactStaff:   'ご不明な点はクリニックまでご連絡ください。',
     loadingPortal:  'ポータルを読み込んでいます…',
     duplicateForm:  'この書類はすでに提出済みです。',
+    arrivalCard:    '本日ご来院されましたか？',
+    arrivalSub:     'ボタンをタップすると、担当者に到着通知が送られます',
+    arrivalBtn:     '来ました！',
+    arrivalSending: '送信中…',
+    arrivedTitle:   '到着通知を送りました ✓',
+    arrivedSub:     'スタッフがすぐにご案内いたします',
+    showFrontDesk:  '受付に以下の画面をお見せください',
+    phrase:         '予約の時間に来ました。',
   },
   zh: {
     greeting:       (name) => `您好，${name} 👋`,
@@ -220,6 +245,14 @@ const I18N = {
     contactStaff:   '如有疑问，请联系诊所。',
     loadingPortal:  '正在加载…',
     duplicateForm:  '此表格已提交。',
+    arrivalCard:    '您今天来了吗？',
+    arrivalSub:     '点击按钮，通知工作人员您已到达',
+    arrivalBtn:     '我到了！',
+    arrivalSending: '发送中…',
+    arrivedTitle:   '已发送到达通知 ✓',
+    arrivedSub:     '工作人员将很快为您服务',
+    showFrontDesk:  '请将以下内容展示给前台',
+    phrase:         '我来了，我有预约。',
   },
 };
 
@@ -310,9 +343,171 @@ function LoadingScreen({ lang = 'ko' }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Arrival Card (Phase 5)
+// Shows when visit_date === today and patient hasn't arrived yet.
+// After tap: sends POST /api/patient/arrive and shows translation strip.
+// ═══════════════════════════════════════════════════════════════
+
+// Multilingual check-in phrases (all 4 in one card for staff)
+const ARRIVAL_PHRASES = [
+  { flag: '🇰🇷', lang: 'ko', text: '저 왔어요. 예약했어요.' },
+  { flag: '🇺🇸', lang: 'en', text: "I'm here for my appointment." },
+  { flag: '🇯🇵', lang: 'ja', text: '予約の時間に来ました。' },
+  { flag: '🇨🇳', lang: 'zh', text: '我来了，我有预约。' },
+];
+
+function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
+  const [phase, setPhase] = useState('idle'); // idle | sending | done | error
+  const api = patientApi(token);
+
+  // If already arrived (from server), jump straight to done display
+  const effectivelyArrived = arrivedAt || phase === 'done';
+
+  async function handleArrive() {
+    if (phase === 'sending') return;
+    setPhase('sending');
+    try {
+      const resp = await api.post('/api/patient/arrive', {});
+      if (resp.ok || resp.status === 409) {
+        const ts = resp.data?.patient_arrived_at || new Date().toISOString();
+        setPhase('done');
+        onArrived(ts);
+      } else {
+        setPhase('error');
+      }
+    } catch {
+      setPhase('error');
+    }
+  }
+
+  // ── Arrived: show translation strip ──────────────────────────
+  if (effectivelyArrived) {
+    return (
+      <div style={{
+        margin: '0 0 4px',
+        borderRadius: 18,
+        overflow: 'hidden',
+        border: `1px solid ${C.success}30`,
+        background: C.successPale,
+      }}>
+        {/* Confirmed banner */}
+        <div style={{
+          padding: '16px 20px 12px',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+            background: C.success + '18',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <CheckCircle2 size={22} color={C.success} />
+          </div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: C.success, lineHeight: 1.2 }}>
+              {tx(lang, 'arrivedTitle')}
+            </p>
+            <p style={{ fontSize: 12, color: C.textSub, marginTop: 2 }}>
+              {tx(lang, 'arrivedSub')}
+            </p>
+          </div>
+        </div>
+
+        {/* Translation strip — show to front desk */}
+        <div style={{
+          margin: '0 12px 12px',
+          borderRadius: 12,
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            padding: '8px 14px',
+            background: C.teal,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <Navigation size={11} color="#fff" strokeWidth={2.5} />
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: '0.03em' }}>
+              {tx(lang, 'showFrontDesk')}
+            </p>
+          </div>
+          <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {ARRIVAL_PHRASES.map(({ flag, lang: pLang, text }) => (
+              <div key={pLang} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{flag}</span>
+                <p style={{
+                  fontSize: pLang === lang ? 16 : 13,
+                  fontWeight: pLang === lang ? 700 : 400,
+                  color: pLang === lang ? C.text : C.textSub,
+                  lineHeight: 1.4,
+                }}>
+                  {text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Not yet arrived: show "I'm here" button ───────────────────
+  return (
+    <div style={{
+      margin: '0 0 4px',
+      borderRadius: 18,
+      background: C.tealPale,
+      border: `1px solid ${C.teal}25`,
+      padding: '20px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          background: C.teal + '20',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Navigation size={20} color={C.teal} strokeWidth={2} />
+        </div>
+        <div>
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.tealDark, lineHeight: 1.2 }}>
+            {tx(lang, 'arrivalCard')}
+          </p>
+          <p style={{ fontSize: 12, color: C.textSub, marginTop: 2, lineHeight: 1.4 }}>
+            {tx(lang, 'arrivalSub')}
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={handleArrive}
+        disabled={phase === 'sending'}
+        style={{
+          width: '100%', padding: '14px 20px', borderRadius: 14, border: 'none',
+          background: phase === 'sending' ? C.teal + '80' : C.teal,
+          color: '#fff', fontSize: 16, fontWeight: 700,
+          cursor: phase === 'sending' ? 'default' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          boxShadow: `0 2px 12px ${C.teal}40`,
+          transition: 'opacity 0.2s',
+        }}
+      >
+        {phase === 'sending' && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+        {tx(lang, phase === 'sending' ? 'arrivalSending' : 'arrivalBtn')}
+      </button>
+
+      {phase === 'error' && (
+        <p style={{ fontSize: 12, color: C.error, textAlign: 'center' }}>
+          {tx(lang, 'errorGeneric')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Journey Tab
 // ═══════════════════════════════════════════════════════════════
-function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus }) {
+function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus, arrivedAt, onArrived, token }) {
   const stage       = visit?.stage || 'booked';
   const stageIdx    = STAGES.indexOf(stage);
   const patientName = patient?.name || '';
@@ -320,6 +515,17 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus }) 
     ? visit.procedures.name_en
     : visit?.procedures?.name_ko || null;
   const visitDate   = visit?.visit_date;
+
+  // Show ArrivalCard only when visit_date is today (local calendar day)
+  const isToday = (() => {
+    if (!visitDate) return false;
+    const vd   = new Date(visitDate);
+    const now  = new Date();
+    return vd.getFullYear() === now.getFullYear()
+        && vd.getMonth()    === now.getMonth()
+        && vd.getDate()     === now.getDate();
+  })();
+  const showArrival = isToday && visit;
 
   // Next-step call to action
   let ctaMsg = null;
@@ -338,6 +544,16 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus }) 
 
   return (
     <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* Arrival Card (today only) */}
+      {showArrival && (
+        <ArrivalCard
+          lang={lang}
+          token={token}
+          arrivedAt={arrivedAt}
+          onArrived={onArrived}
+        />
+      )}
 
       {/* Greeting */}
       <div>
@@ -973,14 +1189,15 @@ export default function MyTikiPortal() {
   const { token } = useParams();
 
   // ── State ─────────────────────────────────────────────────────
-  const [phase,   setPhase]   = useState('loading'); // loading | error | ready
-  const [errType, setErrType] = useState(null);      // invalid | expired | revoked | generic
-  const [lang,    setLang]    = useState('ko');
-  const [patient, setPatient] = useState(null);
-  const [visit,   setVisit]   = useState(null);
-  const [clinic,  setClinic]  = useState(null);
-  const [forms,   setForms]   = useState([]);
-  const [tab,     setTab]     = useState('journey'); // journey | forms
+  const [phase,     setPhase]     = useState('loading'); // loading | error | ready
+  const [errType,   setErrType]   = useState(null);      // invalid | expired | revoked | generic
+  const [lang,      setLang]      = useState('ko');
+  const [patient,   setPatient]   = useState(null);
+  const [visit,     setVisit]     = useState(null);
+  const [clinic,    setClinic]    = useState(null);
+  const [forms,     setForms]     = useState([]);
+  const [tab,       setTab]       = useState('journey'); // journey | forms
+  const [arrivedAt, setArrivedAt] = useState(null);     // patient_arrived_at ISO string or null
 
   // ── Bootstrap — fetch patient context + forms ─────────────────
   const api = patientApi(token);
@@ -1006,6 +1223,7 @@ export default function MyTikiPortal() {
       setPatient(meRes.data?.patient || null);
       setVisit(meRes.data?.visit   || null);
       setClinic(meRes.data?.clinic  || null);
+      setArrivedAt(meRes.data?.visit?.patient_arrived_at || null);
 
       // Fetch forms in parallel (don't block portal render on form error)
       const formsRes = await api.get('/api/patient/forms');
@@ -1104,6 +1322,9 @@ export default function MyTikiPortal() {
             lang={lang}
             formsStatus={formsStatus}
             onGoToForms={() => setTab('forms')}
+            arrivedAt={arrivedAt}
+            onArrived={setArrivedAt}
+            token={token}
           />
         )}
         {tab === 'forms' && (
