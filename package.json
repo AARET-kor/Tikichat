@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "cd client && npm install && npm run build",
+    "test": "node --test",
     "start": "node server.js",
     "dev": "node --watch server.js"
   },

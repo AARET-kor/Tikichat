@@ -16,7 +16,7 @@
  *   onCreated(normalizedVisit) — refresh parent after success
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, Loader2, Check, Copy, Link2, AlertTriangle, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import IntakeParser from '../shared/IntakeParser';
@@ -62,6 +62,9 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
   const [copied,    setCopied]    = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);   // store for retry
   const [savedVisit,   setSavedVisit]   = useState(null);
+  const [procedureOptions, setProcedureOptions] = useState([]);
+  const [selectedProcedureId, setSelectedProcedureId] = useState('');
+  const [parserAuthHeaders, setParserAuthHeaders] = useState({ 'Content-Type': 'application/json' });
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const overlay   = darkMode ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.55)';
@@ -70,6 +73,33 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
   const border    = darkMode ? '#3F3F46' : '#E5E7EB';
   const textP     = darkMode ? '#F4F4F5' : '#111827';
   const textS     = darkMode ? '#A1A1AA' : '#6B7280';
+
+  useEffect(() => {
+    let active = true;
+    async function loadHeaders() {
+      try {
+        const headers = await getAuthHeaders();
+        if (active) setParserAuthHeaders(headers);
+      } catch {
+        if (active) setParserAuthHeaders({ 'Content-Type': 'application/json' });
+      }
+    }
+    async function loadProcedures() {
+      if (!clinicId) return;
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/clinic-procedures?clinic_id=${encodeURIComponent(clinicId)}`, { headers });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (active) setProcedureOptions(data.procedures || []);
+      } catch {
+        if (active) setProcedureOptions([]);
+      }
+    }
+    loadHeaders();
+    loadProcedures();
+    return () => { active = false; };
+  }, [clinicId]);
 
   // ── Creation flow ──────────────────────────────────────────────────────────
   const create = useCallback(async (patient, visit) => {
@@ -111,6 +141,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
         headers,
         body: JSON.stringify({
           patientId,
+          procedureId: visit.procedure_id || null,
           visitDate:  visit.visit_date    || null,
           notes:      visit.internal_notes || null,
         }),
@@ -147,12 +178,15 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
         onCreated({
           id:               visitId,
           patient_id:       patientId,
+          procedure_id:     visit.procedure_id || null,
           patients: {
             name:  patient.name,
             flag:  langToFlag(patient.lang, patient.nationality),
             lang:  patient.lang || 'ko',
           },
-          procedures:       null,
+          procedures:       visit.procedure_id
+            ? procedureOptions.find((procedure) => procedure.id === visit.procedure_id) || null
+            : null,
           visit_date:       visit.visit_date || null,
           stage:            'booked',
           link_status:      'active',
@@ -172,12 +206,13 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
       setErrMsg(err.message);
       setStep('error');
     }
-  }, [clinicId, onCreated]);
+  }, [clinicId, onCreated, procedureOptions]);
 
   function retry() {
     if (savedPatient && savedVisit) {
-      create(savedPatient, savedVisit);
+      create(savedPatient, { ...savedVisit, procedure_id: selectedProcedureId || null });
     } else {
+      setSelectedProcedureId('');
       setStep('parse');
     }
   }
@@ -249,8 +284,11 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
           {/* Step: parse */}
           {step === 'parse' && (
             <IntakeParser
-              authHeaders={{ 'Content-Type': 'application/json' }}
-              onConfirm={create}
+              authHeaders={parserAuthHeaders}
+              procedureOptions={procedureOptions}
+              selectedProcedureId={selectedProcedureId}
+              onProcedureChange={setSelectedProcedureId}
+              onConfirm={(patient, visit) => create(patient, { ...visit, procedure_id: selectedProcedureId || null })}
               onCancel={onClose}
               darkMode={darkMode}
               mode="full"

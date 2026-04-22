@@ -6,6 +6,7 @@ import {
   TrendingUp, Save, Search, UserPlus, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -609,9 +610,13 @@ function SaveToMemoryBar({ result, input, clinicId }) {
   const doSave = async (patient) => {
     setPhase('saving');
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
       const r = await fetch('/api/memory', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           patientId:          patient.id,
           clinicId:           clinicId || undefined,

@@ -1,155 +1,117 @@
-/**
- * src/scheduler/aftercare.js
- * BullMQ Repeat Job — 매일 오전 10시 (KST) 애프터케어 자동 발송
- *
- * node-cron 대신 BullMQ Repeat Job 사용:
- *   - 서버 재시작에도 스케줄 유지 (Redis에 상태 저장)
- *   - 실패 시 자동 재시도
- *   - 실행 이력 audit_logs 기록
- *
- * patients 테이블 필요 컬럼 (Supabase SQL Editor에서 실행):
- * ─────────────────────────────────────────────────────────────
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS last_procedure_date DATE;
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS needs_d1_care BOOLEAN DEFAULT false;
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS needs_d3_care BOOLEAN DEFAULT false;
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS needs_d7_care BOOLEAN DEFAULT false;
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS preferred_channel TEXT DEFAULT 'kakao'; -- kakao|whatsapp|instagram
- * ALTER TABLE patients ADD COLUMN IF NOT EXISTS clinic_id TEXT;
- * ─────────────────────────────────────────────────────────────
- */
+import { Worker } from "bullmq";
+import { createClient } from "@supabase/supabase-js";
+import { aftercareQueue, redisConnection } from "../lib/queue.js";
+import {
+  deliverDueAftercareEvents,
+  ensureAftercareRunForVisit,
+  markDueAftercareEvents,
+} from "../lib/aftercare-service.js";
 
-import { Worker }               from "bullmq";
-import { aftercareQueue, redisConnection, safeEnqueue, messageQueue } from "../lib/queue.js";
-import { getSupabaseAdmin, writeAuditLog } from "../lib/supabase-server.js";
+const HOURLY_PATTERN = "0 * * * *";
+const TIMEZONE = "Asia/Seoul";
 
-const CRON_10AM_KST = "0 10 * * *"; // 매일 오전 10시
-const TIMEZONE      = "Asia/Seoul";
-const CLINIC_ID     = process.env.CLINIC_ID || null;
-
-// ── 애프터케어 스케줄 등록 (서버 시작 시 1회 호출) ──────────────────────
-export async function startAftercareScheduler() {
-  if (!aftercareQueue) {
-    console.warn("[Scheduler] Redis 미연결 — aftercare 스케줄러 비활성화");
-    return;
-  }
-
-  // 기존 반복 작업 중복 방지 (동일 name + cron 패턴이면 재등록 안 함)
-  const existing = await aftercareQueue.getRepeatableJobs();
-  const alreadySet = existing.some(j => j.name === "daily-aftercare-scan");
-
-  if (!alreadySet) {
-    await aftercareQueue.add(
-      "daily-aftercare-scan",
-      { clinicId: CLINIC_ID, scheduledAt: null }, // scheduledAt은 실행 시점에 채움
-      {
-        repeat: {
-          pattern: CRON_10AM_KST,
-          tz:      TIMEZONE,
-        },
-        removeOnComplete: true,
-        removeOnFail:     { count: 30 },
-      }
-    );
-    console.log("[Scheduler] ✅ aftercare repeat job 등록 완료 (매일 10:00 KST)");
-  } else {
-    console.log("[Scheduler] aftercare repeat job 이미 등록됨 — 스킵");
-  }
-
-  startAftercareWorker();
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL || "";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (!url || !serviceRoleKey) return null;
+  return createClient(url, serviceRoleKey, { auth: { persistSession: false } });
 }
 
-// ── 애프터케어 Worker ────────────────────────────────────────────────────
+async function sweepAftercareDueEvents(sb, clinicId) {
+  const nowIso = new Date().toISOString();
+
+  let visitQuery = sb
+    .from("visits")
+    .select(`
+      id, clinic_id, patient_id, procedure_id, stage, visit_date, room_cleared_at, updated_at,
+      procedures ( id, name_ko, name_en )
+    `)
+    .not("procedure_id", "is", null)
+    .lte("visit_date", nowIso)
+    .order("visit_date", { ascending: false })
+    .limit(500);
+
+  if (clinicId) visitQuery = visitQuery.eq("clinic_id", clinicId);
+
+  const { data: visits, error: visitError } = await visitQuery;
+  if (visitError) throw visitError;
+
+  let runCount = 0;
+  let dueCount = 0;
+
+  for (const visit of visits || []) {
+    const run = await ensureAftercareRunForVisit(sb, visit.clinic_id, visit.patient_id, visit);
+    if (!run) continue;
+    runCount += 1;
+    dueCount += await markDueAftercareEvents(sb, run.id);
+  }
+
+  const sentCount = await deliverDueAftercareEvents(sb, clinicId);
+
+  return {
+    scanned_visits: (visits || []).length,
+    active_runs: runCount,
+    newly_due_events: dueCount,
+    sent_events: sentCount,
+  };
+}
+
 function startAftercareWorker() {
   if (!redisConnection) return;
 
   const worker = new Worker(
     "tikidoc-aftercare",
     async (job) => {
-      const clinicId = job.data.clinicId || CLINIC_ID;
-      const now      = new Date();
-      const today    = toKSTDateString(now);
-
-      console.log(`[Aftercare] 실행 시작 — ${today} (clinicId=${clinicId})`);
-
-      // ── 애프터케어 대상 환자 조회 ──────────────────────────────────
-      // needs_d1_care, needs_d3_care, needs_d7_care 중 하나라도 true인 환자
-      const { data: patients, error } = await getSupabaseAdmin()
-        .from("patients")
-        .select("id, name, phone, instagram_id, preferred_channel, preferred_lang, procedure_id, clinic_id, needs_d1_care, needs_d3_care, needs_d7_care")
-        .eq("clinic_id", clinicId)      // ← RLS 명시적 강제
-        .or("needs_d1_care.eq.true,needs_d3_care.eq.true,needs_d7_care.eq.true");
-
-      if (error) {
-        console.error("[Aftercare] 환자 조회 실패:", error.message);
-        throw error; // BullMQ 재시도 유도
-      }
-
-      if (!patients?.length) {
-        console.log("[Aftercare] 오늘 대상 환자 없음");
+      const clinicId = job.data?.clinicId || null;
+      const sb = getSupabaseAdmin();
+      if (!sb) {
+        console.warn("[Aftercare Scheduler] Supabase env missing; skipping");
         return;
       }
 
-      console.log(`[Aftercare] 대상 환자 ${patients.length}명 처리 시작`);
-
-      for (const patient of patients) {
-        const day = patient.needs_d1_care ? 1 : patient.needs_d3_care ? 3 : 7;
-        await safeEnqueue(messageQueue, "aftercare-message", {
-          type:      "aftercare",
-          clinicId:  patient.clinic_id,
-          patientId: patient.id,
-          phone:     patient.phone,
-          igId:      patient.instagram_id,
-          channel:   patient.preferred_channel || "kakao",
-          lang:      patient.preferred_lang    || "ko",
-          procedureId: patient.procedure_id,
-          day,
-        });
-
-        // flags 초기화 (발송 예약됨 → false)
-        const updateFields = {};
-        if (day === 1) updateFields.needs_d1_care = false;
-        if (day === 3) updateFields.needs_d3_care = false;
-        if (day === 7) updateFields.needs_d7_care = false;
-
-        await getSupabaseAdmin()
-          .from("patients")
-          .update(updateFields)
-          .eq("id", patient.id)
-          .eq("clinic_id", clinicId); // 이중 RLS 보장
-      }
-
-      await writeAuditLog({
-        eventType:  "aftercare_schedule",
-        clinicId,
-        direction:  "outbound",
-        status:     "success",
-        durationMs: Date.now() - now.getTime(),
-      });
-
-      console.log(`[Aftercare] ✅ ${patients.length}명 큐 투입 완료`);
+      const result = await sweepAftercareDueEvents(sb, clinicId);
+      console.log(`[Aftercare Scheduler] scanned=${result.scanned_visits} runs=${result.active_runs} due=${result.newly_due_events} sent=${result.sent_events}`);
     },
     {
-      connection:  redisConnection,
-      concurrency: 1,  // 스케줄러 작업은 직렬 처리
+      connection: redisConnection,
+      concurrency: 1,
     }
   );
 
-  worker.on("failed", (job, err) =>
-    console.error("[Aftercare Worker] 실패:", err.message)
-  );
-  worker.on("error", (err) =>
-    console.error("[Aftercare Worker] 오류:", err.message)
-  );
-
-  console.log("[Scheduler] 🔁 aftercareWorker 시작");
+  worker.on("failed", (_job, err) => {
+    console.error("[Aftercare Scheduler] failed:", err.message);
+  });
+  worker.on("error", (err) => {
+    console.error("[Aftercare Scheduler] error:", err.message);
+  });
 }
 
-// ── KST 날짜 문자열 (YYYY-MM-DD) ─────────────────────────────────────
-function toKSTDateString(date) {
-  return date.toLocaleDateString("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year:  "numeric",
-    month: "2-digit",
-    day:   "2-digit",
-  }).replace(/\. /g, "-").replace(".", "");
+export async function startAftercareScheduler() {
+  if (!aftercareQueue) {
+    console.warn("[Aftercare Scheduler] Redis unavailable; due events stay lazy-loaded via patient/staff reads");
+    return;
+  }
+
+  const existing = await aftercareQueue.getRepeatableJobs();
+  const alreadySet = existing.some((job) => job.name === "aftercare-due-scan");
+
+  if (!alreadySet) {
+    await aftercareQueue.add(
+      "aftercare-due-scan",
+      { clinicId: process.env.CLINIC_UUID || null },
+      {
+        repeat: {
+          pattern: HOURLY_PATTERN,
+          tz: TIMEZONE,
+        },
+        removeOnComplete: true,
+        removeOnFail: { count: 30 },
+      }
+    );
+    console.log("[Aftercare Scheduler] hourly due-scan registered");
+  }
+
+  startAftercareWorker();
 }
+
+export { sweepAftercareDueEvents };

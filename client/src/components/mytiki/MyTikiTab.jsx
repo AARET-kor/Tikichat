@@ -20,12 +20,14 @@ import {
   Users, Link2, RefreshCw, XCircle, CheckCircle2,
   AlertTriangle, Clock, Eye, Send, Plus, Search,
   ChevronRight, FileText, ClipboardCheck, Copy, Check, Loader2,
-  LogIn, DoorOpen, ChevronDown, X, Navigation,
+  LogIn, DoorOpen, ChevronDown, X, Navigation, UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import QuickVisitCreate from './QuickVisitCreate';
 import CsvImportModal   from './CsvImportModal';
+import { deriveArrivalFlowState } from '../../lib/opsBoardArrival';
+import { buildQrImageUrl, shouldPollOpsBoard } from '../../lib/opsLite';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
 const TEAL = '#4E8FA0';
@@ -60,6 +62,62 @@ const DATE_RANGES = [
   { key: 'all',      label: '전체' },
 ];
 
+const ESCALATION_TYPE_LABELS = {
+  simple_logistics: '단순 운영 문의',
+  billing_or_booking: '예약·결제 문의',
+  symptom_concern: '증상 문의',
+  aftercare_concern: '사후관리 문의',
+  urgent_risk: '긴급 위험',
+  doctor_required: '의료진 확인 필요',
+};
+
+const ESCALATION_STATUS_LABELS = {
+  requested: '요청됨',
+  assigned: '배정됨',
+  acknowledged: '확인 중',
+  responded: '답변 처리',
+  resolved: '해결됨',
+  closed: '종료됨',
+};
+
+const ESCALATION_PRIORITY_META = {
+  low:    { label: '낮음', color: '#6B7280', bg: '#F3F4F6' },
+  normal: { label: '보통', color: '#5B72A8', bg: '#EEF2FF' },
+  high:   { label: '높음', color: '#D09262', bg: '#FFF7ED' },
+  urgent: { label: '긴급', color: '#DC2626', bg: '#FEF2F2' },
+};
+
+const ESCALATION_ROLE_LABELS = {
+  coordinator: '코디네이터',
+  nurse: '간호팀',
+  doctor: '의료진',
+  front_desk: '프런트',
+};
+
+const ROOM_TYPE_LABELS = {
+  consultation: '상담실',
+  vip: 'VIP',
+  procedure: '시술실',
+  care: '케어실',
+  other: '기타',
+};
+
+const AFTERCARE_FILTER_LABELS = {
+  all: '전체',
+  due: '응답 대기',
+  responded: '응답 완료',
+  concern: '주의',
+  urgent: '긴급',
+  safe_for_return: '리턴 가능',
+};
+
+const AFTERCARE_RISK_META = {
+  normal:  { label: '정상', color: '#16A34A', bg: '#F0FDF4' },
+  watch:   { label: '관찰', color: '#D97706', bg: '#FFFBEB' },
+  concern: { label: '주의', color: '#D09262', bg: '#FFF7ED' },
+  urgent:  { label: '긴급', color: '#DC2626', bg: '#FEF2F2' },
+};
+
 // ── Auth helper ──────────────────────────────────────────────────────────────
 async function authHeaders() {
   const { data: { session: sb } } = await supabase.auth.getSession();
@@ -87,8 +145,21 @@ function normalizeVisit(v) {
     unreviewed_forms: v.unreviewed_forms   || 0,
     checked_in_at:       v.checked_in_at      || null,
     room:                v.room               || null,
+    room_id:             v.room_id            || null,
+    room_assigned_at:    v.room_assigned_at   || null,
+    room_cleared_at:     v.room_cleared_at    || null,
+    room_type:           v.room_type          || v.rooms?.room_type || null,
     patient_arrived_at:  v.patient_arrived_at || null,
   };
+}
+
+function isVisitRoomReadyForOps(visit) {
+  return Boolean(
+    visit.checked_in_at &&
+    visit.intake_done &&
+    visit.consent_done &&
+    ['pre_visit', 'treatment', 'post_care'].includes(visit.stage),
+  );
 }
 
 // ── Time / date formatting ────────────────────────────────────────────────────
@@ -122,11 +193,17 @@ function fmtAgo(iso) {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 // ArrivalBadge: shown when patient self-reported arrival via My Tiki portal
-function ArrivalBadge({ arrivedAt, formsReady, darkMode }) {
+function ArrivalBadge({ arrivedAt, checkedInAt, formsReady, darkMode }) {
   if (!arrivedAt) return null;
   const agoLabel   = fmtAgo(arrivedAt);
   const readyColor = '#16A34A';
   const arrColor   = '#D09262';
+  const state = deriveArrivalFlowState({
+    patient_arrived_at: arrivedAt,
+    checked_in_at: checkedInAt,
+    intake_done: formsReady,
+    consent_done: formsReady,
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
@@ -138,7 +215,25 @@ function ArrivalBadge({ arrivedAt, formsReady, darkMode }) {
         <Navigation size={9} strokeWidth={2.5} />
         도착 {agoLabel}
       </span>
-      {formsReady && (
+      {state === 'desk_confirmation' && (
+        <span
+          className="inline-flex items-center gap-0.5"
+          style={{ fontSize: 9, fontWeight: 700, color: '#B45309' }}
+        >
+          <LogIn size={9} strokeWidth={2.5} />
+          데스크 확인 필요
+        </span>
+      )}
+      {state === 'forms_pending' && (
+        <span
+          className="inline-flex items-center gap-0.5"
+          style={{ fontSize: 9, fontWeight: 700, color: '#D09262' }}
+        >
+          <FileText size={9} strokeWidth={2.5} />
+          서류 확인 필요
+        </span>
+      )}
+      {state === 'room_ready' && (
         <span
           className="inline-flex items-center gap-0.5"
           style={{ fontSize: 9, fontWeight: 700, color: readyColor }}
@@ -228,73 +323,243 @@ function CheckInCell({ visitId, checkedInAt, loading, darkMode, onCheckIn }) {
   );
 }
 
-// ── RoomCell — inline edit ───────────────────────────────────────────────────
-function RoomCell({ visitId, room, darkMode, onRoomChange }) {
-  const [editing, setEditing] = useState(false);
-  const [val,     setVal]     = useState(room || '');
-  const inputRef = useRef(null);
+function RoomAssignmentCell({
+  visit,
+  rooms,
+  assigning,
+  darkMode,
+  onAssignRoom,
+  onClearRoom,
+}) {
+  const freeRooms = (rooms || []).filter((room) => room.occupancy_state === 'free' || room.id === visit.room_id);
+  const roomReady = isVisitRoomReadyForOps(visit);
+  const alternateRooms = freeRooms.filter((room) => room.id !== visit.room_id).slice(0, 2);
 
-  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
-  useEffect(() => { setVal(room || ''); }, [room]);
-
-  async function save() {
-    setEditing(false);
-    const trimmed = val.trim() || null;
-    if (trimmed === (room || null)) return;
-    try {
-      const headers = await authHeaders();
-      const res = await fetch(`/api/my-tiki/visits/${visitId}/room`, {
-        method: 'PATCH', headers,
-        body: JSON.stringify({ room: trimmed }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      onRoomChange(visitId, trimmed);
-    } catch {
-      setVal(room || '');
-    }
+  if (visit.room) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold" style={{ color: TEAL }}>
+          <DoorOpen size={10} />
+          {visit.room}
+        </span>
+        <div className="flex flex-wrap gap-1">
+          {alternateRooms.map((room) => (
+            <button
+              key={room.id}
+              onClick={() => onAssignRoom(visit.id, room.id)}
+              disabled={assigning}
+              className="px-1.5 py-0.5 rounded-md text-[9px] font-bold border disabled:opacity-50"
+              style={{ borderColor: `${TEAL}50`, color: TEAL, background: darkMode ? '#18181B' : '#F8FCFD' }}
+            >
+              {room.name}
+            </button>
+          ))}
+          <button
+            onClick={() => onClearRoom(visit.id)}
+            disabled={assigning}
+            className="px-1.5 py-0.5 rounded-md text-[9px] font-bold border disabled:opacity-50"
+            style={{ borderColor: '#FCA5A5', color: '#DC2626', background: darkMode ? '#1C1917' : '#FEF2F2' }}
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    );
   }
 
-  function cancel() { setEditing(false); setVal(room || ''); }
-
-  const roomColor = room ? TEAL : '#9CA3AF';
-
-  if (editing) {
+  if (!roomReady) {
     return (
-      <input
-        ref={inputRef}
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        onBlur={save}
-        onKeyDown={e => {
-          if (e.key === 'Enter') save();
-          if (e.key === 'Escape') cancel();
-        }}
-        placeholder="방 이름"
-        maxLength={20}
-        className="w-16 text-[11px] px-1.5 py-0.5 rounded border outline-none"
-        style={{
-          borderColor: TEAL,
-          background: darkMode ? '#27272A' : '#fff',
-          color: darkMode ? '#F4F4F5' : '#111827',
-          fontFamily: F.sans,
-        }}
-      />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] font-semibold text-zinc-400">대기</span>
+        <span className="text-[9px] text-zinc-400">
+          {!visit.checked_in_at ? '체크인 필요' : !visit.intake_done || !visit.consent_done ? '서류 완료 필요' : '단계 대기'}
+        </span>
+      </div>
     );
   }
 
   return (
-    <button
-      onClick={() => setEditing(true)}
-      className="flex items-center gap-0.5 text-[10px] font-semibold transition-colors rounded px-1 py-0.5 hover:bg-black/5"
-      style={{ color: roomColor }}
-      title={room ? '방 변경' : '방 배정'}
-    >
-      {room ? (
-        <><DoorOpen size={10} /> {room}</>
+    <div className="flex flex-col gap-1">
+      <span className="text-[9px] font-bold" style={{ color: '#16A34A' }}>룸 배정 가능</span>
+      <div className="flex flex-wrap gap-1">
+        {freeRooms.slice(0, 2).map((room) => (
+          <button
+            key={room.id}
+            onClick={() => onAssignRoom(visit.id, room.id)}
+            disabled={assigning}
+            className="px-1.5 py-0.5 rounded-md text-[9px] font-bold text-white disabled:opacity-50"
+            style={{ background: TEAL }}
+          >
+            {room.name}
+          </button>
+        ))}
+        {freeRooms.length === 0 && (
+          <span className="text-[9px] font-semibold text-zinc-400">빈 방 없음</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RoomTrafficCard({ room, queueVisit, darkMode, busy, onAssignRoom, onClearRoom }) {
+  const occupied = room.occupancy_state === 'occupied';
+  const currentVisit = room.current_visit;
+  const procedureName = currentVisit?.procedures?.name_ko || currentVisit?.procedures?.name_en || '방문 컨텍스트 없음';
+
+  return (
+    <div className={`rounded-2xl border p-4 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className={`text-[11px] font-semibold ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>{ROOM_TYPE_LABELS[room.room_type] || '진료실'}</p>
+          <p className={`text-sm font-bold mt-0.5 ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>{room.name}</p>
+        </div>
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold"
+          style={occupied
+            ? { background: '#FEF2F2', color: '#DC2626' }
+            : { background: '#F0FDF4', color: '#16A34A' }}
+        >
+          {occupied ? '사용 중' : '비어 있음'}
+        </span>
+      </div>
+
+      {occupied ? (
+        <div className="mt-3">
+          <div className={`text-[12px] font-semibold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+            {(currentVisit?.patients?.flag || '🏥')} {currentVisit?.patients?.name || '배정됨'}
+          </div>
+          <div className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{procedureName}</div>
+          <button
+            onClick={() => onClearRoom(currentVisit.id)}
+            disabled={busy}
+            className="mt-3 px-3 py-1.5 rounded-lg text-[10px] font-semibold border disabled:opacity-50"
+            style={{ borderColor: '#FCA5A5', color: '#DC2626', background: darkMode ? '#1C1917' : '#FEF2F2' }}
+          >
+            Clear room
+          </button>
+        </div>
       ) : (
-        <span className="text-zinc-400">배정</span>
+        <div className="mt-3">
+          <div className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>다음 후보</div>
+          {queueVisit ? (
+            <>
+              <div className={`text-[12px] font-semibold mt-1 ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+                {queueVisit.patient_flag} {queueVisit.patient_name}
+              </div>
+              <div className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{queueVisit.procedure_name}</div>
+              <button
+                onClick={() => onAssignRoom(queueVisit.id, room.id)}
+                disabled={busy}
+                className="mt-3 px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white disabled:opacity-50"
+                style={{ background: TEAL }}
+              >
+                Assign next
+              </button>
+            </>
+          ) : (
+            <div className={`text-[11px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>대기열 없음</div>
+          )}
+        </div>
       )}
-    </button>
+    </div>
+  );
+}
+
+function RoomPresetManager({ rooms, darkMode, onCreateRoom, onUpdateRoom }) {
+  const [drafts, setDrafts] = useState({});
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState('consultation');
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries((rooms || []).map((room) => [room.id, {
+      name: room.name,
+      room_type: room.room_type,
+      sort_order: room.sort_order,
+      is_active: room.is_active,
+    }])));
+  }, [rooms]);
+
+  return (
+    <div className={`rounded-2xl border p-4 mt-4 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={`text-sm font-bold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>Room presets</p>
+          <p className={`text-[11px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>방 이름을 반복 입력하지 않고 바로 운영에 쓸 수 있게 유지합니다.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1.4fr_0.9fr_80px_80px] gap-2 mt-4">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="새 방 이름"
+          className={`rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+        />
+        <select
+          value={newType}
+          onChange={(e) => setNewType(e.target.value)}
+          className={`rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+        >
+          {Object.entries(ROOM_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+        <div />
+        <button
+          onClick={() => {
+            if (!newName.trim()) return;
+            onCreateRoom({ name: newName.trim(), room_type: newType });
+            setNewName('');
+            setNewType('consultation');
+          }}
+          className="rounded-lg text-xs font-semibold text-white"
+          style={{ background: TEAL }}
+        >
+          추가
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {(rooms || []).map((room) => {
+          const draft = drafts[room.id] || room;
+          return (
+            <div key={room.id} className="grid grid-cols-[1.4fr_0.9fr_80px_90px] gap-2 items-center">
+              <input
+                value={draft.name || ''}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [room.id]: { ...draft, name: e.target.value } }))}
+                className={`rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+              />
+              <select
+                value={draft.room_type || 'consultation'}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [room.id]: { ...draft, room_type: e.target.value } }))}
+                className={`rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+              >
+                {Object.entries(ROOM_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+              <input
+                type="number"
+                value={draft.sort_order ?? 100}
+                onChange={(e) => setDrafts((prev) => ({ ...prev, [room.id]: { ...draft, sort_order: Number(e.target.value) } }))}
+                className={`rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+              />
+              <div className="flex gap-1">
+                <button
+                  onClick={() => onUpdateRoom(room.id, draft)}
+                  className="flex-1 rounded-lg text-[11px] font-semibold text-white"
+                  style={{ background: TEAL }}
+                >
+                  저장
+                </button>
+                <button
+                  onClick={() => onUpdateRoom(room.id, { ...draft, is_active: false })}
+                  className={`px-2 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300' : 'border-zinc-200 text-zinc-600'}`}
+                >
+                  비활성화
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -360,7 +625,19 @@ function StagePicker({ visitId, currentStage, clinicId, darkMode, onStageChange,
 }
 
 // ── VisitRow ──────────────────────────────────────────────────────────────────
-function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction, onRoomChange, onStageChange }) {
+function VisitRow({
+  visit,
+  dateRange,
+  darkMode,
+  checkingIn,
+  assigningRoom,
+  rooms,
+  onCheckIn,
+  onAction,
+  onAssignRoom,
+  onClearRoom,
+  onStageChange,
+}) {
   const [showStage, setShowStage] = useState(false);
   const stageRef = useRef(null);
 
@@ -379,7 +656,6 @@ function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction,
   const canGenerate = visit.link_status === 'none' || visit.link_status === 'expired';
   const canRevoke   = visit.link_status === 'active' || visit.link_status === 'opened';
   const formsReady  = visit.intake_done && visit.consent_done;
-
   const timeLabel = fmtVisitTime(visit.visit_date, dateRange);
   const isCheckedIn = !!visit.checked_in_at;
 
@@ -399,6 +675,7 @@ function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction,
         </div>
         <ArrivalBadge
           arrivedAt={visit.patient_arrived_at}
+          checkedInAt={visit.checked_in_at}
           formsReady={formsReady}
           darkMode={darkMode}
         />
@@ -429,8 +706,15 @@ function VisitRow({ visit, dateRange, darkMode, checkingIn, onCheckIn, onAction,
       </div>
 
       {/* Room */}
-      <div style={{ width: 72, flexShrink: 0 }}>
-        <RoomCell visitId={visit.id} room={visit.room} darkMode={darkMode} onRoomChange={onRoomChange} />
+      <div style={{ width: 188, flexShrink: 0 }}>
+        <RoomAssignmentCell
+          visit={visit}
+          rooms={rooms}
+          darkMode={darkMode}
+          assigning={assigningRoom}
+          onAssignRoom={onAssignRoom}
+          onClearRoom={onClearRoom}
+        />
       </div>
 
       {/* Link status */}
@@ -507,6 +791,258 @@ function SummaryCard({ label, value, sub, color, darkMode }) {
   );
 }
 
+function EscalationMiniCard({ label, value, sub, color, darkMode }) {
+  return (
+    <div className={`rounded-xl px-3 py-3 border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+      <div className={`text-[10px] font-semibold ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>{label}</div>
+      <div className="text-lg font-bold mt-1" style={{ color }}>{value}</div>
+      <div className={`text-[10px] mt-0.5 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>{sub}</div>
+    </div>
+  );
+}
+
+function EscalationTaskCard({ item, darkMode, onOpen }) {
+  const priority = ESCALATION_PRIORITY_META[item.priority] || ESCALATION_PRIORITY_META.normal;
+  const typeLabel = ESCALATION_TYPE_LABELS[item.escalation_type] || item.escalation_type;
+  const roleLabel = ESCALATION_ROLE_LABELS[item.assigned_role] || item.assigned_role;
+  const patientName = item.patients?.name || '(이름 없음)';
+  const patientFlag = item.patients?.flag || '🏥';
+  const procedureName = item.visits?.procedures?.name_ko || item.visits?.procedures?.name_en || '방문 컨텍스트 없음';
+  const unanswered = item.status === 'requested' || item.status === 'assigned';
+
+  return (
+    <button
+      onClick={() => onOpen(item.id)}
+      className={`w-full text-left rounded-xl border p-3 transition-colors ${darkMode ? 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800' : 'bg-white border-zinc-100 hover:bg-zinc-50'}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">{patientFlag}</span>
+            <span className={`text-[12px] font-semibold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>{patientName}</span>
+            {unanswered && (
+              <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200">
+                미응답
+              </span>
+            )}
+          </div>
+          <p className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{procedureName}</p>
+        </div>
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: priority.color, background: priority.bg }}>
+          {priority.label}
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: '#4E8FA0', background: '#EDF4F6' }}>
+          {typeLabel}
+        </span>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-zinc-100'}`}>
+          {roleLabel}
+        </span>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-zinc-100'}`}>
+          {ESCALATION_STATUS_LABELS[item.status] || item.status}
+        </span>
+      </div>
+
+      <p className={`text-[10px] mt-2 line-clamp-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+        {item.patient_visible_status_text}
+      </p>
+
+      <div className={`mt-2 text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+        {fmtAgo(item.opened_at || item.created_at)}
+      </div>
+    </button>
+  );
+}
+
+function AftercareTaskCard({ item, darkMode, busy, onReview }) {
+  const risk = AFTERCARE_RISK_META[item.risk_level] || AFTERCARE_RISK_META.normal;
+  const patient = item.patient_aftercare_runs?.patients || {};
+  const visit = item.patient_aftercare_runs?.visits || {};
+  const procedureName = visit?.procedures?.name_ko || visit?.procedures?.name_en || '사후관리';
+  const unanswered = item.response_status === 'due' || (item.sent_at && !item.responded_at);
+
+  return (
+    <div className={`rounded-xl border p-3 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">{patient.flag || '🏥'}</span>
+            <span className={`text-[12px] font-semibold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>{patient.name || '(이름 없음)'}</span>
+            {item.urgent_flag && (
+              <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold text-red-700 bg-red-50 border border-red-200">
+                긴급
+              </span>
+            )}
+            {unanswered && (
+              <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200">
+                미응답
+              </span>
+            )}
+          </div>
+          <p className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{procedureName} · {item.aftercare_steps?.step_key || 'aftercare'}</p>
+        </div>
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ color: risk.color, background: risk.bg }}>
+          {risk.label}
+        </span>
+      </div>
+
+      <p className={`text-[10px] mt-2 line-clamp-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+        {item.aftercare_steps?.content_template || '체크인 응답을 검토해 주세요.'}
+      </p>
+
+      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-zinc-100'}`}>
+          {item.response_status}
+        </span>
+        {item.safe_for_return && (
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-teal-700 bg-teal-50">
+            리턴 가능
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className={`text-[10px] font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+          {fmtAgo(item.responded_at || item.sent_at || item.scheduled_for)}
+        </div>
+        <button
+          onClick={() => onReview(item.id)}
+          disabled={busy}
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-700 hover:bg-zinc-50'}`}
+        >
+          {busy ? '검토 중…' : 'Review'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EscalationDetailDrawer({
+  item,
+  staffUsers,
+  darkMode,
+  onClose,
+  onAction,
+}) {
+  const [assignedRole, setAssignedRole] = useState(item?.assigned_role || 'coordinator');
+  const [assignedUserId, setAssignedUserId] = useState(item?.assigned_user_id || '');
+  const [priority, setPriority] = useState(item?.priority || 'normal');
+  const [escalationType, setEscalationType] = useState(item?.escalation_type || 'simple_logistics');
+  const [busy, setBusy] = useState(null);
+
+  useEffect(() => {
+    setAssignedRole(item?.assigned_role || 'coordinator');
+    setAssignedUserId(item?.assigned_user_id || '');
+    setPriority(item?.priority || 'normal');
+    setEscalationType(item?.escalation_type || 'simple_logistics');
+  }, [item]);
+
+  if (!item) return null;
+
+  const filteredUsers = (staffUsers || []).filter(user => {
+    if (!assignedRole) return true;
+    if (assignedRole === 'doctor') return ['owner', 'admin'].includes(user.role);
+    if (assignedRole === 'nurse') return ['admin', 'staff', 'owner'].includes(user.role);
+    return true;
+  });
+
+  async function run(action) {
+    setBusy(action);
+    try {
+      await onAction(action, {
+        assigned_role: assignedRole,
+        assigned_user_id: assignedUserId || null,
+        priority,
+        escalation_type: escalationType,
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function actorLabel(userId) {
+    if (!userId) return '—';
+    const match = (staffUsers || []).find((user) => user.user_id === userId);
+    return match?.email || userId;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`h-full w-full max-w-md border-l ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'}`}
+        style={{ fontFamily: F.sans }}
+      >
+        <div className={`px-5 py-4 border-b flex items-center justify-between ${darkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+          <div>
+            <p className={`text-sm font-bold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>Escalation Detail</p>
+            <p className={`text-[11px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{item.patients?.flag || '🏥'} {item.patients?.name || '(이름 없음)'}</p>
+          </div>
+          <button onClick={onClose} className={`p-1 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto h-[calc(100%-64px)]">
+          <div className={`rounded-xl p-4 border ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-slate-50 border-slate-100'}`}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-teal-700 bg-teal-50">{ESCALATION_TYPE_LABELS[item.escalation_type] || item.escalation_type}</span>
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: (ESCALATION_PRIORITY_META[item.priority] || ESCALATION_PRIORITY_META.normal).color, background: (ESCALATION_PRIORITY_META[item.priority] || ESCALATION_PRIORITY_META.normal).bg }}>{(ESCALATION_PRIORITY_META[item.priority] || ESCALATION_PRIORITY_META.normal).label}</span>
+              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-white border border-zinc-200'}`}>{ESCALATION_STATUS_LABELS[item.status] || item.status}</span>
+            </div>
+            <p className={`text-[12px] mt-3 leading-6 ${darkMode ? 'text-zinc-200' : 'text-zinc-700'}`}>{item.source_message?.content || '원문 메시지 없음'}</p>
+            <p className={`text-[11px] mt-3 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>{item.patient_visible_status_text}</p>
+            <div className={`mt-4 grid grid-cols-2 gap-2 text-[10px] ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              <div>Acknowledged by: {actorLabel(item.acknowledged_by)}</div>
+              <div>Responded by: {actorLabel(item.responded_by)}</div>
+              <div>Resolved by: {actorLabel(item.resolved_by)}</div>
+              <div>Closed by: {actorLabel(item.closed_by)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-[11px] font-semibold">
+              <span className={`block mb-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Type</span>
+              <select value={escalationType} onChange={e => setEscalationType(e.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                {Object.entries(ESCALATION_TYPE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] font-semibold">
+              <span className={`block mb-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Priority</span>
+              <select value={priority} onChange={e => setPriority(e.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                {Object.entries(ESCALATION_PRIORITY_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] font-semibold">
+              <span className={`block mb-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Assigned Role</span>
+              <select value={assignedRole} onChange={e => setAssignedRole(e.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                {Object.entries(ESCALATION_ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] font-semibold">
+              <span className={`block mb-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>Assigned User</span>
+              <select value={assignedUserId} onChange={e => setAssignedUserId(e.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+                <option value="">Role queue only</option>
+                {filteredUsers.map(user => <option key={user.user_id} value={user.user_id}>{user.email}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => run('assign')} className="px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: TEAL }}>{busy === 'assign' ? '저장 중…' : '재배정 저장'}</button>
+            <button onClick={() => run('acknowledge')} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-200' : 'border-zinc-200 text-zinc-700'}`}>{busy === 'acknowledge' ? '처리 중…' : 'Acknowledge'}</button>
+            <button onClick={() => run('responded')} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-200' : 'border-zinc-200 text-zinc-700'}`}>{busy === 'responded' ? '처리 중…' : 'Mark Responded'}</button>
+            <button onClick={() => run('resolve')} className={`px-3 py-2 rounded-lg text-xs font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-200' : 'border-zinc-200 text-zinc-700'}`}>{busy === 'resolve' ? '처리 중…' : 'Resolve'}</button>
+            <button onClick={() => run('close')} className="col-span-2 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-zinc-700">{busy === 'close' ? '처리 중…' : 'Close'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── GenerateLinkModal ─────────────────────────────────────────────────────────
 function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) {
   const [phase, setPhase]   = useState('confirm');
@@ -567,6 +1103,21 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
           )}
           {phase === 'done' && url && (
             <>
+              <div className={`rounded-xl border p-3 ${darkMode ? 'border-zinc-700 bg-zinc-950' : 'border-zinc-200 bg-zinc-50'}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={`text-[11px] font-semibold ${textP}`}>프런트 데스크 QR</p>
+                    <p className={`text-[10px] mt-1 ${textM}`}>링크 복사 대신 태블릿/모니터에서 바로 보여줄 수 있습니다.</p>
+                  </div>
+                  <img
+                    src={buildQrImageUrl(url)}
+                    alt="My Tiki QR"
+                    width={112}
+                    height={112}
+                    style={{ width: 112, height: 112, borderRadius: 10, background: '#fff', padding: 6 }}
+                  />
+                </div>
+              </div>
               <div className={`rounded-lg px-3 py-2 font-mono text-[11px] break-all ${urlBg}`}>{url}</div>
               <button onClick={copyUrl} className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: copied ? SAGE : TEAL }}>
                 {copied ? <Check size={12} /> : <Copy size={12} />}{copied ? '복사됨' : '링크 복사'}
@@ -597,16 +1148,35 @@ export default function MyTikiTab({ darkMode }) {
   const { clinicId } = useAuth();
 
   const [visits,          setVisits]          = useState([]);
-  const [summary,         setSummary]         = useState({ total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0 });
+  const [summary,         setSummary]         = useState({ total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0, roomReady: 0 });
+  const [rooms,           setRooms]           = useState([]);
+  const [roomSummary,     setRoomSummary]     = useState({ total: 0, free: 0, occupied: 0, readyQueue: 0 });
+  const [roomQueue,       setRoomQueue]       = useState([]);
+  const [escalations,     setEscalations]     = useState([]);
+  const [escalationSummary, setEscalationSummary] = useState({ open: 0, urgent: 0, unanswered: 0 });
+  const [aftercareItems,  setAftercareItems]  = useState([]);
+  const [aftercareSummary, setAftercareSummary] = useState({ due: 0, responded: 0, concern: 0, urgent: 0, safe_for_return: 0 });
+  const [staffUsers,      setStaffUsers]      = useState([]);
+  const [loadingEscalations, setLoadingEscalations] = useState(true);
+  const [loadingAftercare, setLoadingAftercare] = useState(true);
   const [loading,         setLoading]         = useState(true);
   const [fetchError,      setFetchError]      = useState(null);
   const [search,          setSearch]          = useState('');
   const [stageFilter,     setStageFilter]     = useState('all');
   const [dateRange,       setDateRange]       = useState('today');
+  const [escalationGroupBy, setEscalationGroupBy] = useState('status');
+  const [escalationStatusFilter, setEscalationStatusFilter] = useState('all');
+  const [escalationPriorityFilter, setEscalationPriorityFilter] = useState('all');
+  const [escalationRoleFilter, setEscalationRoleFilter] = useState('all');
+  const [aftercareFilter, setAftercareFilter] = useState('all');
+  const [selectedEscalation, setSelectedEscalation] = useState(null);
   const [actionModal,     setActionModal]     = useState(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showCsvImport,   setShowCsvImport]   = useState(false);
+  const [showRoomSettings, setShowRoomSettings] = useState(false);
   const [checkingInIds,   setCheckingInIds]   = useState(new Set());
+  const [assigningRoomIds, setAssigningRoomIds] = useState(new Set());
+  const [reviewingAftercareIds, setReviewingAftercareIds] = useState(new Set());
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const bg        = darkMode ? 'bg-zinc-950' : 'bg-slate-50';
@@ -625,16 +1195,19 @@ export default function MyTikiTab({ darkMode }) {
     setFetchError(null);
     try {
       const headers = await authHeaders();
-      const params = new URLSearchParams({ clinicId, dateRange, limit: 300 });
+      const params = new URLSearchParams({ dateRange, limit: 300 });
       if (stageFilter !== 'all') params.set('stage', stageFilter);
-      const res = await fetch(`/api/my-tiki/visits?${params}`, { headers });
+      const res = await fetch(`/api/staff/ops-board?${params}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
       setVisits((data.visits || []).map(normalizeVisit));
-      setSummary(data.summary || { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0 });
+      setSummary(data.summary || { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0, roomReady: 0 });
+      setRooms(data.rooms || []);
+      setRoomSummary(data.room_summary || { total: 0, free: 0, occupied: 0, readyQueue: 0 });
+      setRoomQueue((data.room_ready_queue || []).map(normalizeVisit));
     } catch (err) {
       setFetchError(err.message);
     } finally {
@@ -644,12 +1217,106 @@ export default function MyTikiTab({ darkMode }) {
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
 
+  useEffect(() => {
+    if (!shouldPollOpsBoard(dateRange)) return undefined;
+
+    let cancelled = false;
+    const intervalId = window.setInterval(() => {
+      if (cancelled) return;
+      if (document.visibilityState !== 'visible') return;
+      fetchVisits();
+    }, 20000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        fetchVisits();
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [dateRange, fetchVisits]);
+
+  const fetchEscalations = useCallback(async () => {
+    if (!clinicId) return;
+    setLoadingEscalations(true);
+    try {
+      const headers = await authHeaders();
+      const params = new URLSearchParams();
+      if (escalationStatusFilter !== 'all') params.set('status', escalationStatusFilter);
+      if (escalationPriorityFilter !== 'all') params.set('priority', escalationPriorityFilter);
+      if (escalationRoleFilter !== 'all') params.set('assigned_role', escalationRoleFilter);
+      const res = await fetch(`/api/staff/escalations?${params.toString()}`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setEscalations(data.items || []);
+      setEscalationSummary(data.summary || { open: 0, urgent: 0, unanswered: 0 });
+      setStaffUsers(data.staff_users || []);
+    } catch (err) {
+      console.error('[escalations]', err.message);
+    } finally {
+      setLoadingEscalations(false);
+    }
+  }, [clinicId, escalationStatusFilter, escalationPriorityFilter, escalationRoleFilter]);
+
+  useEffect(() => { fetchEscalations(); }, [fetchEscalations]);
+
+  const fetchAftercare = useCallback(async () => {
+    if (!clinicId) return;
+    setLoadingAftercare(true);
+    try {
+      const headers = await authHeaders();
+      const params = new URLSearchParams();
+      if (aftercareFilter !== 'all') params.set('filter', aftercareFilter);
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      const res = await fetch(`/api/staff/aftercare${suffix}`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setAftercareItems(data.items || []);
+      setAftercareSummary(data.summary || { due: 0, responded: 0, concern: 0, urgent: 0, safe_for_return: 0 });
+    } catch (err) {
+      console.error('[aftercare]', err.message);
+    } finally {
+      setLoadingAftercare(false);
+    }
+  }, [clinicId, aftercareFilter]);
+
+  useEffect(() => { fetchAftercare(); }, [fetchAftercare]);
+
   // ── Derived filtered list ──────────────────────────────────────────────────
   const filtered = visits.filter(v => {
     if (!search) return true;
     const q = search.toLowerCase();
     return v.patient_name.toLowerCase().includes(q) || v.procedure_name.toLowerCase().includes(q);
   });
+
+  const groupedEscalations = escalations.reduce((acc, item) => {
+    const key = escalationGroupBy === 'priority'
+      ? item.priority
+      : escalationGroupBy === 'role'
+        ? item.assigned_role
+        : item.status;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  const groupedAftercare = aftercareItems.reduce((acc, item) => {
+    const key = item.urgent_flag ? 'urgent' : item.risk_level || 'normal';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 
   // ── Check-in action ────────────────────────────────────────────────────────
   async function handleCheckIn(visitId) {
@@ -658,14 +1325,9 @@ export default function MyTikiTab({ darkMode }) {
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/my-tiki/visits/${visitId}/check-in`, { method: 'POST', headers });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        if (res.status !== 409) throw new Error(d.error);
-      }
-      const d = await res.json();
-      const checkedAt = d.checked_in_at || new Date().toISOString();
-      setVisits(prev => prev.map(v => v.id === visitId ? { ...v, checked_in_at: checkedAt } : v));
-      setSummary(prev => ({ ...prev, checkedIn: prev.checkedIn + 1 }));
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 409) throw new Error(d.error);
+      await fetchVisits();
     } catch (err) {
       console.error('[check-in]', err.message);
     } finally {
@@ -673,9 +1335,106 @@ export default function MyTikiTab({ darkMode }) {
     }
   }
 
-  // ── Room update ────────────────────────────────────────────────────────────
-  function handleRoomChange(visitId, room) {
-    setVisits(prev => prev.map(v => v.id === visitId ? { ...v, room } : v));
+  async function handleAssignRoom(visitId, roomId) {
+    if (assigningRoomIds.has(visitId)) return;
+    setAssigningRoomIds((prev) => new Set([...prev, visitId]));
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/visits/${visitId}/assign-room`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ room_id: roomId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchVisits();
+    } catch (err) {
+      console.error('[assign-room]', err.message);
+    } finally {
+      setAssigningRoomIds((prev) => {
+        const next = new Set(prev);
+        next.delete(visitId);
+        return next;
+      });
+    }
+  }
+
+  async function handleClearRoom(visitId) {
+    if (assigningRoomIds.has(visitId)) return;
+    setAssigningRoomIds((prev) => new Set([...prev, visitId]));
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/visits/${visitId}/clear-room`, {
+        method: 'POST',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchVisits();
+    } catch (err) {
+      console.error('[clear-room]', err.message);
+    } finally {
+      setAssigningRoomIds((prev) => {
+        const next = new Set(prev);
+        next.delete(visitId);
+        return next;
+      });
+    }
+  }
+
+  async function handleCreateRoom(payload) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/staff/rooms', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchVisits();
+    } catch (err) {
+      console.error('[create-room]', err.message);
+    }
+  }
+
+  async function handleUpdateRoom(roomId, payload) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/rooms/${roomId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchVisits();
+    } catch (err) {
+      console.error('[update-room]', err.message);
+    }
+  }
+
+  async function handleReviewAftercare(eventId) {
+    if (reviewingAftercareIds.has(eventId)) return;
+    setReviewingAftercareIds((prev) => new Set([...prev, eventId]));
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/aftercare/${eventId}/review`, {
+        method: 'POST',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchAftercare();
+    } catch (err) {
+      console.error('[aftercare-review]', err.message);
+    } finally {
+      setReviewingAftercareIds((prev) => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        return next;
+      });
+    }
   }
 
   // ── Stage update ───────────────────────────────────────────────────────────
@@ -712,13 +1471,54 @@ export default function MyTikiTab({ darkMode }) {
   }
 
   function handleCreated(rawVisit) {
-    setVisits(prev => [normalizeVisit(rawVisit), ...prev]);
-    setSummary(prev => ({ ...prev, total: prev.total + 1, formsPending: prev.formsPending + 1 }));
+    fetchVisits();
     setShowQuickCreate(false);
   }
 
   // ── Today date label ───────────────────────────────────────────────────────
   const todayLabel = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+
+  async function openEscalation(id) {
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/escalations/${id}`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setSelectedEscalation({
+        ...data.item,
+        source_message: data.source_message,
+      });
+      if (data.staff_users) setStaffUsers(data.staff_users);
+    } catch (err) {
+      console.error('[escalation-open]', err.message);
+    }
+  }
+
+  async function runEscalationAction(action, payload) {
+    if (!selectedEscalation) return;
+    const actionMap = {
+      acknowledge: 'acknowledge',
+      assign: 'assign',
+      responded: 'responded',
+      resolve: 'resolve',
+      close: 'close',
+    };
+    const endpoint = actionMap[action];
+    if (!endpoint) return;
+
+    const headers = await authHeaders();
+    const res = await fetch(`/api/staff/escalations/${selectedEscalation.id}/${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    setSelectedEscalation(prev => prev ? { ...prev, ...data.item } : prev);
+    setEscalations(prev => prev.map(item => item.id === selectedEscalation.id ? { ...item, ...data.item } : item));
+    fetchEscalations();
+  }
 
   return (
     <div className={`flex-1 flex flex-col overflow-hidden ${bg}`} style={{ fontFamily: F.sans }}>
@@ -732,7 +1532,10 @@ export default function MyTikiTab({ darkMode }) {
               <h1 className={`text-sm font-bold ${textP}`}>Ops Board</h1>
               <span className={`text-[11px] font-medium ${textS}`}>— {todayLabel}</span>
             </div>
-            <p className={`text-[11px] mt-0.5 ${textS}`}>코디네이터 운영 현황 · 체크인 · 링크 · 방 배정</p>
+            <p className={`text-[11px] mt-0.5 ${textS}`}>코디네이터 운영 현황 · 체크인 · Ask triage · Rooms Lite</p>
+            {shouldPollOpsBoard(dateRange) && (
+              <p className={`text-[10px] mt-1 ${textS}`}>오늘 보기에서는 20초마다 가볍게 새로고침됩니다.</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -760,12 +1563,213 @@ export default function MyTikiTab({ darkMode }) {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-5 gap-2 mt-4">
+        <div className="grid grid-cols-6 gap-2 mt-4">
           <SummaryCard label="방문 수"     value={loading ? '…' : summary.total}        color={TEAL}    sub={dateRange === 'today' ? '오늘' : DATE_RANGES.find(d => d.key === dateRange)?.label} darkMode={darkMode} />
           <SummaryCard label="폼 미완료"   value={loading ? '…' : summary.formsPending}  color="#D09262" sub="문진·동의서"      darkMode={darkMode} />
           <SummaryCard label="도착 신호"   value={loading ? '…' : summary.arrived}       color="#D09262" sub="환자 자가 도착"   darkMode={darkMode} />
           <SummaryCard label="체크인 완료" value={loading ? '…' : summary.checkedIn}     color={SAGE}    sub="데스크 확인"     darkMode={darkMode} />
+          <SummaryCard label="룸 준비"     value={loading ? '…' : summary.roomReady}     color="#16A34A" sub="체크인+서류 완료" darkMode={darkMode} />
           <SummaryCard label="활성 링크"   value={loading ? '…' : summary.activeLinks}   color="#5B72A8" sub="발송·열람됨"     darkMode={darkMode} />
+        </div>
+
+        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFCF8' }}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <DoorOpen size={14} style={{ color: TEAL }} />
+                <h2 className={`text-sm font-bold ${textP}`}>Rooms Lite</h2>
+              </div>
+              <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보를 한 화면에서 확인합니다.</p>
+            </div>
+            <button
+              onClick={() => setShowRoomSettings((prev) => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+            >
+              {showRoomSettings ? '설정 닫기' : '룸 설정'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 mt-4">
+            <EscalationMiniCard label="Preset Rooms" value={loading ? '…' : roomSummary.total} sub="등록된 운영 room" color={TEAL} darkMode={darkMode} />
+            <EscalationMiniCard label="Free" value={loading ? '…' : roomSummary.free} sub="즉시 배정 가능" color="#16A34A" darkMode={darkMode} />
+            <EscalationMiniCard label="Occupied" value={loading ? '…' : roomSummary.occupied} sub="현재 사용 중" color="#DC2626" darkMode={darkMode} />
+            <EscalationMiniCard label="Ready Queue" value={loading ? '…' : roomSummary.readyQueue} sub="다음 room 후보" color="#D09262" darkMode={darkMode} />
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mt-4">
+            {(rooms || []).map((room, index) => (
+              <RoomTrafficCard
+                key={room.id}
+                room={room}
+                queueVisit={roomQueue[index] || null}
+                darkMode={darkMode}
+                busy={assigningRoomIds.has(room.current_visit?.id || roomQueue[index]?.id)}
+                onAssignRoom={handleAssignRoom}
+                onClearRoom={handleClearRoom}
+              />
+            ))}
+            {!loading && rooms.length === 0 && (
+              <div className={`col-span-4 text-xs ${textS}`}>등록된 room preset이 없습니다. 아래에서 첫 room을 추가하면 바로 traffic control에 반영됩니다.</div>
+            )}
+          </div>
+
+          {showRoomSettings && (
+            <RoomPresetManager
+              rooms={rooms}
+              darkMode={darkMode}
+              onCreateRoom={handleCreateRoom}
+              onUpdateRoom={handleUpdateRoom}
+            />
+          )}
+        </div>
+
+        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFDFC' }}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <UserCheck size={14} style={{ color: '#A47764' }} />
+                <h2 className={`text-sm font-bold ${textP}`}>Escalations</h2>
+              </div>
+              <p className={`text-[11px] mt-1 ${textS}`}>환자 질문이 운영 task로 전환된 항목</p>
+            </div>
+            <button onClick={fetchEscalations} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="Escalations 새로고침">
+              <RefreshCw size={13} className={loadingEscalations ? 'animate-spin' : ''} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            <EscalationMiniCard label="Open Items" value={loadingEscalations ? '…' : escalationSummary.open} sub="진행 중 triage" color="#A47764" darkMode={darkMode} />
+            <EscalationMiniCard label="Urgent" value={loadingEscalations ? '…' : escalationSummary.urgent} sub="즉시 검토 필요" color="#DC2626" darkMode={darkMode} />
+            <EscalationMiniCard label="Unanswered" value={loadingEscalations ? '…' : escalationSummary.unanswered} sub="아직 확인 전" color="#D09262" darkMode={darkMode} />
+          </div>
+
+          <div className="mt-4 flex items-center gap-2 flex-wrap">
+            {[
+              ['status', '상태별'],
+              ['priority', '우선순위별'],
+              ['role', '담당 역할별'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setEscalationGroupBy(key)}
+                className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
+                style={escalationGroupBy === key
+                  ? { background: '#A47764', color: '#fff', borderColor: '#A47764' }
+                  : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
+              >
+                {label}
+              </button>
+            ))}
+
+            <select value={escalationStatusFilter} onChange={e => setEscalationStatusFilter(e.target.value)} className={`ml-auto rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+              <option value="all">전체 상태</option>
+              {Object.entries(ESCALATION_STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+            <select value={escalationPriorityFilter} onChange={e => setEscalationPriorityFilter(e.target.value)} className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+              <option value="all">전체 우선순위</option>
+              {Object.entries(ESCALATION_PRIORITY_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
+            </select>
+            <select value={escalationRoleFilter} onChange={e => setEscalationRoleFilter(e.target.value)} className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
+              <option value="all">전체 역할</option>
+              {Object.entries(ESCALATION_ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {loadingEscalations ? (
+              <div className={`text-xs ${textS}`}>Escalation tasks 불러오는 중…</div>
+            ) : Object.keys(groupedEscalations).length === 0 ? (
+              <div className={`text-xs ${textS}`}>현재 조건에 맞는 escalation task가 없습니다.</div>
+            ) : (
+              Object.entries(groupedEscalations).map(([groupKey, items]) => (
+                <div key={groupKey}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[11px] font-bold ${textP}`}>
+                      {escalationGroupBy === 'priority'
+                        ? (ESCALATION_PRIORITY_META[groupKey]?.label || groupKey)
+                        : escalationGroupBy === 'role'
+                          ? (ESCALATION_ROLE_LABELS[groupKey] || groupKey)
+                          : (ESCALATION_STATUS_LABELS[groupKey] || groupKey)}
+                    </span>
+                    <span className={`text-[10px] ${textS}`}>{items.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {items.map(item => (
+                      <EscalationTaskCard key={item.id} item={item} darkMode={darkMode} onOpen={openEscalation} />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFDFC' }}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <ClipboardCheck size={14} style={{ color: '#4E8FA0' }} />
+                <h2 className={`text-sm font-bold ${textP}`}>Aftercare</h2>
+              </div>
+              <p className={`text-[11px] mt-1 ${textS}`}>사후관리 체크인, 위험 신호, 리턴 가능 상태를 운영 task로 확인합니다.</p>
+            </div>
+            <button onClick={fetchAftercare} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="Aftercare 새로고침">
+              <RefreshCw size={13} className={loadingAftercare ? 'animate-spin' : ''} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-5 gap-2 mt-4">
+            <EscalationMiniCard label="Due" value={loadingAftercare ? '…' : aftercareSummary.due} sub="응답 대기" color="#4E8FA0" darkMode={darkMode} />
+            <EscalationMiniCard label="Responded" value={loadingAftercare ? '…' : aftercareSummary.responded} sub="환자 응답 완료" color="#5A8F80" darkMode={darkMode} />
+            <EscalationMiniCard label="Concern" value={loadingAftercare ? '…' : aftercareSummary.concern} sub="검토 필요" color="#D09262" darkMode={darkMode} />
+            <EscalationMiniCard label="Urgent" value={loadingAftercare ? '…' : aftercareSummary.urgent} sub="긴급 신호" color="#DC2626" darkMode={darkMode} />
+            <EscalationMiniCard label="Safe Return" value={loadingAftercare ? '…' : aftercareSummary.safe_for_return} sub="재방문 제안 가능" color={TEAL} darkMode={darkMode} />
+          </div>
+
+          <div className="mt-4 flex items-center gap-2 flex-wrap">
+            {Object.entries(AFTERCARE_FILTER_LABELS).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setAftercareFilter(key)}
+                className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
+                style={aftercareFilter === key
+                  ? { background: '#4E8FA0', color: '#fff', borderColor: '#4E8FA0' }
+                  : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {loadingAftercare ? (
+              <div className={`text-xs ${textS}`}>Aftercare items 불러오는 중…</div>
+            ) : Object.keys(groupedAftercare).length === 0 ? (
+              <div className={`text-xs ${textS}`}>현재 조건에 맞는 aftercare item이 없습니다.</div>
+            ) : (
+              Object.entries(groupedAftercare).map(([groupKey, items]) => (
+                <div key={groupKey}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[11px] font-bold ${textP}`}>
+                      {groupKey === 'urgent' ? '긴급' : (AFTERCARE_RISK_META[groupKey]?.label || groupKey)}
+                    </span>
+                    <span className={`text-[10px] ${textS}`}>{items.length}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {items.map((item) => (
+                      <AftercareTaskCard
+                        key={item.id}
+                        item={item}
+                        darkMode={darkMode}
+                        busy={reviewingAftercareIds.has(item.id)}
+                        onReview={handleReviewAftercare}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
@@ -838,7 +1842,7 @@ export default function MyTikiTab({ darkMode }) {
           { label: '시술',   flex: 1 },
           { label: '단계',   w: 80 },
           { label: '서류',   w: 60 },
-          { label: '방',     w: 72 },
+          { label: '방',     w: 188 },
           { label: '링크',   w: 64 },
           { label: '액션',   w: 124, align: 'right' },
         ].map(col => (
@@ -889,9 +1893,12 @@ export default function MyTikiTab({ darkMode }) {
               dateRange={dateRange}
               darkMode={darkMode}
               checkingIn={checkingInIds.has(visit.id)}
+              assigningRoom={assigningRoomIds.has(visit.id)}
+              rooms={rooms}
               onCheckIn={handleCheckIn}
               onAction={handleAction}
-              onRoomChange={handleRoomChange}
+              onAssignRoom={handleAssignRoom}
+              onClearRoom={handleClearRoom}
               onStageChange={handleStageChange}
             />
           ))
@@ -922,6 +1929,15 @@ export default function MyTikiTab({ darkMode }) {
           darkMode={darkMode}
           onClose={() => setShowCsvImport(false)}
           onImported={() => { fetchVisits(); setShowCsvImport(false); }}
+        />
+      )}
+      {selectedEscalation && (
+        <EscalationDetailDrawer
+          item={selectedEscalation}
+          staffUsers={staffUsers}
+          darkMode={darkMode}
+          onClose={() => setSelectedEscalation(null)}
+          onAction={runEscalationAction}
         />
       )}
     </div>

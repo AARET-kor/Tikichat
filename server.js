@@ -54,6 +54,36 @@ import {
   requireRole,
   generatePatientToken,
 } from "./src/middleware/auth.js";
+import {
+  generateAskAssistantPayload,
+  getPatientAskBootstrap,
+} from "./src/lib/patient-ask-service.js";
+import {
+  buildRoomOccupancy,
+  getRoomReadyQueue,
+  isVisitRoomReady,
+} from "./src/lib/room-traffic.js";
+import {
+  analyzeRoomLiveInput,
+  buildRoomPrepPayload,
+  pickNextRoomCandidate,
+} from "./src/lib/tiki-room.js";
+import {
+  evaluateAftercareResponse,
+  getAftercarePatientAcknowledgement,
+} from "./src/lib/aftercare-engine.js";
+import {
+  resolveProcedureFromText,
+} from "./src/lib/procedure-resolution.js";
+import {
+  fetchPatientAftercareState,
+} from "./src/lib/aftercare-service.js";
+import {
+  buildEscalationUpdateForAction,
+  createEscalationInsert,
+  summarizeEscalationCounts,
+} from "./src/lib/escalation-service.js";
+import { buildJourneyEventInsert } from "./src/lib/ops-audit.js";
 
 // ── 모델 상수 (env로 override 가능) ───────────────────────────────────────────
 const MODEL_HAIKU  = process.env.MODEL_HAIKU  || "claude-haiku-4-5-20251001";
@@ -983,20 +1013,25 @@ app.post("/api/translate-reply", async (req, res) => {
   const text = req.body.text || req.body.replyText;
   const { targetLang } = req.body;
   if (!text || !targetLang) return res.status(400).json({ error: "text and targetLang required" });
-  const lang = LANG_NAME[targetLang] || targetLang;
   try {
-    const response = await anthropic.messages.create({
-      model: MODEL_HAIKU,
-      max_tokens: 600,
-      system: `You are a professional medical translator. Translate the following Korean medical aesthetics clinic reply to ${lang}. Output ONLY the translation, no explanations, no notes.`,
-      messages: [{ role: "user", content: text }],
-    });
-    const translated = response.content.find(b => b.type === "text")?.text ?? "";
+    const translated = await translateReplyText(text, targetLang);
     res.json({ translated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+async function translateReplyText(text, targetLang) {
+  if (!text || !targetLang || targetLang === "ko") return text;
+  const lang = LANG_NAME[targetLang] || targetLang;
+  const response = await anthropic.messages.create({
+    model: MODEL_HAIKU,
+    max_tokens: 600,
+    system: `You are a professional medical translator. Translate the following Korean medical aesthetics clinic reply to ${lang}. Output ONLY the translation, no explanations, no notes.`,
+    messages: [{ role: "user", content: text }],
+  });
+  return response.content.find((block) => block.type === "text")?.text ?? text;
+}
 
 // ── 4. 애프터케어 메시지 생성 (D+1 / D+3 / D+7)
 // POST /api/aftercare-msg  { procedureId, day, targetLang, patientName }
@@ -1258,6 +1293,7 @@ app.get("/api/clinic-procedures", async (req, res) => {
       .from("procedures")
       .select("*")
       .eq("clinic_id", clinicId)
+      .eq("is_active", true)
       .order("sort_order")
       .order("name_ko");
     if (error) throw error;
@@ -1804,13 +1840,18 @@ app.post("/api/save-context", async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// AFTERCARE (v1 table — deferred to Phase C migration)
-// These routes return 501 on v2 until aftercare_records is migrated.
+// AFTERCARE legacy v1 endpoints
+// Phase 10 uses:
+//   - /api/patient/aftercare
+//   - /api/patient/aftercare/respond
+//   - /api/staff/aftercare
+//   - /api/staff/aftercare/:eventId/review
+// Keep these legacy routes explicit so old clients fail clearly instead of silently drifting.
 // ════════════════════════════════════════════════════════════════════════════
 
 // GET /api/aftercare?clinicId=X
 app.get("/api/aftercare", async (req, res) => {
-  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
+  return res.status(410).json({ error: "Deprecated endpoint. Use /api/patient/aftercare or /api/staff/aftercare." });
   const { clinicId } = req.query;
   if (!clinicId) return res.status(400).json({ error: "clinicId required" });
   try {
@@ -1844,7 +1885,7 @@ app.get("/api/aftercare", async (req, res) => {
 
 // POST /api/aftercare  { clinicId, record }
 app.post("/api/aftercare", async (req, res) => {
-  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
+  return res.status(410).json({ error: "Deprecated endpoint. Use /api/patient/aftercare/respond." });
   const { clinicId, record } = req.body;
   if (!clinicId || !record) return res.status(400).json({ error: "clinicId + record required" });
   try {
@@ -1872,7 +1913,7 @@ app.post("/api/aftercare", async (req, res) => {
 
 // PATCH /api/aftercare/:id  { updates }
 app.patch("/api/aftercare/:id", async (req, res) => {
-  return res.status(501).json({ error: "aftercare_records not yet migrated to v2 schema", deferred: true });
+  return res.status(410).json({ error: "Deprecated endpoint. Use /api/staff/aftercare/:eventId/review." });
   const { id } = req.params;
   const u = req.body;
   try {
@@ -2205,115 +2246,12 @@ app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
   const sb = getSbAdmin();
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
-  // ── Date range boundaries (UTC; clinic TZ refinement is future work) ──────
-  function addUTCDays(d, n) {
-    const nd = new Date(d);
-    nd.setUTCDate(nd.getUTCDate() + n);
-    return nd;
-  }
-  const todayUTC = new Date();
-  todayUTC.setUTCHours(0, 0, 0, 0);
-
   try {
-    let q = sb
-      .from("visits")
-      .select(`
-        id, patient_id, procedure_id, stage,
-        visit_date, checked_in_at, room,
-        patient_arrived_at,
-        intake_done, consent_done, followup_done,
-        coordinator_id, internal_tags, notes,
-        created_at, updated_at,
-        patients ( id, name, lang, flag, channel_refs ),
-        procedures ( id, name_ko )
-      `)
-      .eq("clinic_id", clinic_id)
-      .order("visit_date", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(Number(limit));
-
-    if (stage && stage !== "all") q = q.eq("stage", stage);
-
-    if (dateRange === "today") {
-      q = q
-        .gte("visit_date", todayUTC.toISOString())
-        .lt("visit_date",  addUTCDays(todayUTC, 1).toISOString());
-    } else if (dateRange === "tomorrow") {
-      const tom = addUTCDays(todayUTC, 1);
-      q = q
-        .gte("visit_date", tom.toISOString())
-        .lt("visit_date",  addUTCDays(todayUTC, 2).toISOString());
-    } else if (dateRange === "week") {
-      q = q
-        .gte("visit_date", todayUTC.toISOString())
-        .lt("visit_date",  addUTCDays(todayUTC, 7).toISOString());
-    }
-    // dateRange === "all" → no date filter
-
-    const { data: visits, error } = await q;
-    if (error) throw error;
-
-    if (!visits || visits.length === 0) {
-      return res.json({
-        visits: [],
-        summary: { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0 },
-      });
-    }
-
-    const visitIds = visits.map(v => v.id);
-
-    // ── Latest patient_link per visit ─────────────────────────────────────
-    const { data: links } = await sb
-      .from("patient_links")
-      .select("visit_id, id, status, expires_at, first_opened_at, last_accessed_at, created_at")
-      .in("visit_id", visitIds)
-      .eq("clinic_id", clinic_id)
-      .order("created_at", { ascending: false });
-
-    const linksMap = {};
-    for (const lnk of (links || [])) {
-      if (!linksMap[lnk.visit_id]) linksMap[lnk.visit_id] = lnk;
-    }
-
-    // ── Unreviewed form_submissions count per visit ───────────────────────
-    const { data: unreviewedRows } = await sb
-      .from("form_submissions")
-      .select("visit_id")
-      .in("visit_id", visitIds)
-      .eq("status", "submitted")
-      .is("reviewed_at", null);
-
-    const unreviewedMap = {};
-    for (const row of (unreviewedRows || [])) {
-      unreviewedMap[row.visit_id] = (unreviewedMap[row.visit_id] || 0) + 1;
-    }
-
-    // ── Compute link_status ───────────────────────────────────────────────
-    function linkStatus(lnk) {
-      if (!lnk) return "none";
-      if (lnk.status === "revoked") return "revoked";
-      if (lnk.status === "expired" || new Date(lnk.expires_at) < new Date()) return "expired";
-      if (lnk.first_opened_at) return "opened";
-      return "active";
-    }
-
-    const enriched = visits.map(v => ({
-      ...v,
-      link:             linksMap[v.id] || null,
-      link_status:      linkStatus(linksMap[v.id]),
-      unreviewed_forms: unreviewedMap[v.id] || 0,
-    }));
-
-    // ── Summary counts (computed from current filtered result) ────────────
-    const summary = {
-      total:        enriched.length,
-      formsPending: enriched.filter(v => !v.intake_done || !v.consent_done).length,
-      checkedIn:    enriched.filter(v => v.checked_in_at).length,
-      activeLinks:  enriched.filter(v => v.link_status === "active" || v.link_status === "opened").length,
-      arrived:      enriched.filter(v => v.patient_arrived_at).length,
-    };
-
-    res.json({ visits: enriched, summary });
+    const visits = await fetchOpsBoardVisits({ sb, clinic_id, dateRange, stage, limit });
+    res.json({
+      visits,
+      summary: buildVisitSummary(visits),
+    });
 
   } catch (err) {
     console.error("[MyTiki/visits]", err.message);
@@ -2334,6 +2272,18 @@ app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
   try {
+    if (procedureId) {
+      const { data: procedure, error: procedureError } = await sb
+        .from("procedures")
+        .select("id")
+        .eq("id", procedureId)
+        .eq("clinic_id", clinic_id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (procedureError) throw procedureError;
+      if (!procedure) return res.status(400).json({ error: "Invalid procedureId for clinic" });
+    }
+
     const { data, error } = await sb
       .from("visits")
       .insert({
@@ -2367,6 +2317,15 @@ app.patch("/api/my-tiki/visits/:id/stage", requireStaffAuth, async (req, res) =>
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
   try {
+    const { data: existing, error: existingError } = await sb
+      .from("visits")
+      .select("id, patient_id, stage")
+      .eq("id", id)
+      .eq("clinic_id", req.clinic_id)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) return res.status(404).json({ error: "Visit not found" });
+
     const { data, error } = await sb
       .from("visits")
       .update({ stage })
@@ -2375,6 +2334,22 @@ app.patch("/api/my-tiki/visits/:id/stage", requireStaffAuth, async (req, res) =>
       .select("id, stage")
       .single();
     if (error) throw error;
+
+    await sb.from("patient_journey_events").insert(
+      buildJourneyEventInsert({
+        clinic_id: req.clinic_id,
+        patient_id: existing.patient_id || null,
+        visit_id: id,
+        event_type: "stage_changed",
+        actor_type: "staff",
+        actor_id: req.staff_user_id || null,
+        payload: {
+          from: existing.stage,
+          to: stage,
+        },
+      }),
+    );
+
     res.json(data);
   } catch (err) {
     console.error("[MyTiki/visits/stage]", err.message);
@@ -2392,6 +2367,26 @@ app.post("/api/my-tiki/visits/:id/check-in", requireStaffAuth, async (req, res) 
 
   try {
     const now = new Date().toISOString();
+    const { data: existing, error: existingErr } = await sb
+      .from("visits")
+      .select("id, patient_id, checked_in_at, patient_arrived_at, intake_done, consent_done, room, room_id, stage")
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+    if (!existing) return res.status(404).json({ error: "Visit not found" });
+
+    if (existing.checked_in_at) {
+      return res.status(409).json({
+        error: "Already checked in",
+        checked_in_at: existing.checked_in_at,
+        patient_arrived_at: existing.patient_arrived_at,
+        room: existing.room,
+        room_ready: isVisitRoomReady(existing),
+      });
+    }
+
     // Only update if checked_in_at is still null (prevents double check-in)
     const { data, error } = await sb
       .from("visits")
@@ -2399,14 +2394,36 @@ app.post("/api/my-tiki/visits/:id/check-in", requireStaffAuth, async (req, res) 
       .eq("id", id)
       .eq("clinic_id", clinic_id)
       .is("checked_in_at", null)
-      .select("id, checked_in_at")
+      .select("id, patient_id, checked_in_at, patient_arrived_at, intake_done, consent_done, room, room_id, stage")
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) return res.status(409).json({ error: "Already checked in" });
+    if (!data) {
+      return res.status(409).json({ error: "Already checked in" });
+    }
 
     console.log(`[MyTiki/check-in] visit=${id} at=${now}`);
-    res.json({ ok: true, checked_in_at: data.checked_in_at });
+    await sb.from("patient_journey_events").insert(
+      buildJourneyEventInsert({
+        clinic_id,
+        patient_id: existing.patient_id || null,
+        visit_id: id,
+        event_type: "check_in_completed",
+        actor_type: "staff",
+        actor_id: req.staff_user_id || null,
+        payload: {
+          checked_in_at: now,
+          patient_arrived_at: data.patient_arrived_at || null,
+        },
+      }),
+    );
+    res.json({
+      ok: true,
+      checked_in_at: data.checked_in_at,
+      patient_arrived_at: data.patient_arrived_at,
+      room: data.room,
+      room_ready: isVisitRoomReady(data),
+    });
   } catch (err) {
     console.error("[MyTiki/check-in]", err.message);
     res.status(500).json({ error: err.message });
@@ -2435,6 +2452,293 @@ app.patch("/api/my-tiki/visits/:id/room", requireStaffAuth, async (req, res) => 
     res.json({ ok: true, room: data.room });
   } catch (err) {
     console.error("[MyTiki/room]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/staff/rooms — active room presets with occupancy
+app.get("/api/staff/rooms", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const [rooms, visits] = await Promise.all([
+      loadClinicRooms(sb, clinic_id, { includeInactive: req.query.includeInactive === "true" }),
+      sb
+        .from("visits")
+        .select(`
+          id, patient_id, stage, visit_date, checked_in_at, room_id, room_assigned_at, room_cleared_at,
+          patients ( id, name, flag, lang ),
+          procedures ( id, name_ko, name_en )
+        `)
+        .eq("clinic_id", clinic_id)
+        .not("room_id", "is", null)
+        .order("room_assigned_at", { ascending: false }),
+    ]);
+
+    if (visits.error) throw visits.error;
+
+    res.json({
+      rooms: buildRoomOccupancy({
+        rooms,
+        visits: (visits.data || []).map(normalizeRoomVisit),
+      }),
+    });
+  } catch (err) {
+    console.error("[Staff/rooms]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/staff/rooms — create preset room
+app.post("/api/staff/rooms", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { name, room_type = "consultation", sort_order } = req.body || {};
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+
+  try {
+    const { data, error } = await sb
+      .from("rooms")
+      .insert({
+        clinic_id,
+        name: name.trim(),
+        room_type,
+        sort_order: Number.isFinite(Number(sort_order)) ? Number(sort_order) : 100,
+      })
+      .select("id, clinic_id, name, room_type, sort_order, is_active, created_at, updated_at")
+      .single();
+    if (error) throw error;
+    res.json({ room: data });
+  } catch (err) {
+    console.error("[Staff/rooms/POST]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PATCH /api/staff/rooms/:id — edit preset room
+app.patch("/api/staff/rooms/:id", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { id } = req.params;
+  const { name, room_type, sort_order, is_active } = req.body || {};
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const update = {
+      updated_at: new Date().toISOString(),
+    };
+    if (name !== undefined) update.name = String(name).trim();
+    if (room_type !== undefined) update.room_type = room_type;
+    if (sort_order !== undefined) update.sort_order = Number(sort_order);
+    if (is_active !== undefined) update.is_active = Boolean(is_active);
+
+    const { data, error } = await sb
+      .from("rooms")
+      .update(update)
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select("id, clinic_id, name, room_type, sort_order, is_active, created_at, updated_at")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Room not found" });
+
+    if (update.is_active === false) {
+      await sb
+        .from("visits")
+        .update({
+          room_id: null,
+          room: null,
+          room_cleared_at: new Date().toISOString(),
+        })
+        .eq("clinic_id", clinic_id)
+        .eq("room_id", id)
+        .is("room_cleared_at", null);
+    }
+
+    res.json({ room: data });
+  } catch (err) {
+    console.error("[Staff/rooms/PATCH]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/staff/visits/:id/assign-room — one-tap room handoff
+app.post("/api/staff/visits/:id/assign-room", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { id } = req.params;
+  const { room_id } = req.body || {};
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!room_id) return res.status(400).json({ error: "room_id required" });
+
+  try {
+	    const [{ data: room, error: roomError }, { data: visit, error: visitError }] = await Promise.all([
+      sb
+        .from("rooms")
+        .select("id, clinic_id, name, room_type, sort_order, is_active")
+        .eq("id", room_id)
+        .eq("clinic_id", clinic_id)
+        .eq("is_active", true)
+        .maybeSingle(),
+	      sb
+	        .from("visits")
+	        .select("id, clinic_id, patient_id, room_id, room, stage, checked_in_at, intake_done, consent_done")
+	        .eq("id", id)
+	        .eq("clinic_id", clinic_id)
+	        .maybeSingle(),
+    ]);
+    if (roomError) throw roomError;
+    if (visitError) throw visitError;
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!visit) return res.status(404).json({ error: "Visit not found" });
+
+    const { data: blockingVisit, error: occupancyError } = await sb
+      .from("visits")
+      .select("id, patient_id, stage, patients ( name, flag )")
+      .eq("clinic_id", clinic_id)
+      .eq("room_id", room.id)
+      .is("room_cleared_at", null)
+      .neq("id", id)
+      .neq("stage", "closed")
+      .maybeSingle();
+    if (occupancyError) throw occupancyError;
+    if (blockingVisit) {
+      return res.status(409).json({
+        error: "Room is currently occupied",
+        occupied_by: blockingVisit,
+      });
+    }
+
+    const now = new Date().toISOString();
+    const { data, error } = await sb
+      .from("visits")
+      .update({
+        room_id: room.id,
+        room: room.name,
+        room_assigned_at: now,
+        room_cleared_at: null,
+      })
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select(`
+        id, patient_id, procedure_id, stage, visit_date, checked_in_at, room, room_id, room_assigned_at, room_cleared_at,
+        patient_arrived_at, intake_done, consent_done, followup_done, created_at, updated_at,
+        patients ( id, name, flag, lang ),
+        procedures ( id, name_ko, name_en ),
+        rooms ( id, name, room_type, sort_order, is_active )
+      `)
+      .single();
+	    if (error) throw error;
+
+    await sb.from("patient_journey_events").insert(
+      buildJourneyEventInsert({
+        clinic_id,
+        patient_id: visit.patient_id || null,
+        visit_id: id,
+        event_type: "room_assigned",
+        actor_type: "staff",
+        actor_id: req.staff_user_id || null,
+        payload: {
+          previous_room_id: visit.room_id || null,
+          previous_room_name: visit.room || null,
+          room_id: room.id,
+          room_name: room.name,
+          room_assigned_at: now,
+        },
+      }),
+    );
+
+	    res.json({
+      ok: true,
+      visit: normalizeRoomVisit(data),
+      room_ready: isVisitRoomReady(data),
+    });
+  } catch (err) {
+    console.error("[Staff/visits/assign-room]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/staff/visits/:id/clear-room — release room assignment
+app.post("/api/staff/visits/:id/clear-room", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { id } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { data: existing, error: existingError } = await sb
+      .from("visits")
+      .select("id, patient_id, room_id, room, room_assigned_at, room_cleared_at")
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) return res.status(404).json({ error: "Visit not found" });
+
+    const now = new Date().toISOString();
+    const { data, error } = await sb
+      .from("visits")
+      .update({
+        room_id: null,
+        room: null,
+        room_cleared_at: now,
+      })
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select("id, room_id, room, room_cleared_at")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Visit not found" });
+
+    await sb.from("patient_journey_events").insert(
+      buildJourneyEventInsert({
+        clinic_id,
+        patient_id: existing.patient_id || null,
+        visit_id: id,
+        event_type: "room_cleared",
+        actor_type: "staff",
+        actor_id: req.staff_user_id || null,
+        payload: {
+          previous_room_id: existing.room_id || null,
+          previous_room_name: existing.room || null,
+          room_cleared_at: now,
+        },
+      }),
+    );
+
+    res.json({ ok: true, visit: data });
+  } catch (err) {
+    console.error("[Staff/visits/clear-room]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/staff/ops-board — visits + room traffic layer
+app.get("/api/staff/ops-board", requireStaffAuth, async (req, res) => {
+  const { dateRange = "today", stage, limit = 300 } = req.query;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const [visits, roomVisits, rooms] = await Promise.all([
+      fetchOpsBoardVisits({ sb, clinic_id, dateRange, stage, limit }),
+      fetchOpsBoardVisits({ sb, clinic_id, dateRange, stage: "all", limit }),
+      loadClinicRooms(sb, clinic_id),
+    ]);
+    const roomData = buildRoomSummary(rooms, roomVisits);
+
+    res.json({
+      visits,
+      summary: buildVisitSummary(visits),
+      ...roomData,
+    });
+  } catch (err) {
+    console.error("[Staff/ops-board]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2532,6 +2836,8 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
   }
 
   try {
+    const clinicProcedures = await loadClinicProcedures(sb, clinic_id);
+
     // ── Phase 2: Bulk patient lookup (exact name, case-sensitive) ─────────────
     const uniqueNames = [...new Set(validByIdx.map(r => r.name))];
 
@@ -2593,8 +2899,14 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
     // Assign resolved patients; mark rows whose patient failed.
     for (const row of validByIdx) {
       row._patient = patientByName[row.name] || null;
+      row._procedureMatch = row.procedure
+        ? resolveProcedureFromText(row.procedure, clinicProcedures)
+        : null;
       if (!row._patient) {
-        results[row._i] = { patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'환자 생성 실패' };
+        results[row._i] = {
+          patient_id:'', visit_id:'', portal_url:'', status:'failed', error_message:'환자 생성 실패',
+          ...buildProcedureResolutionMeta(row._procedureMatch),
+        };
       }
     }
 
@@ -2631,6 +2943,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
         portal_url:    '',    // existing link not re-exposed
         status:        'duplicate',
         error_message: '',
+        ...buildProcedureResolutionMeta(row._procedureMatch),
       };
     }
 
@@ -2639,6 +2952,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
       const visitPayload = newRows.map(row => ({
         clinic_id,
         patient_id:    row._patient.id,
+        procedure_id:  row._procedureMatch?.procedure?.id || null,
         visit_date:    row.visit_date + 'T00:00:00.000Z',
         notes:         row.note || null,
         stage:         'booked',
@@ -2654,7 +2968,10 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
       if (vErr) {
         console.error("[Import/visits]", vErr.message);
         for (const row of newRows) {
-          results[row._i] = { patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 생성 실패' };
+          results[row._i] = {
+            patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 생성 실패',
+            ...buildProcedureResolutionMeta(row._procedureMatch),
+          };
         }
       } else {
         // Map returned visits back to rows via (patient_id, date) key
@@ -2695,7 +3012,10 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
         for (const row of newRows) {
           const visitId = newVisitMap[`${row._patient.id}_${row.visit_date}`];
           if (!visitId) {
-            results[row._i] = { patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 ID 없음' };
+            results[row._i] = {
+              patient_id: row._patient.id, visit_id:'', portal_url:'', status:'failed', error_message:'방문 ID 없음',
+              ...buildProcedureResolutionMeta(row._procedureMatch),
+            };
             continue;
           }
           const token = tokenByVisitId[visitId];
@@ -2705,6 +3025,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
             portal_url:    token ? `${baseUrl}/t/${token}` : '',
             status:        row._patient.isNew ? 'created' : 'visit_created',
             error_message: '',
+            ...buildProcedureResolutionMeta(row._procedureMatch),
           };
         }
       }
@@ -2749,10 +3070,9 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
 //   concerns?:          string[] — patient-reported concerns (Korean)
 //   riskFlags?:         { type, detail, severity }[] — structured risk info
 // }
-app.post("/api/memory", async (req, res) => {
+app.post("/api/memory", requireStaffAuth, async (req, res) => {
   const {
     patientId,
-    clinicId,
     koSummary,
     riskLevel       = "none",
     procedureInterests = [],
@@ -2760,8 +3080,8 @@ app.post("/api/memory", async (req, res) => {
     riskFlags       = [],
   } = req.body;
 
-  const clinic_id = clinicId || CLINIC_UUID;
-  if (!clinic_id) return res.status(400).json({ error: "clinicId required" });
+  const clinic_id = req.clinic_id || CLINIC_UUID;
+  if (!clinic_id) return res.status(403).json({ error: "No clinic associated with this staff session" });
 
   // No patient identified → skip DB write, client handles the UX
   if (!patientId) {
@@ -2936,6 +3256,534 @@ Output exactly:
 // MY TIKI — 환자용 API  (requirePatientToken 필수)
 // ════════════════════════════════════════════════════════════════════════════
 
+async function getOrCreateAskConversation(sb, {
+  clinic_id,
+  patient_id,
+  visit_id,
+  stage,
+}) {
+  const { data: existing, error: existingErr } = await sb
+    .from("conversations")
+    .select("id, clinic_id, patient_id, visit_id, channel, kind, status, metadata, created_at, updated_at")
+    .eq("clinic_id", clinic_id)
+    .eq("patient_id", patient_id)
+    .eq("visit_id", visit_id)
+    .eq("channel", "web")
+    .eq("kind", "ask")
+    .in("status", ["active", "closed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingErr) throw existingErr;
+  if (existing) return existing;
+
+  const { data: created, error: createErr } = await sb
+    .from("conversations")
+    .insert({
+      clinic_id,
+      patient_id,
+      visit_id,
+      channel: "web",
+      kind: "ask",
+      status: "active",
+      metadata: {
+        surface: "my_tiki_ask",
+        stage_at_open: stage,
+      },
+    })
+    .select("id, clinic_id, patient_id, visit_id, channel, kind, status, metadata, created_at, updated_at")
+    .single();
+
+  if (createErr) throw createErr;
+  return created;
+}
+
+async function loadAskContext(sb, { clinic_id, patient_id, visit_id, patient_lang }) {
+  const [visitRes, procedureRes, knowledgeRes, escalationRes] = await Promise.all([
+    visit_id
+      ? sb.from("visits")
+           .select("id, procedure_id, stage, visit_date, intake_done, consent_done, followup_done, patient_arrived_at")
+           .eq("id", visit_id)
+           .maybeSingle()
+      : Promise.resolve({ data: null }),
+    (async () => {
+      if (!visit_id) return { data: null };
+      const { data: visit } = await sb
+        .from("visits")
+        .select("procedure_id")
+        .eq("id", visit_id)
+        .maybeSingle();
+      if (!visit?.procedure_id) return { data: null };
+      return sb
+        .from("procedures")
+        .select("id, name_ko, name_en, name_ja, name_zh, description, cautions_ko, faq_ko, faq_en, faq_ja, faq_zh")
+        .eq("id", visit.procedure_id)
+        .maybeSingle();
+    })(),
+    (async () => {
+      if (!visit_id) return { data: [] };
+      const { data: visit } = await sb.from("visits").select("procedure_id").eq("id", visit_id).maybeSingle();
+      if (!visit?.procedure_id) return { data: [] };
+      return sb
+        .from("procedures_knowledge")
+        .select("id, procedure_id, content, source_type")
+        .eq("clinic_id", clinic_id)
+        .eq("procedure_id", visit.procedure_id)
+        .limit(6);
+    })(),
+    sb
+      .from("escalation_requests")
+      .select("id, escalation_type, priority, assigned_role, assigned_user_id, status, patient_visible_status_text, opened_at, acknowledged_at, responded_at, resolved_at, created_at")
+      .eq("clinic_id", clinic_id)
+      .eq("patient_id", patient_id)
+      .eq("visit_id", visit_id)
+      .in("status", ["requested", "assigned", "acknowledged", "responded"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  return {
+    visit: visitRes.data || null,
+    procedure: procedureRes.data || null,
+    knowledgeRows: knowledgeRes.data || [],
+    openEscalation: escalationRes.data || null,
+    patient_lang,
+  };
+}
+
+async function loadAskMessages(sb, conversationId) {
+  if (!conversationId) return [];
+  const { data, error } = await sb
+    .from("messages")
+    .select("id, role, content, created_at, metadata")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .limit(30);
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadClinicStaffRoster(sb, clinic_id) {
+  const { data, error } = await sb
+    .from("clinic_users")
+    .select("user_id, email, role, is_active")
+    .eq("clinic_id", clinic_id)
+    .eq("is_active", true)
+    .order("role")
+    .order("email");
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    user_id: row.user_id,
+    email: row.email,
+    role: row.role,
+  }));
+}
+
+async function fetchEscalationById(sb, clinic_id, id) {
+  const { data, error } = await sb
+    .from("escalation_requests")
+    .select(`
+      id, clinic_id, patient_id, visit_id, conversation_id, message_id, source_message_id,
+      request_type, reason_category, escalation_type, priority,
+      assigned_role, assigned_user_id, status,
+      patient_visible_status_text,
+      opened_at, acknowledged_at, acknowledged_by, responded_at, responded_by, resolved_at, resolved_by, closed_at, closed_by,
+      created_at, updated_at,
+      patients ( id, name, flag, lang ),
+      visits ( id, stage, visit_date, room, procedures ( id, name_ko, name_en ) )
+    `)
+    .eq("clinic_id", clinic_id)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+function normalizeRoomVisit(visit = {}) {
+  return {
+    ...visit,
+    room: visit.rooms?.name || visit.room || null,
+    room_type: visit.rooms?.room_type || null,
+  };
+}
+
+function buildVisitSummary(visits = []) {
+  return {
+    total: visits.length,
+    formsPending: visits.filter((visit) => !visit.intake_done || !visit.consent_done).length,
+    checkedIn: visits.filter((visit) => visit.checked_in_at).length,
+    activeLinks: visits.filter((visit) => visit.link_status === "active" || visit.link_status === "opened").length,
+    arrived: visits.filter((visit) => visit.patient_arrived_at).length,
+    roomReady: visits.filter((visit) => isVisitRoomReady(visit)).length,
+  };
+}
+
+async function fetchOpsBoardVisits({
+  sb,
+  clinic_id,
+  dateRange = "today",
+  stage,
+  limit = 200,
+}) {
+  function addUTCDays(d, n) {
+    const nd = new Date(d);
+    nd.setUTCDate(nd.getUTCDate() + n);
+    return nd;
+  }
+
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+
+  let q = sb
+    .from("visits")
+    .select(`
+      id, patient_id, procedure_id, stage,
+      visit_date, checked_in_at, room, room_id, room_assigned_at, room_cleared_at,
+      patient_arrived_at,
+      intake_done, consent_done, followup_done,
+      coordinator_id, internal_tags, notes,
+      created_at, updated_at,
+      patients ( id, name, lang, flag, channel_refs ),
+      procedures ( id, name_ko, name_en ),
+      rooms ( id, name, room_type, sort_order, is_active )
+    `)
+    .eq("clinic_id", clinic_id)
+    .order("visit_date", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(Number(limit));
+
+  if (stage && stage !== "all") q = q.eq("stage", stage);
+
+  if (dateRange === "today") {
+    q = q
+      .gte("visit_date", todayUTC.toISOString())
+      .lt("visit_date", addUTCDays(todayUTC, 1).toISOString());
+  } else if (dateRange === "tomorrow") {
+    const tom = addUTCDays(todayUTC, 1);
+    q = q
+      .gte("visit_date", tom.toISOString())
+      .lt("visit_date", addUTCDays(todayUTC, 2).toISOString());
+  } else if (dateRange === "week") {
+    q = q
+      .gte("visit_date", todayUTC.toISOString())
+      .lt("visit_date", addUTCDays(todayUTC, 7).toISOString());
+  }
+
+  const { data: visits, error } = await q;
+  if (error) throw error;
+  if (!visits || visits.length === 0) return [];
+
+  const visitIds = visits.map((visit) => visit.id);
+
+  const [{ data: links }, { data: unreviewedRows }] = await Promise.all([
+    sb
+      .from("patient_links")
+      .select("visit_id, id, status, expires_at, first_opened_at, last_accessed_at, created_at")
+      .in("visit_id", visitIds)
+      .eq("clinic_id", clinic_id)
+      .order("created_at", { ascending: false }),
+    sb
+      .from("form_submissions")
+      .select("visit_id")
+      .in("visit_id", visitIds)
+      .eq("status", "submitted")
+      .is("reviewed_at", null),
+  ]);
+
+  const linksMap = {};
+  for (const link of links || []) {
+    if (!linksMap[link.visit_id]) linksMap[link.visit_id] = link;
+  }
+
+  const unreviewedMap = {};
+  for (const row of unreviewedRows || []) {
+    unreviewedMap[row.visit_id] = (unreviewedMap[row.visit_id] || 0) + 1;
+  }
+
+  function linkStatus(link) {
+    if (!link) return "none";
+    if (link.status === "revoked") return "revoked";
+    if (link.status === "expired" || new Date(link.expires_at) < new Date()) return "expired";
+    if (link.first_opened_at) return "opened";
+    return "active";
+  }
+
+  return visits.map((visit) => normalizeRoomVisit({
+    ...visit,
+    link: linksMap[visit.id] || null,
+    link_status: linkStatus(linksMap[visit.id]),
+    unreviewed_forms: unreviewedMap[visit.id] || 0,
+  }));
+}
+
+async function loadClinicRooms(sb, clinic_id, { includeInactive = false } = {}) {
+  let q = sb
+    .from("rooms")
+    .select("id, clinic_id, name, room_type, sort_order, is_active, created_at, updated_at")
+    .eq("clinic_id", clinic_id)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (!includeInactive) q = q.eq("is_active", true);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+async function loadClinicProcedures(sb, clinic_id) {
+  const { data, error } = await sb
+    .from("procedures")
+    .select("id, clinic_id, name_ko, name_en, name_ja, name_zh, is_active, sort_order")
+    .eq("clinic_id", clinic_id)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("name_ko", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+function buildRoomSummary(rooms = [], visits = []) {
+  const occupancy = buildRoomOccupancy({ rooms, visits });
+  const queue = getRoomReadyQueue(visits);
+  return {
+    rooms: occupancy,
+    room_ready_queue: queue,
+    room_summary: {
+      total: occupancy.length,
+      free: occupancy.filter((room) => room.occupancy_state === "free").length,
+      occupied: occupancy.filter((room) => room.occupancy_state === "occupied").length,
+      readyQueue: queue.length,
+    },
+  };
+}
+
+function buildProcedureResolutionMeta(match) {
+  if (!match) {
+    return {
+      procedure_id: "",
+      procedure_match_status: "",
+      procedure_match_name: "",
+      procedure_match_error: "",
+    };
+  }
+
+  if (match?.status === "matched" && match.procedure?.id) {
+    return {
+      procedure_id: match.procedure.id,
+      procedure_match_status: "matched",
+      procedure_match_name: match.procedure.name_ko || match.procedure.name_en || "",
+      procedure_match_error: "",
+    };
+  }
+
+  if (match?.status === "ambiguous") {
+    return {
+      procedure_id: "",
+      procedure_match_status: "ambiguous",
+      procedure_match_name: "",
+      procedure_match_error: "시술명이 여러 후보로 해석되어 자동 지정하지 않았습니다.",
+    };
+  }
+
+  return {
+    procedure_id: "",
+    procedure_match_status: match?.status || "unmatched",
+    procedure_match_name: "",
+    procedure_match_error: match?.status === "partial"
+      ? "일부 시술 표현만 매칭되어 자동 지정하지 않았습니다."
+      : "일치하는 활성 시술을 찾지 못해 자동 지정하지 않았습니다.",
+  };
+}
+
+async function fetchRoomById(sb, roomId) {
+  const { data, error } = await sb
+    .from("rooms")
+    .select("id, clinic_id, name, room_type, sort_order, is_active")
+    .eq("id", roomId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function fetchActiveRoomSession(sb, roomId) {
+  const { data, error } = await sb
+    .from("room_sessions")
+    .select("id, clinic_id, room_id, visit_id, patient_id, status, started_at, ended_at, created_at, updated_at")
+    .eq("room_id", roomId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function fetchRoomVisitContext(sb, clinic_id, roomId) {
+  const { data, error } = await sb
+    .from("visits")
+    .select(`
+      id, clinic_id, patient_id, procedure_id, stage, visit_date,
+      intake_done, consent_done, followup_done, internal_tags, notes,
+      checked_in_at, patient_arrived_at, room_id, room_assigned_at, room_cleared_at,
+      patients ( id, name, lang, flag, notes ),
+      procedures ( id, name_ko, name_en, cautions_ko )
+    `)
+    .eq("clinic_id", clinic_id)
+    .eq("room_id", roomId)
+    .is("room_cleared_at", null)
+    .neq("stage", "closed")
+    .order("room_assigned_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function fetchOpenVisitEscalation(sb, clinic_id, visitId) {
+  if (!visitId) return null;
+  const { data, error } = await sb
+    .from("escalation_requests")
+    .select("id, escalation_type, priority, assigned_role, status, patient_visible_status_text, opened_at")
+    .eq("clinic_id", clinic_id)
+    .eq("visit_id", visitId)
+    .in("status", ["requested", "assigned", "acknowledged", "responded"])
+    .order("opened_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function fetchLatestRoomEvents(sb, roomSessionId) {
+  if (!roomSessionId) return { latest_input: null, latest_response: null };
+  const { data, error } = await sb
+    .from("room_interaction_events")
+    .select("id, event_type, payload, created_at")
+    .eq("room_session_id", roomSessionId)
+    .in("event_type", ["live_input", "response_selected"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (error) throw error;
+  const latestInput = (data || []).find((item) => item.event_type === "live_input") || null;
+  const latestResponse = (data || []).find((item) => item.event_type === "response_selected") || null;
+  return {
+    latest_input: latestInput?.payload || null,
+    latest_response: latestResponse?.payload || null,
+  };
+}
+
+async function ensureRoomSession(sb, { clinic_id, room_id, visit_id, patient_id }) {
+  const existing = await fetchActiveRoomSession(sb, room_id);
+  if (existing) return existing;
+  const now = new Date().toISOString();
+  const { data, error } = await sb
+    .from("room_sessions")
+    .insert({
+      clinic_id,
+      room_id,
+      visit_id: visit_id || null,
+      patient_id: patient_id || null,
+      status: "active",
+      started_at: now,
+    })
+    .select("id, clinic_id, room_id, visit_id, patient_id, status, started_at, ended_at, created_at, updated_at")
+    .single();
+  if (error) throw error;
+
+  await sb.from("room_interaction_events").insert({
+    clinic_id,
+    room_id,
+    room_session_id: data.id,
+    visit_id: visit_id || null,
+    patient_id: patient_id || null,
+    event_type: "session_started",
+    payload: { source: "auto_open" },
+  });
+
+  return data;
+}
+
+async function closeRoomSession(sb, roomId, status) {
+  const existing = await fetchActiveRoomSession(sb, roomId);
+  if (!existing) return null;
+  const now = new Date().toISOString();
+  const { data, error } = await sb
+    .from("room_sessions")
+    .update({
+      status,
+      ended_at: now,
+      updated_at: now,
+    })
+    .eq("id", existing.id)
+    .select("id, clinic_id, room_id, visit_id, patient_id, status, started_at, ended_at, created_at, updated_at")
+    .single();
+  if (error) throw error;
+  await sb.from("room_interaction_events").insert({
+    clinic_id: data.clinic_id,
+    room_id: data.room_id,
+    room_session_id: data.id,
+    visit_id: data.visit_id,
+    patient_id: data.patient_id,
+    event_type: status === "cleared" ? "room_cleared" : "session_ended",
+    payload: { status },
+  });
+  return data;
+}
+
+async function buildRoomCurrentPayload(sb, roomId, expectedClinicId = null) {
+  const room = await fetchRoomById(sb, roomId);
+  if (!room) return null;
+  if (expectedClinicId && room.clinic_id !== expectedClinicId) return null;
+
+  const [session, currentVisit, clinicRooms, allVisits] = await Promise.all([
+    fetchActiveRoomSession(sb, roomId),
+    fetchRoomVisitContext(sb, room.clinic_id, roomId),
+    loadClinicRooms(sb, room.clinic_id),
+    fetchOpsBoardVisits({ sb, clinic_id: room.clinic_id, dateRange: "today", stage: "all", limit: 300 }),
+  ]);
+
+  const effectiveSession = currentVisit
+    ? await ensureRoomSession(sb, {
+        clinic_id: room.clinic_id,
+        room_id: room.id,
+        visit_id: currentVisit.id,
+        patient_id: currentVisit.patient_id,
+      })
+    : session;
+
+  const [latestEvents, openEscalation] = await Promise.all([
+    fetchLatestRoomEvents(sb, effectiveSession?.id || null),
+    fetchOpenVisitEscalation(sb, room.clinic_id, currentVisit?.id || null),
+  ]);
+
+  const prep = currentVisit
+    ? buildRoomPrepPayload({
+        patient: currentVisit.patients || {},
+        visit: currentVisit,
+        procedure: currentVisit.procedures || {},
+        latestEscalation: openEscalation,
+      })
+    : null;
+
+  const nextCandidate = pickNextRoomCandidate({
+    roomId: room.id,
+    visits: allVisits,
+  });
+
+  return {
+    room,
+    available_rooms: clinicRooms,
+    session: effectiveSession || null,
+    current_patient: currentVisit ? normalizeRoomVisit(currentVisit) : null,
+    prep,
+    communication_state: latestEvents,
+    next_patient: nextCandidate ? normalizeRoomVisit(nextCandidate) : null,
+    idle: !currentVisit,
+  };
+}
+
 // ── GET /api/patient/me  — 토큰으로 환자+방문 컨텍스트 조회
 // My Tiki 앱이 처음 로드할 때 호출
 app.get("/api/patient/me", requirePatientToken, async (req, res) => {
@@ -3087,6 +3935,143 @@ app.post("/api/patient/form-submit", requirePatientToken, async (req, res) => {
   }
 });
 
+// ── GET /api/patient/aftercare — active aftercare state for this visit
+app.get("/api/patient/aftercare", requirePatientToken, async (req, res) => {
+  const { clinic_id, patient_id, visit_id } = req;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const state = await fetchPatientAftercareState(sb, clinic_id, patient_id, visit_id);
+    if (!state) return res.status(404).json({ error: "Visit not found" });
+    res.json(state);
+  } catch (err) {
+    console.error("[Patient/aftercare]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/patient/aftercare/respond — structured aftercare response
+app.post("/api/patient/aftercare/respond", requirePatientToken, async (req, res) => {
+  const { clinic_id, patient_id, visit_id, patient_lang } = req;
+  const { eventId, payload } = req.body || {};
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!eventId || !payload) return res.status(400).json({ error: "eventId and payload required" });
+
+  try {
+    const { data: event, error: eventError } = await sb
+      .from("patient_aftercare_events")
+      .select(`
+        id, run_id, step_id, response_status, risk_level, escalation_request_id,
+        patient_aftercare_runs!inner ( id, clinic_id, patient_id, visit_id, status )
+      `)
+      .eq("id", eventId)
+      .eq("patient_aftercare_runs.clinic_id", clinic_id)
+      .eq("patient_aftercare_runs.patient_id", patient_id)
+      .eq("patient_aftercare_runs.visit_id", visit_id)
+      .maybeSingle();
+    if (eventError) throw eventError;
+    if (!event) return res.status(404).json({ error: "Aftercare event not found" });
+
+    const { data: visit, error: visitError } = await sb
+      .from("visits")
+      .select("id, stage")
+      .eq("id", visit_id)
+      .eq("clinic_id", clinic_id)
+      .maybeSingle();
+    if (visitError) throw visitError;
+
+    const evaluation = evaluateAftercareResponse(payload);
+    const now = new Date().toISOString();
+
+    let escalationRequest = null;
+    if (evaluation.should_create_escalation) {
+      const draft = createEscalationInsert({
+        clinic_id,
+        patient_id,
+        visit_id,
+        conversation_id: null,
+        source_message_id: null,
+        text: payload.free_text || JSON.stringify(payload),
+        visitStage: visit?.stage || "post_care",
+        patientLang: patient_lang || "en",
+        requestType: evaluation.risk_level === "urgent" ? "nurse" : "nurse",
+        questionType: evaluation.escalation_type === "urgent_risk" ? "urgent_risk" : "aftercare_concern",
+      });
+
+      const escalationInsert = {
+        ...draft,
+        request_type: evaluation.risk_level === "urgent" ? "nurse" : "nurse",
+        reason_category: evaluation.escalation_type === "urgent_risk" ? "urgent_risk" : "aftercare_concern",
+        escalation_type: evaluation.escalation_type === "urgent_risk" ? "urgent_risk" : "aftercare_concern",
+        priority: evaluation.risk_level === "urgent" ? "urgent" : "high",
+        assigned_role: "nurse",
+        patient_visible_status_text: getAftercarePatientAcknowledgement(evaluation.risk_level),
+      };
+
+      const { data: escalation, error: escalationError } = await sb
+        .from("escalation_requests")
+        .insert(escalationInsert)
+        .select("id, escalation_type, priority, assigned_role, status, patient_visible_status_text, opened_at, created_at")
+        .single();
+      if (escalationError) throw escalationError;
+      escalationRequest = escalation;
+    }
+
+    const { data: responseRow, error: responseError } = await sb
+      .from("patient_aftercare_responses")
+      .upsert({
+        event_id: eventId,
+        patient_id,
+        visit_id,
+        payload_json: payload,
+        derived_signals_json: evaluation.derived_signals,
+        updated_at: now,
+      }, { onConflict: "event_id" })
+      .select("id, event_id, payload_json, derived_signals_json, created_at, updated_at")
+      .single();
+    if (responseError) throw responseError;
+
+    const { data: updatedEvent, error: updateError } = await sb
+      .from("patient_aftercare_events")
+      .update({
+        responded_at: now,
+        response_status: "responded",
+        risk_level: evaluation.risk_level,
+        escalation_request_id: escalationRequest?.id || null,
+        urgent_flag: evaluation.urgent_flag,
+        next_action_status: evaluation.next_action_type,
+        safe_for_return: evaluation.safe_for_return,
+      })
+      .eq("id", eventId)
+      .select(`
+        id, run_id, step_id, scheduled_for, sent_at, responded_at, response_status, risk_level,
+        escalation_request_id, urgent_flag, next_action_status, safe_for_return, created_at, updated_at,
+        aftercare_steps ( id, step_key, trigger_offset_hours, message_template_key, next_action_type, content_template )
+      `)
+      .single();
+    if (updateError) throw updateError;
+
+    const state = await fetchPatientAftercareState(sb, clinic_id, patient_id, visit_id);
+
+    res.json({
+      ok: true,
+      event: updatedEvent,
+      response: responseRow,
+      evaluation,
+      acknowledgement: getAftercarePatientAcknowledgement(evaluation.risk_level),
+      escalation: escalationRequest,
+      next_action: evaluation.next_action_type,
+      safe_for_return: evaluation.safe_for_return,
+      state,
+    });
+  } catch (err) {
+    console.error("[Patient/aftercare/respond]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/patient/arrive  — 환자 자가 도착 신호
 // 환자가 My Tiki 포털에서 "I'm here" 버튼을 탭했을 때 호출됨.
 // visits.patient_arrived_at = NOW() 기록 + patient_journey_events 이벤트 삽입.
@@ -3139,6 +4124,709 @@ app.post("/api/patient/arrive", requirePatientToken, async (req, res) => {
     res.json({ ok: true, patient_arrived_at: arrivedAt });
   } catch (err) {
     console.error("[Patient/arrive]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/patient/ask — Ask bootstrap state
+app.get("/api/patient/ask", requirePatientToken, async (req, res) => {
+  const { clinic_id, patient_id, visit_id, patient_lang } = req;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const context = await loadAskContext(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      patient_lang,
+    });
+
+    const conversation = await getOrCreateAskConversation(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      stage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+    });
+
+    const messages = await loadAskMessages(sb, conversation.id);
+    const bootstrap = getPatientAskBootstrap({
+      visit: context.visit,
+      messages,
+      escalationRequest: context.openEscalation,
+    });
+
+    res.json({
+      conversation,
+      ...bootstrap,
+    });
+  } catch (err) {
+    console.error("[Patient/ask]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/patient/ask/messages — Ask patient message
+app.post("/api/patient/ask/messages", requirePatientToken, async (req, res) => {
+  const { text, messageType = "free_text" } = req.body || {};
+  const { clinic_id, patient_id, visit_id, patient_lang } = req;
+
+  if (!text || !String(text).trim()) {
+    return res.status(400).json({ error: "text required" });
+  }
+
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const context = await loadAskContext(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      patient_lang,
+    });
+
+    const conversation = await getOrCreateAskConversation(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      stage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+    });
+
+    const { data: patientMessage, error: pErr } = await sb
+      .from("messages")
+      .insert({
+        clinic_id,
+        conversation_id: conversation.id,
+        role: "user",
+        channel: "web",
+        content: String(text).trim(),
+        metadata: {
+          sender_type: "patient",
+          message_type: messageType,
+          stage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+          surface: "my_tiki_ask",
+        },
+      })
+      .select("id, role, content, created_at, metadata")
+      .single();
+
+    if (pErr) throw pErr;
+
+    const assistant = await generateAskAssistantPayload({
+      text: String(text).trim(),
+      lang: patient_lang || "en",
+      visit: context.visit,
+      procedure: context.procedure,
+      knowledgeRows: context.knowledgeRows,
+    });
+
+    const { data: assistantMessage, error: aErr } = await sb
+      .from("messages")
+      .insert({
+        clinic_id,
+        conversation_id: conversation.id,
+        role: "assistant",
+        channel: "web",
+        content: assistant.assistantText,
+        model_used: assistant.policyResult === "answer" ? (process.env.MODEL_HAIKU || MODEL_HAIKU) : null,
+        metadata: {
+          sender_type: "assistant",
+          message_type: assistant.policyResult === "answer" ? "answer" : "safe_fallback",
+          policy_result: assistant.policyResult,
+          question_type: assistant.questionType,
+          source_refs: assistant.sourceRefs,
+          stage: assistant.stage,
+          suggested_escalation: assistant.suggestedEscalation,
+          safe: true,
+          surface: "my_tiki_ask",
+        },
+      })
+      .select("id, role, content, created_at, metadata")
+      .single();
+
+    if (aErr) throw aErr;
+
+    await sb
+      .from("conversations")
+      .update({
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...(conversation.metadata || {}),
+          last_policy_result: assistant.policyResult,
+          last_question_type: assistant.questionType,
+        },
+      })
+      .eq("id", conversation.id);
+
+    res.json({
+      conversation_id: conversation.id,
+      patient_message: patientMessage,
+      assistant_message: assistantMessage,
+      policy_result: assistant.policyResult,
+      question_type: assistant.questionType,
+      suggested_escalation: assistant.suggestedEscalation,
+    });
+  } catch (err) {
+    console.error("[Patient/ask/messages]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/patient/ask/escalations — minimal escalation request creation
+app.post("/api/patient/ask/escalations", requirePatientToken, async (req, res) => {
+  const { requestType = null, messageId = null, note = "", reasonCategory = null, text = "" } = req.body || {};
+  const { clinic_id, patient_id, visit_id, patient_lang } = req;
+
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const context = await loadAskContext(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      patient_lang,
+    });
+
+    const conversation = await getOrCreateAskConversation(sb, {
+      clinic_id,
+      patient_id,
+      visit_id,
+      stage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+    });
+
+    const sourceText = text
+      || note
+      || (messageId
+        ? (await sb.from("messages").select("content, metadata").eq("id", messageId).maybeSingle()).data?.content
+        : "");
+
+    const insertRow = createEscalationInsert({
+      clinic_id,
+      patient_id,
+      visit_id,
+      conversation_id: conversation.id,
+      source_message_id: messageId,
+      text: sourceText,
+      visitStage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+      patientLang: patient_lang || "en",
+      requestType,
+      questionType: reasonCategory,
+    });
+
+    const { data: requestRow, error: reqErr } = await sb
+      .from("escalation_requests")
+      .insert(insertRow)
+      .select(`
+        id, request_type, reason_category, escalation_type, priority,
+        assigned_role, assigned_user_id, status, patient_visible_status_text,
+        opened_at, acknowledged_at, responded_at, resolved_at, created_at
+      `)
+      .single();
+
+    if (reqErr) throw reqErr;
+
+    const { data: ackMessage, error: ackErr } = await sb
+      .from("messages")
+      .insert({
+        clinic_id,
+        conversation_id: conversation.id,
+        role: "assistant",
+        channel: "web",
+        content: requestRow.patient_visible_status_text,
+        metadata: {
+          sender_type: "assistant",
+          message_type: "escalation_ack",
+          policy_result: "escalate",
+          question_type: requestRow.escalation_type,
+          source_refs: [],
+          stage: context.visit?.patient_arrived_at ? "arrived" : (context.visit?.stage || "booked"),
+          escalation_request_id: requestRow.id,
+          escalation_priority: requestRow.priority,
+          assigned_role: requestRow.assigned_role,
+          safe: true,
+          surface: "my_tiki_ask",
+        },
+      })
+      .select("id, role, content, created_at, metadata")
+      .single();
+
+    if (ackErr) throw ackErr;
+
+    res.json({
+      request: requestRow,
+      acknowledgement: ackMessage,
+    });
+  } catch (err) {
+    console.error("[Patient/ask/escalations]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/staff/escalations — triage task list for Ops Board
+app.get("/api/staff/escalations", requireStaffAuth, async (req, res) => {
+  const {
+    status,
+    priority,
+    assigned_role,
+    assigned_user_id,
+    escalation_type,
+  } = req.query;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    let q = sb
+      .from("escalation_requests")
+      .select(`
+        id, clinic_id, patient_id, visit_id, conversation_id, source_message_id,
+        escalation_type, priority, assigned_role, assigned_user_id, status,
+        patient_visible_status_text, opened_at, acknowledged_at, responded_at,
+        resolved_at, closed_at, created_at, updated_at,
+        patients ( id, name, flag, lang ),
+        visits ( id, stage, visit_date, room, procedures ( id, name_ko, name_en ) )
+      `)
+      .eq("clinic_id", clinic_id)
+      .order("opened_at", { ascending: false })
+      .limit(200);
+
+    if (status) q = q.eq("status", status);
+    if (priority) q = q.eq("priority", priority);
+    if (assigned_role) q = q.eq("assigned_role", assigned_role);
+    if (assigned_user_id) q = q.eq("assigned_user_id", assigned_user_id);
+    if (escalation_type) q = q.eq("escalation_type", escalation_type);
+
+    const [{ data: rows, error }, staffUsers] = await Promise.all([
+      q,
+      loadClinicStaffRoster(sb, clinic_id),
+    ]);
+    if (error) throw error;
+
+    res.json({
+      items: rows || [],
+      summary: summarizeEscalationCounts(rows || []),
+      staff_users: staffUsers,
+    });
+  } catch (err) {
+    console.error("[Staff/escalations]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/staff/aftercare — aftercare status / concern / urgent / safe return list
+app.get("/api/staff/aftercare", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { filter = "all" } = req.query;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    let q = sb
+      .from("patient_aftercare_events")
+      .select(`
+        id, run_id, step_id, scheduled_for, sent_at, responded_at, response_status, risk_level,
+        escalation_request_id, urgent_flag, next_action_status, safe_for_return,
+        staff_reviewed_at, staff_reviewed_by, created_at, updated_at,
+        patient_aftercare_runs!inner (
+          id, clinic_id, patient_id, visit_id, status, started_at,
+          patients ( id, name, flag, lang ),
+          visits ( id, stage, visit_date, procedures ( id, name_ko, name_en ) )
+        ),
+        aftercare_steps ( id, step_key, trigger_offset_hours, message_template_key, next_action_type, content_template )
+      `)
+      .eq("patient_aftercare_runs.clinic_id", clinic_id)
+      .order("scheduled_for", { ascending: true })
+      .limit(200);
+
+    const now = new Date().toISOString();
+    if (filter === "due") q = q.eq("response_status", "due").lte("scheduled_for", now);
+    if (filter === "responded") q = q.eq("response_status", "responded");
+    if (filter === "concern") q = q.in("risk_level", ["concern"]);
+    if (filter === "urgent") q = q.eq("urgent_flag", true);
+    if (filter === "safe_for_return") q = q.eq("safe_for_return", true);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const items = data || [];
+    const summary = {
+      due: items.filter((item) => item.response_status === "due").length,
+      responded: items.filter((item) => item.responded_at).length,
+      concern: items.filter((item) => item.risk_level === "concern").length,
+      urgent: items.filter((item) => item.urgent_flag).length,
+      safe_for_return: items.filter((item) => item.safe_for_return).length,
+    };
+
+    res.json({ items, summary });
+  } catch (err) {
+    console.error("[Staff/aftercare]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/staff/aftercare/:eventId/review", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { eventId } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { data: existing, error: existingError } = await sb
+      .from("patient_aftercare_events")
+      .eq("id", eventId)
+      .select(`
+        id, run_id, step_id, scheduled_for, sent_at, responded_at, response_status, risk_level,
+        escalation_request_id, urgent_flag, next_action_status, safe_for_return,
+        staff_reviewed_at, staff_reviewed_by, created_at, updated_at
+      `)
+      .single();
+    if (existingError) throw existingError;
+
+    const { data: run, error: runError } = await sb
+      .from("patient_aftercare_runs")
+      .select("id, clinic_id")
+      .eq("id", existing.run_id)
+      .maybeSingle();
+    if (runError) throw runError;
+    if (!run || run.clinic_id !== clinic_id) return res.status(404).json({ error: "Aftercare event not found" });
+
+    const { data, error } = await sb
+      .from("patient_aftercare_events")
+      .update({
+        staff_reviewed_at: new Date().toISOString(),
+        staff_reviewed_by: req.staff_user_id || null,
+        response_status: "reviewed",
+      })
+      .eq("id", eventId)
+      .select(`
+        id, run_id, step_id, scheduled_for, sent_at, responded_at, response_status, risk_level,
+        escalation_request_id, urgent_flag, next_action_status, safe_for_return,
+        staff_reviewed_at, staff_reviewed_by, created_at, updated_at
+      `)
+      .single();
+    if (error) throw error;
+
+    res.json({ item: data });
+  } catch (err) {
+    console.error("[Staff/aftercare/review]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/staff/escalations/:id — single escalation detail
+app.get("/api/staff/escalations/:id", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { id } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const [item, staffUsers] = await Promise.all([
+      fetchEscalationById(sb, clinic_id, id),
+      loadClinicStaffRoster(sb, clinic_id),
+    ]);
+
+    if (!item) return res.status(404).json({ error: "Escalation not found" });
+    const msgId = item.source_message_id || item.message_id;
+    const source = msgId
+      ? (await sb.from("messages").select("id, content, role, created_at, metadata").eq("id", msgId).maybeSingle()).data
+      : null;
+
+    res.json({
+      item,
+      staff_users: staffUsers,
+      source_message: source || null,
+    });
+  } catch (err) {
+    console.error("[Staff/escalations/:id]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+async function applyEscalationAction(req, res, action) {
+  const clinic_id = req.clinic_id;
+  const { id } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const existing = await fetchEscalationById(sb, clinic_id, id);
+    if (!existing) return res.status(404).json({ error: "Escalation not found" });
+
+    const update = buildEscalationUpdateForAction({
+      currentStatus: existing.status,
+      action,
+      escalation_type: req.body?.escalation_type || existing.escalation_type,
+      patientLang: existing.patients?.lang || "en",
+      assigned_role: req.body?.assigned_role ?? existing.assigned_role,
+      assigned_user_id: req.body?.assigned_user_id ?? existing.assigned_user_id,
+      patient_visible_status_text: req.body?.patient_visible_status_text,
+      staff_user_id: req.staff_user_id || null,
+    });
+
+    if (!update) {
+      return res.status(400).json({ error: `Invalid transition: ${existing.status} -> ${action}` });
+    }
+
+    if (action === "assign") {
+      if (req.body?.escalation_type) update.escalation_type = req.body.escalation_type;
+      if (req.body?.priority) update.priority = req.body.priority;
+      if (req.body?.assigned_role === undefined && existing.assigned_role) update.assigned_role = existing.assigned_role;
+      if (req.body?.assigned_user_id === undefined && existing.assigned_user_id) update.assigned_user_id = existing.assigned_user_id;
+    }
+
+    const { data, error } = await sb
+      .from("escalation_requests")
+      .update(update)
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select(`
+        id, escalation_type, priority, assigned_role, assigned_user_id, status,
+        patient_visible_status_text, opened_at, acknowledged_at, acknowledged_by, responded_at, responded_by,
+        resolved_at, resolved_by, closed_at, closed_by, created_at, updated_at
+      `)
+      .single();
+    if (error) throw error;
+
+    res.json({ item: data });
+  } catch (err) {
+    console.error(`[Staff/escalations/${action}]`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+app.post("/api/staff/escalations/:id/acknowledge", requireStaffAuth, async (req, res) => applyEscalationAction(req, res, "acknowledge"));
+app.post("/api/staff/escalations/:id/assign", requireStaffAuth, async (req, res) => applyEscalationAction(req, res, "assign"));
+app.post("/api/staff/escalations/:id/responded", requireStaffAuth, async (req, res) => applyEscalationAction(req, res, "respond"));
+app.post("/api/staff/escalations/:id/resolve", requireStaffAuth, async (req, res) => applyEscalationAction(req, res, "resolve"));
+app.post("/api/staff/escalations/:id/close", requireStaffAuth, async (req, res) => applyEscalationAction(req, res, "close"));
+
+// ── GET /api/room/current — room-fixed tablet bootstrap
+app.get("/api/room/current", requireStaffAuth, async (req, res) => {
+  const roomId = req.query.roomId || req.query.room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomId) {
+    const { data: rooms, error } = await sb
+      .from("rooms")
+      .select("id, clinic_id, name, room_type, sort_order, is_active")
+      .eq("clinic_id", clinic_id)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .limit(20);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({
+      room: null,
+      available_rooms: rooms || [],
+      session: null,
+      current_patient: null,
+      prep: null,
+      communication_state: { latest_input: null, latest_response: null },
+      next_patient: null,
+      idle: true,
+    });
+  }
+
+  try {
+    const payload = await buildRoomCurrentPayload(sb, roomId, clinic_id);
+    if (!payload) return res.status(404).json({ error: "Room not found" });
+    res.json(payload);
+  } catch (err) {
+    console.error("[Room/current]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/room/live-input — patient utterance -> intent summary + recommended doctor options
+app.post("/api/room/live-input", requireStaffAuth, async (req, res) => {
+  const { roomId, room_id, text } = req.body || {};
+  const roomKey = roomId || room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomKey || !text?.trim()) return res.status(400).json({ error: "roomId and text required" });
+
+  try {
+    const current = await buildRoomCurrentPayload(sb, roomKey, clinic_id);
+    if (!current?.room) return res.status(404).json({ error: "Room not found" });
+    if (!current.current_patient || !current.session) {
+      return res.status(409).json({ error: "No active patient in this room" });
+    }
+
+    const analysis = analyzeRoomLiveInput({
+      text,
+      patientLang: current.prep?.patient_language || current.current_patient?.patients?.lang || "en",
+      visitStage: current.prep?.visit_stage || current.current_patient?.stage || "treatment",
+      procedureName: current.prep?.procedure_name || current.current_patient?.procedure_name || "",
+    });
+
+    await sb.from("room_interaction_events").insert({
+      clinic_id: current.room.clinic_id,
+      room_id: current.room.id,
+      room_session_id: current.session.id,
+      visit_id: current.current_patient.id,
+      patient_id: current.current_patient.patient_id,
+      event_type: "live_input",
+      payload: analysis,
+    });
+
+    res.json({
+      session_id: current.session.id,
+      ...analysis,
+    });
+  } catch (err) {
+    console.error("[Room/live-input]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/room/respond — doctor-selected response -> patient-facing text/playback payload
+app.post("/api/room/respond", requireStaffAuth, async (req, res) => {
+  const { roomId, room_id, response } = req.body || {};
+  const roomKey = roomId || room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomKey || !response?.text) return res.status(400).json({ error: "roomId and response.text required" });
+
+  try {
+    const current = await buildRoomCurrentPayload(sb, roomKey, clinic_id);
+    if (!current?.room) return res.status(404).json({ error: "Room not found" });
+    if (!current.current_patient || !current.session) {
+      return res.status(409).json({ error: "No active patient in this room" });
+    }
+
+    const patientLang = current.prep?.patient_language || "en";
+    const translated = await translateReplyText(response.text, patientLang).catch(() => response.text);
+    const payload = {
+      label: response.label || "Selected response",
+      response_type: response.response_type || "primary_response",
+      staff_text: response.text,
+      patient_text: translated,
+      patient_language: patientLang,
+      playback: {
+        text: translated,
+        lang: patientLang,
+      },
+      selected_at: new Date().toISOString(),
+    };
+
+    await sb.from("room_interaction_events").insert({
+      clinic_id: current.room.clinic_id,
+      room_id: current.room.id,
+      room_session_id: current.session.id,
+      visit_id: current.current_patient.id,
+      patient_id: current.current_patient.patient_id,
+      event_type: "response_selected",
+      payload,
+    });
+
+    res.json(payload);
+  } catch (err) {
+    console.error("[Room/respond]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/room/end-session", requireStaffAuth, async (req, res) => {
+  const { roomId, room_id } = req.body || {};
+  const roomKey = roomId || room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomKey) return res.status(400).json({ error: "roomId required" });
+  try {
+    const room = await fetchRoomById(sb, roomKey);
+    if (!room || room.clinic_id !== clinic_id) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+    const closed = await closeRoomSession(sb, roomKey, "ended");
+    res.json({ ok: true, session: closed });
+  } catch (err) {
+    console.error("[Room/end-session]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/room/load-next", requireStaffAuth, async (req, res) => {
+  const { roomId, room_id } = req.body || {};
+  const roomKey = roomId || room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomKey) return res.status(400).json({ error: "roomId required" });
+
+  try {
+    const room = await fetchRoomById(sb, roomKey);
+    if (!room || room.clinic_id !== clinic_id) return res.status(404).json({ error: "Room not found" });
+    await closeRoomSession(sb, room.id, "ended");
+
+    const visits = await fetchOpsBoardVisits({ sb, clinic_id: room.clinic_id, dateRange: "today", stage: "all", limit: 300 });
+    const nextVisit = pickNextRoomCandidate({ roomId: room.id, visits });
+    if (!nextVisit) {
+      return res.json({
+        ok: true,
+        room,
+        session: null,
+        current_patient: null,
+        prep: null,
+        communication_state: { latest_input: null, latest_response: null },
+        next_patient: null,
+        idle: true,
+      });
+    }
+
+    if (nextVisit.room_id !== room.id) {
+      const now = new Date().toISOString();
+      await sb
+        .from("visits")
+        .update({
+          room_id: room.id,
+          room: room.name,
+          room_assigned_at: now,
+          room_cleared_at: null,
+        })
+        .eq("id", nextVisit.id)
+        .eq("clinic_id", room.clinic_id);
+    }
+
+    const payload = await buildRoomCurrentPayload(sb, room.id, clinic_id);
+    res.json({ ok: true, ...payload });
+  } catch (err) {
+    console.error("[Room/load-next]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/room/clear", requireStaffAuth, async (req, res) => {
+  const { roomId, room_id } = req.body || {};
+  const roomKey = roomId || room_id;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!roomKey) return res.status(400).json({ error: "roomId required" });
+
+  try {
+    const current = await buildRoomCurrentPayload(sb, roomKey, clinic_id);
+    if (!current?.room) return res.status(404).json({ error: "Room not found" });
+    await closeRoomSession(sb, current.room.id, "cleared");
+    if (current.current_patient?.id) {
+      await sb
+        .from("visits")
+        .update({
+          room_id: null,
+          room: null,
+          room_cleared_at: new Date().toISOString(),
+        })
+        .eq("id", current.current_patient.id)
+        .eq("clinic_id", current.room.clinic_id);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[Room/clear]", err.message);
     res.status(500).json({ error: err.message });
   }
 });

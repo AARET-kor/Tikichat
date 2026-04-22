@@ -9,16 +9,20 @@
  *     onConfirm={(patient, visit) => void}
  *     onCancel={() => void}
  *     darkMode={bool}
+ *     procedureOptions={array?}
+ *     selectedProcedureId={string?}
+ *     onProcedureChange={(procedureId) => void}
+ *     procedureResolution={object?}
  *     initialText={string?}          ← pre-populate paste zone
  *     mode="full"|"visit-only"       ← "visit-only" hides patient section
  *   />
  *
  * onConfirm receives:
  *   patient: { name, birth_year, gender, nationality, lang, channel_refs }
- *   visit:   { visit_date, procedure_interests, concerns, internal_notes }
+ *   visit:   { visit_date, procedure_interests, procedure_id, concerns, internal_notes }
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Loader2, Sparkles, X, Plus, ChevronDown } from 'lucide-react';
 
 // ── Design tokens ─────────────────────────────────────────────
@@ -169,6 +173,10 @@ export default function IntakeParser({
   onConfirm,
   onCancel,
   darkMode = false,
+  procedureOptions = [],
+  selectedProcedureId = '',
+  onProcedureChange = null,
+  procedureResolution = null,
   initialText = '',
   mode = 'full',      // 'full' | 'visit-only'
 }) {
@@ -197,6 +205,68 @@ export default function IntakeParser({
   const [nameErr,     setNameErr]     = useState(false);
 
   const debounceRef = useRef(null);
+  const autoSelectedProcedureIdRef = useRef('');
+
+  function normalizeProcedureText(value) {
+    return String(value || '').trim().toLowerCase().replace(/[\s()[\]{}\-_/.,]+/g, '');
+  }
+
+  const localProcedureResolution = useMemo(() => {
+    const cleanValues = (procedures || []).map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanValues.length === 0 || procedureOptions.length === 0) return null;
+
+    const resolved = cleanValues.map((value) => {
+      if (/[,/]| · |&|\+/.test(value)) return { status: 'unmatched', procedure: null };
+      const normalized = normalizeProcedureText(value);
+      const matches = procedureOptions.filter((procedure) =>
+        [procedure.name_ko, procedure.name_en, procedure.name_ja, procedure.name_zh]
+          .filter(Boolean)
+          .some((name) => normalizeProcedureText(name) === normalized)
+      );
+      if (matches.length === 1) return { status: 'matched', procedure: matches[0] };
+      if (matches.length > 1) return { status: 'ambiguous', procedure: null };
+      return { status: 'unmatched', procedure: null };
+    });
+
+    const matchedIds = [...new Set(resolved.filter(item => item.status === 'matched').map(item => item.procedure.id))];
+    if (matchedIds.length === 1 && resolved.every(item => item.status === 'matched')) {
+      const procedure = resolved.find(item => item.procedure?.id === matchedIds[0])?.procedure || null;
+      return { status: 'matched', procedure, message: `시술을 "${procedure?.name_ko || procedure?.name_en}"로 자동 제안합니다.` };
+    }
+    if (matchedIds.length > 1) {
+      return { status: 'ambiguous', procedure: null, message: '여러 시술 후보가 있어 자동 지정하지 않았습니다. 직접 선택해 주세요.' };
+    }
+    if (matchedIds.length === 1) {
+      return { status: 'partial', procedure: null, message: '일부 표현만 일치해 자동 지정하지 않았습니다. 직접 선택해 주세요.' };
+    }
+    return { status: 'unmatched', procedure: null, message: '일치하는 활성 시술을 찾지 못해 자동 지정하지 않았습니다.' };
+  }, [procedures, procedureOptions]);
+
+  useEffect(() => {
+    if (!onProcedureChange || !localProcedureResolution?.procedure?.id) return;
+    if (selectedProcedureId) return;
+    if (localProcedureResolution.status === 'matched') {
+      autoSelectedProcedureIdRef.current = localProcedureResolution.procedure.id;
+      onProcedureChange(localProcedureResolution.procedure.id);
+    }
+  }, [localProcedureResolution, onProcedureChange, selectedProcedureId]);
+
+  useEffect(() => {
+    if (!onProcedureChange || !selectedProcedureId || !autoSelectedProcedureIdRef.current) return;
+    if (selectedProcedureId !== autoSelectedProcedureIdRef.current) {
+      autoSelectedProcedureIdRef.current = '';
+      return;
+    }
+
+    const suggestedId = localProcedureResolution?.status === 'matched'
+      ? localProcedureResolution.procedure?.id
+      : '';
+
+    if (!suggestedId || suggestedId !== selectedProcedureId) {
+      autoSelectedProcedureIdRef.current = '';
+      onProcedureChange('');
+    }
+  }, [localProcedureResolution, onProcedureChange, selectedProcedureId]);
 
   // ── Parse function ──────────────────────────────────────────
   const parse = useCallback(async (text) => {
@@ -212,6 +282,8 @@ export default function IntakeParser({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setDraft(data);
+      autoSelectedProcedureIdRef.current = '';
+      onProcedureChange?.('');
       // Initialize editable state
       if (mode !== 'visit-only') {
         setName(data.patient.name || '');
@@ -287,10 +359,19 @@ export default function IntakeParser({
     const visit = {
       visit_date:          visitDate || null,
       procedure_interests: procedures,
+      procedure_id:        selectedProcedureId || null,
       concerns,
       internal_notes:      notes || null,
     };
     onConfirm(patient, visit);
+  }
+
+  function handleProcedureSelect(nextProcedureId) {
+    if (!onProcedureChange) return;
+    if (nextProcedureId !== autoSelectedProcedureIdRef.current) {
+      autoSelectedProcedureIdRef.current = '';
+    }
+    onProcedureChange(nextProcedureId);
   }
 
   // ── Theme ───────────────────────────────────────────────────
@@ -551,6 +632,36 @@ export default function IntakeParser({
             darkMode={darkMode}
           />
         </Field>
+
+        {procedureOptions.length > 0 && (
+          <Field label="확정 시술">
+            <div style={{ position: 'relative' }}>
+              <select
+                value={selectedProcedureId}
+                onChange={e => handleProcedureSelect(e.target.value)}
+                style={{
+                  width: '100%', padding: '9px 28px 9px 12px', borderRadius: 9, appearance: 'none',
+                  border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                  background: darkMode ? '#3F3F46' : '#FFF',
+                  color: textP, fontSize: 13, fontFamily: SANS, outline: 'none',
+                }}
+              >
+                <option value="">— 자동 지정 안 함</option>
+                {procedureOptions.map((procedure) => (
+                  <option key={procedure.id} value={procedure.id}>
+                    {procedure.name_ko || procedure.name_en}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={13} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: textS, pointerEvents: 'none' }} />
+            </div>
+            {(procedureResolution?.message || localProcedureResolution?.message) && (
+              <p style={{ fontSize: 11, color: (procedureResolution?.status || localProcedureResolution?.status) === 'matched' ? '#16A34A' : '#D97706', marginTop: 6 }}>
+                {procedureResolution?.message || localProcedureResolution?.message}
+              </p>
+            )}
+          </Field>
+        )}
 
         {/* Concerns */}
         <Field label="우려 사항" confidence={conf.concerns} evidence={evid.concerns}>

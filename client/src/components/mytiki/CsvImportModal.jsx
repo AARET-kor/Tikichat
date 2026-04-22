@@ -186,7 +186,7 @@ function validateRow(rawRow, colMap) {
 
 // ── Result CSV download ───────────────────────────────────────────────────────
 function downloadResultCSV(originalHeaders, originalRows, results) {
-  const extra = ['patient_id', 'visit_id', 'portal_url', 'status', 'error_message'];
+  const extra = ['patient_id', 'visit_id', 'procedure_id', 'procedure_match_status', 'procedure_match_name', 'portal_url', 'status', 'error_message'];
   const allHeaders = [...originalHeaders, ...extra];
 
   function esc(v) {
@@ -602,7 +602,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                 <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
                   <thead>
                     <tr style={{ background: darkMode?'#2D2D31':'#F3F4F6', position:'sticky', top:0 }}>
-                      {['이름','방문일','상태','링크','오류'].map(h => (
+                      {['이름','방문일','시술 매칭','상태','링크','오류'].map(h => (
                         <th key={h} style={{ padding:'7px 12px', textAlign:'left', fontWeight:700, color:textS, borderBottom:`1px solid ${tblBdr}` }}>{h}</th>
                       ))}
                     </tr>
@@ -614,6 +614,17 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                         <tr key={i} style={{ borderBottom:`1px solid ${tblBdr}` }}>
                           <td style={{ padding:'5px 12px', fontWeight:600, color:textP }}>{row.name}</td>
                           <td style={{ padding:'5px 12px', color:textS }}>{row.visit_date}</td>
+                          <td style={{ padding:'5px 12px', color:textS, fontSize:10 }}>
+                            {res.procedure_match_status === 'matched'
+                              ? (res.procedure_match_name || 'matched')
+                              : res.procedure_match_status === 'ambiguous'
+                                ? 'ambiguous'
+                                : res.procedure_match_status === 'partial'
+                                  ? 'partial'
+                                  : row.procedure
+                                    ? 'unmatched'
+                                    : '—'}
+                          </td>
                           <td style={{ padding:'5px 12px' }}><StatusChip status={res.status} /></td>
                           <td style={{ padding:'5px 12px' }}>
                             {res.portal_url
@@ -621,7 +632,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                               : <span style={{ color:textS }}>—</span>
                             }
                           </td>
-                          <td style={{ padding:'5px 12px', color:'#DC2626', fontSize:10 }}>{res.error_message || ''}</td>
+                          <td style={{ padding:'5px 12px', color:'#DC2626', fontSize:10 }}>{res.error_message || res.procedure_match_error || ''}</td>
                         </tr>
                       );
                     })}

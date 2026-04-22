@@ -19,7 +19,7 @@
 | `CLINIC_SLUG` | (new) | "tiki-demo" | Human-readable slug; server resolves → UUID |
 
 ### Step 3: Apply migrations in order
-Run 001 through 016 in the Supabase SQL Editor (or via supabase CLI):
+Run 001 through 031 in the Supabase SQL Editor (or via supabase CLI):
 ```
 001_extensions.sql
 002_clinics.sql
@@ -37,6 +37,13 @@ Run 001 through 016 in the Supabase SQL Editor (or via supabase CLI):
 014_telemetry.sql
 015_rls.sql
 016_seed.sql
+025_ops_board.sql
+026_arrival_mode.sql
+027_patient_ask.sql
+028_escalation_triage.sql
+029_rooms_lite.sql
+030_tiki_room.sql
+031_aftercare_engine.sql
 ```
 
 ### Step 4: Run embedding job

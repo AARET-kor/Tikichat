@@ -19,8 +19,9 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, MapPin, ChevronRight, ChevronLeft,
   FileText, Loader2, AlertTriangle, ClipboardCheck,
-  Navigation,
+  Navigation, MessageCircle, Send, UserRound, ShieldAlert, Stethoscope,
 } from 'lucide-react';
+import { buildPatientTodayTasks } from '../lib/opsLite';
 
 // ── Design tokens ─────────────────────────────────────────────
 const C = {
@@ -55,6 +56,8 @@ const I18N = {
     greetingGeneric:'안녕하세요 👋',
     journey:        '방문 여정',
     forms:          '서류 작성',
+    ask:            'Ask',
+    aftercare:      '사후 체크',
     procedure:      '예정 시술',
     noProcedure:    '시술 정보 없음',
     visitDate:      '방문 예정일',
@@ -99,13 +102,47 @@ const I18N = {
     arrivedTitle:   '도착 알림을 보냈습니다 ✓',
     arrivedSub:     '코디네이터가 곧 안내해 드릴 것입니다',
     showFrontDesk:  '프런트 데스크에 아래 화면을 보여주세요',
+    arrivalFallback:'버튼이 잘 되지 않으면 아래 문구를 바로 보여주세요',
     phrase:         '저 왔어요. 예약했어요.',
+    askTitle:       '현재 방문 단계에 맞는 질문',
+    askSubtitle:    '단순 문의는 바로 답하고, 확인이 필요한 내용은 병원으로 연결합니다.',
+    quickQuestions: '빠른 질문',
+    recentMessages: '최근 대화',
+    escalation:     '직접 확인 요청',
+    askCoordinator: '코디네이터에게 문의',
+    askNurse:       '간호팀에 문의',
+    doctorConfirm:  '의료진 확인 필요',
+    escalationStatus: '요청 진행 상태',
+    askPlaceholder: '현재 방문 단계에서 궁금한 점을 입력해 주세요',
+    send:           '보내기',
+    askEmpty:       '아직 질문이 없습니다. 위의 빠른 질문을 눌러 시작해 보세요.',
+    askLoading:     'Ask를 불러오는 중…',
+    aftercareTitle: '회복 체크',
+    aftercareSubtitle: '현재 회복 단계에 맞는 안내와 체크 항목을 확인해 주세요.',
+    aftercareLoading:'사후 체크를 불러오는 중…',
+    aftercareEmpty:  '현재 예정된 사후 체크 항목이 없습니다.',
+    aftercareDue:    '지금 확인 필요',
+    aftercareDone:   '완료됨',
+    aftercareRespond:'응답 제출',
+    aftercareAck:    '병원 확인 상태',
+    rebookCta:       '후속 예약 안내 보기',
+    askStageSummary: {
+      booked:    '예약이 확정된 상태입니다. 방문 준비와 체크인 절차를 먼저 안내해 드릴 수 있습니다.',
+      pre_visit: '방문 전 단계입니다. 서류, 동의서, 방문 준비 관련 질문을 먼저 도와드립니다.',
+      arrived:   '도착 확인이 된 상태입니다. 대기 위치, 다음 단계, 남은 준비 사항을 안내합니다.',
+      treatment: '현재 방문이 진행 중입니다. 간단한 진행 질문만 안내하고, 민감한 내용은 병원 확인으로 넘깁니다.',
+      post_care: '사후 관리 단계입니다. 승인된 aftercare 안내 범위에서만 답변합니다.',
+      followup:  '팔로업 단계입니다. 후속 안내와 병원 확인 요청을 도와드립니다.',
+      closed:    '방문은 완료되었지만, 필요한 경우 후속 문의나 확인 요청을 남길 수 있습니다.',
+    },
   },
   en: {
     greeting:       (name) => `Hello, ${name} 👋`,
     greetingGeneric:'Hello 👋',
     journey:        'My Journey',
     forms:          'Forms',
+    ask:            'Ask',
+    aftercare:      'Aftercare',
     procedure:      'Procedure',
     noProcedure:    'No procedure assigned',
     visitDate:      'Visit Date',
@@ -150,13 +187,47 @@ const I18N = {
     arrivedTitle:   'Arrival confirmed ✓',
     arrivedSub:     'The coordinator will be with you shortly',
     showFrontDesk:  'Show this screen to the front desk',
+    arrivalFallback:'If the button does not work, show the phrase below right away',
     phrase:         "I'm here for my appointment.",
+    askTitle:       'Questions for this visit stage',
+    askSubtitle:    'Simple questions are answered here. Sensitive questions are handed off to the clinic.',
+    quickQuestions: 'Quick Questions',
+    recentMessages: 'Recent Messages',
+    escalation:     'Request Human Help',
+    askCoordinator: 'Ask coordinator',
+    askNurse:       'Ask nurse',
+    doctorConfirm:  'Doctor confirmation needed',
+    escalationStatus: 'Request Status',
+    askPlaceholder: 'Type a question about this visit stage',
+    send:           'Send',
+    askEmpty:       'No questions yet. Start with one of the quick prompts above.',
+    askLoading:     'Loading Ask…',
+    aftercareTitle: 'Recovery Check',
+    aftercareSubtitle: 'See the guidance and check-in steps for your current recovery stage.',
+    aftercareLoading:'Loading aftercare…',
+    aftercareEmpty:  'There are no scheduled aftercare items right now.',
+    aftercareDue:    'Due now',
+    aftercareDone:   'Completed',
+    aftercareRespond:'Submit check-in',
+    aftercareAck:    'Clinic review status',
+    rebookCta:       'See follow-up booking guidance',
+    askStageSummary: {
+      booked:    'Your booking is confirmed. We can help first with preparation and check-in steps.',
+      pre_visit: 'This is the pre-visit stage. Ask first about forms, consent, and visit preparation.',
+      arrived:   'Your arrival is recorded. We can help with waiting, next steps, and pending items.',
+      treatment: 'Your visit is in progress. Simple workflow questions are fine here, but sensitive issues should be confirmed by the clinic.',
+      post_care: 'This is the aftercare stage. Answers stay within approved aftercare guidance only.',
+      followup:  'This is the follow-up stage. We can help with follow-up guidance and clinic confirmation requests.',
+      closed:    'The visit is complete, but you can still request follow-up guidance or clinic confirmation here.',
+    },
   },
   ja: {
     greeting:       (name) => `こんにちは、${name}様 👋`,
     greetingGeneric:'こんにちは 👋',
     journey:        'ご来院の流れ',
     forms:          '書類記入',
+    ask:            'Ask',
+    aftercare:      'アフターケア',
     procedure:      '施術内容',
     noProcedure:    '施術情報なし',
     visitDate:      'ご来院予定日',
@@ -201,13 +272,47 @@ const I18N = {
     arrivedTitle:   '到着通知を送りました ✓',
     arrivedSub:     'スタッフがすぐにご案内いたします',
     showFrontDesk:  '受付に以下の画面をお見せください',
+    arrivalFallback:'ボタンがうまく動かない場合は、下の文をそのままお見せください',
     phrase:         '予約の時間に来ました。',
+    askTitle:       '現在の来院段階に合わせた質問',
+    askSubtitle:    '簡単な質問にはここで回答し、確認が必要な内容はクリニックへ引き継ぎます。',
+    quickQuestions: 'クイック質問',
+    recentMessages: '最近のやり取り',
+    escalation:     'スタッフ確認を依頼',
+    askCoordinator: 'コーディネーターに確認',
+    askNurse:       '看護チームに確認',
+    doctorConfirm:  '医師確認が必要',
+    escalationStatus: 'リクエスト状況',
+    askPlaceholder: 'この来院段階について質問を入力してください',
+    send:           '送信',
+    askEmpty:       'まだ質問はありません。上のクイック質問から始めてください。',
+    askLoading:     'Askを読み込み中…',
+    aftercareTitle: '回復チェック',
+    aftercareSubtitle: '現在の回復段階に合わせた案内と確認項目をご確認ください。',
+    aftercareLoading:'アフターケアを読み込み中…',
+    aftercareEmpty:  '現在予定されているアフターケア項目はありません。',
+    aftercareDue:    '今すぐ確認',
+    aftercareDone:   '完了',
+    aftercareRespond:'送信する',
+    aftercareAck:    'クリニック確認状況',
+    rebookCta:       '次回予約案内を見る',
+    askStageSummary: {
+      booked:    '予約が確定しています。まずは来院準備とチェックイン案内をお手伝いします。',
+      pre_visit: '来院前の段階です。書類、同意書、来院準備に関する質問を優先してご案内します。',
+      arrived:   '到着が確認されています。待機場所、次の流れ、残りの準備をご案内します。',
+      treatment: '現在ご来院対応中です。簡単な進行質問は回答できますが、判断が必要な内容はクリニック確認をご案内します。',
+      post_care: 'アフターケア段階です。承認済みアフターケア案内の範囲でのみ回答します。',
+      followup:  'フォローアップ段階です。フォローアップ案内と確認依頼をお手伝いします。',
+      closed:    '来院は完了していますが、必要に応じて追加確認を依頼できます。',
+    },
   },
   zh: {
     greeting:       (name) => `您好，${name} 👋`,
     greetingGeneric:'您好 👋',
     journey:        '就诊流程',
     forms:          '填写表格',
+    ask:            'Ask',
+    aftercare:      '术后护理',
     procedure:      '手术项目',
     noProcedure:    '暂无手术信息',
     visitDate:      '预约日期',
@@ -252,7 +357,39 @@ const I18N = {
     arrivedTitle:   '已发送到达通知 ✓',
     arrivedSub:     '工作人员将很快为您服务',
     showFrontDesk:  '请将以下内容展示给前台',
+    arrivalFallback:'如果按钮无法使用，请直接向前台出示下面的话',
     phrase:         '我来了，我有预约。',
+    askTitle:       '适合当前就诊阶段的问题',
+    askSubtitle:    '简单问题可直接回答，需要判断的问题会转交诊所确认。',
+    quickQuestions: '快捷问题',
+    recentMessages: '最近消息',
+    escalation:     '请求人工协助',
+    askCoordinator: '联系协调员',
+    askNurse:       '联系护士',
+    doctorConfirm:  '需要医生确认',
+    escalationStatus: '请求状态',
+    askPlaceholder: '输入一个与当前就诊阶段相关的问题',
+    send:           '发送',
+    askEmpty:       '还没有问题。请先点击上方快捷问题开始。',
+    askLoading:     '正在加载 Ask…',
+    aftercareTitle: '恢复检查',
+    aftercareSubtitle: '查看与当前恢复阶段对应的护理说明和检查项。',
+    aftercareLoading:'正在加载术后护理…',
+    aftercareEmpty:  '当前没有计划中的术后护理项目。',
+    aftercareDue:    '现在需要确认',
+    aftercareDone:   '已完成',
+    aftercareRespond:'提交检查',
+    aftercareAck:    '诊所审核状态',
+    rebookCta:       '查看复诊预约建议',
+    askStageSummary: {
+      booked:    '您的预约已确认。我们会先帮助您了解来院准备和报到流程。',
+      pre_visit: '当前为来院前阶段。可优先咨询表格、同意书和来院准备事项。',
+      arrived:   '已记录您到达诊所。可咨询等待地点、下一步流程和待完成事项。',
+      treatment: '当前就诊正在进行中。这里只回答简单流程问题，敏感问题将建议由诊所确认。',
+      post_care: '当前为术后护理阶段。回答仅限于已批准的护理指导范围。',
+      followup:  '当前为随访阶段。可咨询随访说明并请求诊所确认。',
+      closed:    '本次就诊已完成，但您仍可在这里请求后续说明或诊所确认。',
+    },
   },
 };
 
@@ -261,6 +398,97 @@ function tx(lang, key, ...args) {
   const dict = I18N[lang] || I18N.en;
   const val  = dict[key] ?? I18N.en[key] ?? key;
   return typeof val === 'function' ? val(...args) : val;
+}
+
+function askStageSummary(lang, stage) {
+  const dict = I18N[lang] || I18N.en;
+  return dict.askStageSummary?.[stage] || I18N.en.askStageSummary?.[stage] || '';
+}
+
+function askPromptText(lang, prompt) {
+  const id = prompt?.id;
+  const map = {
+    prepare_for_visit: {
+      ko: '무엇을 준비해야 하나요?',
+      en: 'What should I prepare?',
+      ja: '何を準備すればいいですか？',
+      zh: '我需要准备什么？',
+    },
+    complete_forms: {
+      ko: '서류는 어디서 작성하나요?',
+      en: 'Where do I complete forms?',
+      ja: '書類はどこで記入しますか？',
+      zh: '我在哪里填写表格？',
+    },
+    sign_consent: {
+      ko: '동의서는 언제 작성하나요?',
+      en: 'When do I sign consent?',
+      ja: '同意書はいつ記入しますか？',
+      zh: '我什么时候签同意书？',
+    },
+    check_in_day_of_visit: {
+      ko: '당일 체크인은 어떻게 하나요?',
+      en: 'How do I check in on the day?',
+      ja: '当日のチェックインはどうすればいいですか？',
+      zh: '就诊当天如何报到？',
+    },
+    where_to_wait: {
+      ko: '어디에서 기다리면 되나요?',
+      en: 'Where should I wait?',
+      ja: 'どこで待てばいいですか？',
+      zh: '我应该在哪里等候？',
+    },
+    next_step: {
+      ko: '다음 단계는 무엇인가요?',
+      en: 'What is the next step?',
+      ja: '次のステップは何ですか？',
+      zh: '下一步是什么？',
+    },
+    how_long: {
+      ko: '얼마나 걸리나요?',
+      en: 'How long will it take?',
+      ja: 'どのくらいかかりますか？',
+      zh: '大概需要多久？',
+    },
+    forms_complete: {
+      ko: '서류 작성이 완료되었나요?',
+      en: 'Are my forms complete?',
+      ja: '書類は完了していますか？',
+      zh: '我的表格都完成了吗？',
+    },
+    normal_discomfort: {
+      ko: '이 불편감은 정상인가요?',
+      en: 'Is this discomfort normal?',
+      ja: 'この違和感は通常ですか？',
+      zh: '这种不适正常吗？',
+    },
+    swelling_duration: {
+      ko: '붓기는 얼마나 가나요?',
+      en: 'How long will swelling last?',
+      ja: '腫れはどれくらい続きますか？',
+      zh: '肿胀会持续多久？',
+    },
+    precautions: {
+      ko: '주의사항은 무엇인가요?',
+      en: 'What precautions should I follow?',
+      ja: 'どんな注意事項がありますか？',
+      zh: '我需要注意什么？',
+    },
+    when_to_contact: {
+      ko: '언제 병원에 연락해야 하나요?',
+      en: 'When should I contact the clinic?',
+      ja: 'いつクリニックに連絡すべきですか？',
+      zh: '我什么时候需要联系诊所？',
+    },
+    doctor_confirmation: {
+      ko: '의료진 확인이 필요해요.',
+      en: 'I need doctor confirmation.',
+      ja: '医師の確認が必要です。',
+      zh: '我需要医生确认。',
+    },
+  };
+
+  return map[id]?.[lang] || map[id]?.en || prompt?.text || '';
 }
 
 // localized form title
@@ -500,6 +728,39 @@ function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
           {tx(lang, 'errorGeneric')}
         </p>
       )}
+
+      <div style={{
+        borderRadius: 12,
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '8px 14px',
+          background: '#F6F7F8',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <Navigation size={11} color={C.tealDark} strokeWidth={2.5} />
+          <p style={{ fontSize: 11, fontWeight: 700, color: C.tealDark }}>
+            {tx(lang, 'arrivalFallback')}
+          </p>
+        </div>
+        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {ARRIVAL_PHRASES.map(({ flag, lang: pLang, text }) => (
+            <div key={pLang} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{flag}</span>
+              <p style={{
+                fontSize: pLang === lang ? 15 : 12.5,
+                fontWeight: pLang === lang ? 700 : 400,
+                color: pLang === lang ? C.text : C.textSub,
+                lineHeight: 1.4,
+              }}>
+                {text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -526,6 +787,46 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus, ar
         && vd.getDate()     === now.getDate();
   })();
   const showArrival = isToday && visit;
+  const todayTasks = buildPatientTodayTasks({
+    visit: {
+      ...visit,
+      patient_arrived_at: arrivedAt || visit?.patient_arrived_at || null,
+    },
+    formsStatus,
+  });
+
+  function taskCopy(taskKey) {
+    if (taskKey === 'arrival') {
+      return {
+        title: lang === 'ko' ? '오늘 첫 단계' : lang === 'ja' ? '本日の最初のステップ' : lang === 'zh' ? '今天的第一步' : 'Today’s first step',
+        body: tx(lang, 'arrivalCard'),
+        cta: tx(lang, 'arrivalBtn'),
+        action: null,
+      };
+    }
+    if (taskKey === 'intake_form') {
+      return {
+        title: tx(lang, 'nextStep'),
+        body: tx(lang, 'fillIntake'),
+        cta: tx(lang, 'goToForms'),
+        action: onGoToForms,
+      };
+    }
+    if (taskKey === 'consent_form') {
+      return {
+        title: tx(lang, 'nextStep'),
+        body: tx(lang, 'fillConsent'),
+        cta: tx(lang, 'goToForms'),
+        action: onGoToForms,
+      };
+    }
+    return {
+      title: lang === 'ko' ? '오늘 상태' : lang === 'ja' ? '本日の状態' : lang === 'zh' ? '今日状态' : 'Today',
+      body: tx(lang, 'allDone'),
+      cta: null,
+      action: null,
+    };
+  }
 
   // Next-step call to action
   let ctaMsg = null;
@@ -554,6 +855,67 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, formsStatus, ar
           onArrived={onArrived}
         />
       )}
+
+      {/* Today / next actions */}
+      <div style={{
+        background: C.surface, borderRadius: 16, padding: '18px 18px',
+        border: `1px solid ${C.border}`, boxShadow: '0 1px 8px rgba(0,0,0,0.05)',
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 600, color: C.textMt, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            {lang === 'ko' ? 'Today' : lang === 'ja' ? 'Today' : lang === 'zh' ? 'Today' : 'Today'}
+          </p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
+            {lang === 'ko' ? '오늘 / 다음 액션' : lang === 'ja' ? '今日 / 次のアクション' : lang === 'zh' ? '今天 / 下一步' : 'Today / Next Actions'}
+          </p>
+        </div>
+        {todayTasks.map((task) => {
+          const copy = taskCopy(task.key);
+          return (
+            <div
+              key={task.key}
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${task.tone === 'calm' ? C.success + '25' : C.teal + '20'}`,
+                background: task.tone === 'calm' ? C.successPale : C.tealPale,
+                padding: '14px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: task.tone === 'calm' ? C.success : C.tealDark, marginBottom: 4 }}>
+                  {copy.title}
+                </p>
+                <p style={{ fontSize: 13, color: C.text, lineHeight: 1.45 }}>
+                  {copy.body}
+                </p>
+              </div>
+              {copy.action && (
+                <button
+                  onClick={copy.action}
+                  style={{
+                    flexShrink: 0,
+                    padding: '8px 12px',
+                    borderRadius: 10,
+                    border: 'none',
+                    background: C.teal,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copy.cta}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Greeting */}
       <div>
@@ -1182,6 +1544,540 @@ function FormsTab({ forms, lang, token, onFormSubmitted }) {
   );
 }
 
+function AftercareTab({ lang, token }) {
+  const [phase, setPhase] = useState('loading');
+  const [data, setData] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [answers, setAnswers] = useState({});
+
+  const loadAftercare = useCallback(async () => {
+    setPhase('loading');
+    try {
+      const api = patientApi(token);
+      const res = await api.get('/api/patient/aftercare');
+      if (!res.ok) throw new Error(res.data?.error || 'aftercare_load_failed');
+      setData(res.data);
+      setPhase('ready');
+    } catch {
+      setPhase('error');
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadAftercare();
+  }, [loadAftercare]);
+
+  async function submitResponse(eventId) {
+    const payload = answers[eventId] || {};
+    setSubmitting(true);
+    try {
+      const api = patientApi(token);
+      const res = await api.post('/api/patient/aftercare/respond', {
+        eventId,
+        payload,
+      });
+      if (!res.ok) throw new Error(res.data?.error || 'aftercare_submit_failed');
+      setData(res.data.state);
+    } catch {
+      // quiet for portal simplicity
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function setEventField(eventId, key, value) {
+    setAnswers((prev) => ({
+      ...prev,
+      [eventId]: {
+        ...(prev[eventId] || {}),
+        [key]: value,
+      },
+    }));
+  }
+
+  if (phase === 'loading') {
+    return <div style={{ padding: '22px 20px 90px', color: C.textSub }}>{tx(lang, 'aftercareLoading')}</div>;
+  }
+
+  if (phase === 'error' || !data) {
+    return <div style={{ padding: '22px 20px 90px', color: C.error }}>Unable to load aftercare.</div>;
+  }
+
+  return (
+    <div style={{ padding: '18px 16px 92px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 18 }}>
+        <p style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{tx(lang, 'aftercareTitle')}</p>
+        <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55, marginTop: 4 }}>{tx(lang, 'aftercareSubtitle')}</p>
+        {data.acknowledgement && (
+          <div style={{ marginTop: 12, padding: '12px 13px', borderRadius: 14, background: C.warnPale, border: `1px solid ${C.warn}25`, fontSize: 12, color: C.warn, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 4 }}>{tx(lang, 'aftercareAck')}</div>
+            {data.acknowledgement}
+          </div>
+        )}
+      </div>
+
+      {(data.due_items || []).length === 0 && (data.completed_items || []).length === 0 ? (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 18, color: C.textSub, fontSize: 13 }}>
+          {tx(lang, 'aftercareEmpty')}
+        </div>
+      ) : null}
+
+      {(data.due_items || []).map((event) => {
+        const step = event.aftercare_steps || {};
+        const current = answers[event.id] || {};
+        return (
+          <div key={event.id} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{step.step_key || tx(lang, 'aftercareDue')}</p>
+                <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55, marginTop: 4 }}>
+                  {step.content_template}
+                </p>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 800, color: C.tealDark, background: C.tealPale, borderRadius: 999, padding: '6px 10px' }}>
+                {tx(lang, 'aftercareDue')}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+              <label style={{ fontSize: 12, color: C.text }}>
+                Pain level (0-10)
+                <input type="range" min="0" max="10" value={current.pain_level ?? 0} onChange={(e) => setEventField(event.id, 'pain_level', Number(e.target.value))} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 12, color: C.text }}>
+                Swelling
+                <select value={current.swelling_level || 'mild'} onChange={(e) => setEventField(event.id, 'swelling_level', e.target.value)} style={{ width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff' }}>
+                  <option value="none">None</option>
+                  <option value="mild">Mild</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="severe">Severe</option>
+                </select>
+              </label>
+              <label style={{ fontSize: 12, color: C.text }}>
+                Anxiety / distress
+                <select value={current.anxiety_level || 'low'} onChange={(e) => setEventField(event.id, 'anxiety_level', e.target.value)} style={{ width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff' }}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.text }}>
+                <input type="checkbox" checked={!!current.bleeding} onChange={(e) => setEventField(event.id, 'bleeding', e.target.checked)} />
+                Bleeding
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.text }}>
+                <input type="checkbox" checked={!!current.worsening} onChange={(e) => setEventField(event.id, 'worsening', e.target.checked)} />
+                Symptoms feel worse
+              </label>
+              <label style={{ fontSize: 12, color: C.text }}>
+                Notes
+                <textarea value={current.free_text || ''} onChange={(e) => setEventField(event.id, 'free_text', e.target.value)} rows={3} style={{ width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff', resize: 'vertical' }} />
+              </label>
+              <label style={{ fontSize: 12, color: C.text }}>
+                Satisfaction
+                <select value={current.satisfaction_score || 5} onChange={(e) => setEventField(event.id, 'satisfaction_score', Number(e.target.value))} style={{ width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 12, border: `1px solid ${C.border}`, background: '#fff' }}>
+                  {[1,2,3,4,5].map((score) => <option key={score} value={score}>{score}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <button
+              onClick={() => submitResponse(event.id)}
+              disabled={submitting}
+              style={{
+                width: '100%',
+                marginTop: 14,
+                padding: '13px 18px',
+                borderRadius: 14,
+                border: 'none',
+                background: C.teal,
+                color: '#fff',
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: submitting ? 'default' : 'pointer',
+              }}
+            >
+              {submitting ? tx(lang, 'submitting') : tx(lang, 'aftercareRespond')}
+            </button>
+          </div>
+        );
+      })}
+
+      {(data.completed_items || []).length > 0 && (
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>{tx(lang, 'aftercareDone')}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {data.completed_items.map((event) => (
+              <div key={event.id} style={{ borderRadius: 14, background: C.successPale, padding: '12px 13px' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.success }}>{event.aftercare_steps?.step_key || tx(lang, 'aftercareDone')}</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: C.textSub }}>{event.risk_level} · {event.next_action_status || 'continue_plan'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.safe_for_return && (
+        <button
+          style={{
+            padding: '14px 18px',
+            borderRadius: 16,
+            border: 'none',
+            background: C.teal,
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 700,
+            boxShadow: `0 2px 12px ${C.teal}35`,
+          }}
+        >
+          {tx(lang, 'rebookCta')}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AskTab({ lang, token }) {
+  const [phase, setPhase] = useState('loading');
+  const [askData, setAskData] = useState(null);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [escalating, setEscalating] = useState(null);
+
+  const loadAsk = useCallback(async () => {
+    setPhase('loading');
+    try {
+      const api = patientApi(token);
+      const res = await api.get('/api/patient/ask');
+      if (!res.ok) throw new Error(res.data?.error || 'ask_load_failed');
+      setAskData(res.data);
+      setPhase('ready');
+    } catch {
+      setPhase('error');
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadAsk();
+  }, [loadAsk]);
+
+  async function sendMessage(text, messageType = 'free_text') {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+
+    setSending(true);
+    try {
+      const api = patientApi(token);
+      const res = await api.post('/api/patient/ask/messages', {
+        text: trimmed,
+        messageType,
+      });
+      if (!res.ok) throw new Error(res.data?.error || 'send_failed');
+
+      setAskData(prev => prev ? ({
+        ...prev,
+        messages: [
+          ...(prev.messages || []),
+          res.data.patient_message,
+          res.data.assistant_message,
+        ],
+      }) : prev);
+      setInput('');
+    } catch {
+      // keep simple for now — no toast system in portal
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function requestEscalation(requestType) {
+    if (escalating) return;
+    setEscalating(requestType);
+    try {
+      const api = patientApi(token);
+      const reasonMap = {
+        coordinator: 'manual_patient_request',
+        nurse: 'aftercare_concern',
+        doctor_confirmation: 'doctor_required',
+      };
+      const res = await api.post('/api/patient/ask/escalations', {
+        requestType,
+        reasonCategory: reasonMap[requestType] || 'manual_patient_request',
+      });
+      if (!res.ok) throw new Error(res.data?.error || 'escalation_failed');
+
+      setAskData(prev => prev ? ({
+        ...prev,
+        openEscalation: res.data.request,
+        messages: [
+          ...(prev.messages || []),
+          res.data.acknowledgement,
+        ],
+      }) : prev);
+    } catch {
+      // intentionally quiet in phase 6
+    } finally {
+      setEscalating(null);
+    }
+  }
+
+  if (phase === 'loading') {
+    return (
+      <div style={{ padding: '22px 20px 90px', color: C.textSub }}>
+        {tx(lang, 'askLoading')}
+      </div>
+    );
+  }
+
+  if (phase === 'error' || !askData) {
+    return (
+      <div style={{ padding: '22px 20px 90px', color: C.error }}>
+        Unable to load Ask.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '18px 16px 92px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 18,
+        padding: 18,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            background: C.tealPale,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <MessageCircle size={20} color={C.tealDark} />
+          </div>
+          <div>
+            <p style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{tx(lang, 'askTitle')}</p>
+            <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.55, marginTop: 4 }}>
+              {tx(lang, 'askSubtitle')}
+            </p>
+            <p style={{ fontSize: 12, color: C.tealDark, lineHeight: 1.55, marginTop: 10, fontWeight: 600 }}>
+              {askStageSummary(lang, askData.currentStage)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 18,
+        padding: 16,
+      }}>
+        <p style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>
+          {tx(lang, 'quickQuestions')}
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {(askData.quickPrompts || []).map(prompt => (
+            <button
+              key={prompt.id}
+              onClick={() => sendMessage(askPromptText(lang, prompt), 'quick_prompt')}
+              style={{
+                padding: '12px 12px',
+                borderRadius: 14,
+                border: `1px solid ${C.border}`,
+                background: '#FBFBFA',
+                textAlign: 'left',
+                fontSize: 12,
+                color: C.text,
+                lineHeight: 1.45,
+                cursor: 'pointer',
+              }}
+            >
+              {askPromptText(lang, prompt)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 18,
+        padding: 16,
+      }}>
+        <p style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>
+          {tx(lang, 'escalation')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {(askData.escalationOptions || []).map(option => {
+            const labelKey = option.id === 'coordinator'
+              ? 'askCoordinator'
+              : option.id === 'nurse'
+                ? 'askNurse'
+                : 'doctorConfirm';
+            const Icon = option.id === 'doctor_confirmation' ? Stethoscope : ShieldAlert;
+            return (
+              <button
+                key={option.id}
+                onClick={() => requestEscalation(option.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  border: `1px solid ${C.border}`,
+                  background: '#FFFDFC',
+                  cursor: 'pointer',
+                  color: C.text,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <Icon size={16} color={C.warn} />
+                <span>{tx(lang, labelKey)}</span>
+                {escalating === option.id && (
+                  <Loader2 size={14} color={C.textSub} style={{ marginLeft: 'auto', animation: 'spin 1s linear infinite' }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {askData.openEscalation?.patient_visible_status_text && (
+          <div style={{
+            marginTop: 12,
+            padding: '12px 13px',
+            borderRadius: 14,
+            background: C.warnPale,
+            border: `1px solid ${C.warn}25`,
+            fontSize: 12,
+            color: C.warn,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 4, letterSpacing: '0.03em' }}>
+              {tx(lang, 'escalationStatus')}
+            </div>
+            {askData.openEscalation.patient_visible_status_text}
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: 18,
+        padding: 16,
+      }}>
+        <p style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 10 }}>
+          {tx(lang, 'recentMessages')}
+        </p>
+        {(askData.messages || []).length === 0 ? (
+          <p style={{ fontSize: 12, color: C.textSub, lineHeight: 1.5 }}>
+            {tx(lang, 'askEmpty')}
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {askData.messages.map(msg => {
+              const isAssistant = msg.role === 'assistant';
+              return (
+                <div
+                  key={msg.id}
+                  style={{
+                    alignSelf: isAssistant ? 'stretch' : 'flex-end',
+                    display: 'flex',
+                    gap: 8,
+                    flexDirection: isAssistant ? 'row' : 'row-reverse',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 10,
+                    background: isAssistant ? C.tealPale : '#F1F5F9',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {isAssistant
+                      ? <MessageCircle size={14} color={C.tealDark} />
+                      : <UserRound size={14} color={C.textSub} />}
+                  </div>
+                  <div style={{
+                    maxWidth: '82%',
+                    background: isAssistant ? '#F8FBFC' : '#F7F7F6',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 16,
+                    padding: '11px 12px',
+                  }}>
+                    <p style={{ fontSize: 12.5, color: C.text, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+                      {msg.content}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        position: 'sticky',
+        bottom: 0,
+        background: `linear-gradient(180deg, rgba(248,246,243,0) 0%, ${C.bg} 18%, ${C.bg} 100%)`,
+        paddingTop: 8,
+      }}>
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 18,
+          padding: 10,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'flex-end',
+        }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={tx(lang, 'askPlaceholder')}
+            rows={2}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              fontFamily: SANS,
+              fontSize: 13,
+              lineHeight: 1.45,
+              color: C.text,
+              background: 'transparent',
+              padding: '8px 6px',
+            }}
+          />
+          <button
+            onClick={() => sendMessage(input, 'free_text')}
+            disabled={sending || !input.trim()}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              border: 'none',
+              background: sending || !input.trim() ? '#D5D9DD' : C.teal,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: sending || !input.trim() ? 'default' : 'pointer',
+              flexShrink: 0,
+            }}
+            aria-label={tx(lang, 'send')}
+          >
+            {sending
+              ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Send size={16} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MyTikiPortal — root component
 // ═══════════════════════════════════════════════════════════════
@@ -1196,7 +2092,7 @@ export default function MyTikiPortal() {
   const [visit,     setVisit]     = useState(null);
   const [clinic,    setClinic]    = useState(null);
   const [forms,     setForms]     = useState([]);
-  const [tab,       setTab]       = useState('journey'); // journey | forms
+  const [tab,       setTab]       = useState('journey'); // journey | forms | ask | aftercare
   const [arrivedAt, setArrivedAt] = useState(null);     // patient_arrived_at ISO string or null
 
   // ── Bootstrap — fetch patient context + forms ─────────────────
@@ -1335,6 +2231,18 @@ export default function MyTikiPortal() {
             onFormSubmitted={handleFormSubmitted}
           />
         )}
+        {tab === 'ask' && (
+          <AskTab
+            lang={lang}
+            token={token}
+          />
+        )}
+        {tab === 'aftercare' && (
+          <AftercareTab
+            lang={lang}
+            token={token}
+          />
+        )}
       </div>
 
       {/* ── Bottom tab bar ───────────────────────────────────── */}
@@ -1351,6 +2259,8 @@ export default function MyTikiPortal() {
         {[
           { id: 'journey', icon: MapPin,          labelKey: 'journey' },
           { id: 'forms',   icon: FileText,        labelKey: 'forms',  badge: pendingCount },
+          { id: 'ask',     icon: MessageCircle,   labelKey: 'ask' },
+          { id: 'aftercare', icon: ClipboardCheck, labelKey: 'aftercare' },
         ].map(({ id, icon: Icon, labelKey, badge }) => {
           const active = tab === id;
           return (
