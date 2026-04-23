@@ -21,6 +21,11 @@ const ALLOWED_ROOM_READY_STAGES = new Set([
   "followup",
   "closed",
 ]);
+const ALLOWED_PATIENT_TASK_KEYS = new Set([
+  "show_aftercare_due",
+  "show_aftercare_ack",
+  "show_safe_return",
+]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -146,6 +151,21 @@ function validateRoomReady(value, changedPaths) {
   return normalized;
 }
 
+function validatePatientPortalTasks(value, changedPaths) {
+  ensurePlainObject(value, "patient_portal.tasks");
+  ensureNoUnknownKeys(value, ALLOWED_PATIENT_TASK_KEYS, "patient_portal.tasks");
+
+  const normalized = {};
+  for (const key of Object.keys(value)) {
+    if (typeof value[key] !== "boolean") {
+      throw fail(`patient_portal.tasks.${key} must be a boolean`, `patient_portal.tasks.${key}`);
+    }
+    normalized[key] = value[key];
+    changedPaths.add(`patient_portal.tasks.${key}`);
+  }
+  return normalized;
+}
+
 export function validateClinicRulePatch(rawPatch) {
   if (!isPlainObject(rawPatch)) {
     throw fail("Config patch must be an object", "root");
@@ -161,7 +181,7 @@ export function validateClinicRulePatch(rawPatch) {
 
   const changedPaths = new Set();
   const normalized = {};
-  ensureNoUnknownKeys(rawPatch, new Set(["ask", "rooms"]), "root");
+  ensureNoUnknownKeys(rawPatch, new Set(["ask", "rooms", "patient_portal"]), "root");
 
   if (rawPatch.ask !== undefined) {
     ensurePlainObject(rawPatch.ask, "ask");
@@ -187,6 +207,16 @@ export function validateClinicRulePatch(rawPatch) {
       normalized.rooms.room_ready = validateRoomReady(rawPatch.rooms.room_ready, changedPaths);
     }
     if (!Object.keys(normalized.rooms).length) delete normalized.rooms;
+  }
+
+  if (rawPatch.patient_portal !== undefined) {
+    ensurePlainObject(rawPatch.patient_portal, "patient_portal");
+    ensureNoUnknownKeys(rawPatch.patient_portal, new Set(["tasks"]), "patient_portal");
+    normalized.patient_portal = {};
+    if (rawPatch.patient_portal.tasks !== undefined) {
+      normalized.patient_portal.tasks = validatePatientPortalTasks(rawPatch.patient_portal.tasks, changedPaths);
+    }
+    if (!Object.keys(normalized.patient_portal).length) delete normalized.patient_portal;
   }
 
   if (!Object.keys(normalized).length) {

@@ -3,7 +3,7 @@ export function shouldPollOpsBoard(dateRange = "today") {
 }
 
 export function buildQrImageUrl(url = "") {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
+  return `/api/qr?data=${encodeURIComponent(url)}`;
 }
 
 function isSameLocalDate(a, b) {
@@ -18,12 +18,17 @@ export function buildPatientTodayTasks({
   visit = {},
   formsStatus = {},
   aftercareState = null,
+  clinicRuleConfig = null,
   now = new Date().toISOString(),
 } = {}) {
   const tasks = [];
   const nowDate = new Date(now);
   const visitDate = visit?.visit_date ? new Date(visit.visit_date) : null;
   const isTodayVisit = visitDate ? isSameLocalDate(visitDate, nowDate) : false;
+  const taskConfig = clinicRuleConfig?.patient_portal?.tasks || {};
+  const showAftercareDue = taskConfig.show_aftercare_due !== false;
+  const showAftercareAck = taskConfig.show_aftercare_ack !== false;
+  const showSafeReturn = taskConfig.show_safe_return !== false;
 
   if (isTodayVisit && !visit?.patient_arrived_at) {
     tasks.push({
@@ -46,17 +51,28 @@ export function buildPatientTodayTasks({
     });
   }
 
-  if ((aftercareState?.due_items || []).length > 0) {
+  if (showAftercareDue && (aftercareState?.due_items || []).length > 0) {
     tasks.push({
       key: "aftercare_due",
       tone: "action",
     });
   }
 
-  if (aftercareState?.acknowledgement) {
+  if (showAftercareAck && aftercareState?.acknowledgement) {
     tasks.push({
       key: "aftercare_ack",
       tone: "watch",
+    });
+  }
+
+  if (
+    showSafeReturn &&
+    tasks.length === 0 &&
+    aftercareState?.safe_for_return
+  ) {
+    tasks.push({
+      key: "aftercare_return",
+      tone: "calm",
     });
   }
 

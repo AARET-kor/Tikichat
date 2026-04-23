@@ -112,3 +112,25 @@ test("staff aftercare API exposes scheduler health for operational visibility", 
     /res\.json\(\{ items, summary, scheduler: getAftercareSchedulerHealth\(\) \}\)/,
   );
 });
+
+test("staff aftercare editor routes are staff-gated and writes are admin-only", () => {
+  assert.match(
+    serverSource,
+    /app\.get\(\"\/api\/staff\/aftercare\/plans\", requireStaffAuth,/,
+  );
+  assert.match(
+    serverSource,
+    /app\.post\(\"\/api\/staff\/aftercare\/plans\/ensure\", requireStaffAuth, requireRole\(\"owner\", \"admin\"\),/,
+  );
+  assert.match(
+    serverSource,
+    /app\.patch\(\"\/api\/staff\/aftercare\/steps\/:stepId\", requireStaffAuth, requireRole\(\"owner\", \"admin\"\),/,
+  );
+});
+
+test("staff audit history browse route is staff-gated", () => {
+  assert.match(
+    serverSource,
+    /app\.get\(\"\/api\/staff\/audit-history\", requireStaffAuth,/,
+  );
+});

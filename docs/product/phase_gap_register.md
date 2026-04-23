@@ -2,177 +2,364 @@
 
 Last updated: 2026-04-23
 
-Visible naming system:
+This register tracks the practical gaps after hardening and Batch 6A / 6B / 6C / 6D. It distinguishes code completion from real-world clinic readiness.
 
-- `My Tiki` = patient portal / patient link entry
-- `TikiBell` = patient-facing helper inside My Tiki
-- `Tiki Desk` = staff / clinic operations surface
-- `Tiki Room` = in-room treatment surface
-
-Status meanings:
+## Status Meanings
 
 - `implemented`: code path exists and is connected
-- `partial`: real slice exists, but operational or control gaps remain
+- `stable`: current bounded scope is reliable enough to keep
+- `usable`: usable in a controlled path, but not yet daily-clinic reliable
+- `pilot-ready`: plausible for controlled clinic use after manual acceptance
+- `prototype`: still exploratory or fragile
 - `deferred`: intentionally not built yet
-- `next`: recommended next closure or hardening task
+- `blocked`: depends on another explicit decision or operational prerequisite
 
-## Current register
+## Product Surface Model
 
-## Current overall status
+- `Tiki Paste`: staff paste / extraction / memory-write surface.
+- `My Tiki`: patient portal / patient link entry.
+- `TikiBell`: patient-facing helper inside `My Tiki`.
+- `Tiki Desk`: staff / clinic operations surface.
+- `Tiki Room`: in-room treatment surface.
+
+## Current Overall Status
 
 - Hardening status: `stable`
-- Active roadmap: `Batch 6`
-- Remaining work type: `deferred / later expansion only`
+- Batch 6A status: `usable`
+- Batch 6B status: `usable / controlled-pilot`
+- Batch 6C status: `stable`
+- Batch 6D status: `usable polish`
+- Remaining work type:
+  - clinic acceptance
+  - broader rollout support
+  - later expansion
 - Stabilization note:
-  - the final live authenticated Tiki Room verification for `current / load-next / clear` passed
-  - do not reopen Batch 5 stabilization unless a real issue is found
+  - live authenticated Tiki Room verification for `current / load-next / clear` passed
+  - do not reopen hardening unless a real issue is found
 
-### Batch 5A — clinic config layer
+## Phase Gaps
 
-Implemented:
-- Minimal clinic-level config foundation using `clinics.settings.tikidoc_rules`
-- Ask and Room consumers now read the config layer
-- Staff config write path:
-  - `GET /api/staff/clinic-rule-config`
-  - `PATCH /api/staff/clinic-rule-config`
-- Strict allowlist validation for:
-  - `ask.quick_prompts`
-  - `ask.fallback_copy`
-  - `ask.escalation_labels`
-  - `rooms.room_ready.require_checked_in`
-  - `rooms.room_ready.require_intake_done`
-  - `rooms.room_ready.require_consent_done`
-  - `rooms.room_ready.allowed_stages`
-- `owner` / `admin` only patch access
-- Audit record written for each successful config update
-
-Partial:
-- There is no internal UI for editing the allowed config yet.
-- Audit for config writes is lightweight and stored through existing audit log infrastructure.
-
-Deferred / Later:
-- Not done:
-  - any admin CMS
-  - any generic settings page
-  - any no-code builder
-  - any rules engine
-- Why:
-  - Batch 5A was only meant to create a safe config foundation and write path.
-- When:
-  - only if operations prove that the small API-only path is too cumbersome
-- Batch:
-  - later hardening, not Batch 5A
-
-Next:
-- none required for stabilization
-- future work belongs to Batch 6 expansion only
-
-What must explicitly NOT be built yet:
-- full admin UI
-- visual rule editor
-- arbitrary JSON editor for all clinic settings
-- universal policy/rules engine
-
-### Batch 5B — operational signals and taxonomy
+### Phase 1 — Core Entities
 
 Implemented:
-- Shared Tiki Desk urgency/status metadata helper
-- Unified escalation priority labels and aftercare risk labels in the staff UI
-- Derived urgency markers normalized for:
-  - escalation
-  - aftercare
-  - arrival
-  - room-ready
-- Naming boundary documentation updated:
-  - visit workflow uses `stage`
-  - escalation lifecycle uses `status`
-  - aftercare event response uses `response_status`
-  - urgency remains derived, not persisted as a second workflow engine
+
+- Core clinic, patient, visit, link, form, journey, escalation, room, and aftercare structures exist.
 
 Partial:
-- The shared taxonomy is currently centered on the Tiki Desk staff surface.
-- Backend status models were intentionally not rewritten.
 
-Deferred / Later:
-- Not done:
-  - a global cross-app status presentation layer
-  - broader audit/ownership standardization
-- Why:
-  - Batch 5B was limited to control-layer hardening, not a workflow rewrite
-- When:
-  - Batch 5C
-- Batch:
-  - Batch 5C
+- None blocking current bounded scope.
 
-Next:
-- none required for stabilization
-- future work belongs to Batch 6 expansion only
+Deferred:
 
-What must explicitly NOT be built yet:
-- large status refactor
-- duplicated workflow engine
-- alert center
-- notification routing system
+- Schema-first redesign is explicitly deferred.
 
-### Batch 5C — trustworthiness hardening
+Patch before closure:
+
+- None.
+
+### Phase 2 — Tiki Paste / Memory
 
 Implemented:
-- Light audit trail for key escalation / aftercare / room transitions
-- Ownership / actor tracking standardization
-- Aftercare scheduler health visibility:
-  - healthy vs degraded runtime determination
-  - startup logs
-  - staff API payload
-  - staff-visible degraded notice
-- final live authenticated Tiki Room verification passed
+
+- Staff-auth gated memory write route.
+- Clinic context is resolved from authenticated staff context.
 
 Partial:
-- no broader history browse UI
-- no broader cross-surface scheduler alerting beyond the small staff surfacing
 
-Deferred / Later:
-- Not done:
-  - fuller audit/history browse UI
-  - stronger cross-surface staff summary surfacing
-- Why:
-  - Batch 5C was limited to trustworthiness hardening, not admin/reporting expansion
-- When:
-  - Batch 6 or later polish, if operationally needed
-- Batch:
-  - Batch 6 / later expansion
+- Knowledge hygiene and content review remain broader product concerns.
 
-Next:
-- Batch 6 roadmap only
+Deferred:
 
-What must explicitly NOT be built yet:
-- audit dashboard
-- forensic explorer
+- Generic knowledge CMS.
+
+Patch before closure:
+
+- None for current security scope.
+
+### Phase 3 — My Tiki Portal
+
+Implemented:
+
+- Patient portal shell.
+- Journey/forms/Ask/aftercare access.
+- Patient Today / next-actions layer.
+- Aftercare due, clinic review acknowledgement, and safe return items.
+
+Partial:
+
+- Broader patient task UX polish.
+
+Deferred:
+
+- Separate task engine.
+
+Patch before clinic-ready:
+
+- Run real patient-link walkthrough for each target language and visit state.
+
+### Phase 4 — Activation Wedge
+
+Implemented:
+
+- Quick Visit.
+- CSV import.
+- Conservative procedure resolution.
+- Patient link generation.
+
+Partial:
+
+- Operational speed should be observed in live desk usage, especially unmatched/ambiguous procedure cases.
+
+Deferred:
+
+- Aggressive fuzzy/ambiguous auto-mapping.
+
+Patch before closure:
+
+- None currently. Ambiguous/unmatched procedure values are intentionally not auto-assigned.
+
+### Phase 5 — Arrival Mode
+
+Implemented:
+
+- Patient self-arrival.
+- Staff check-in.
+- Ops Board lightweight refresh.
+- Staff-visible QR flow.
+
+Partial:
+
+- External QR dependency has been removed; current remaining risk is only real device/browser display acceptance.
+
+Deferred:
+
+- Kiosk redesign.
+
+Patch before closure:
+
+- Manual device check in the clinic front desk/tablet setup.
+
+### Phase 6 — Ask / TikiBell
+
+Implemented:
+
+- Source-limited Ask policy.
+- Escalation path for unsupported/urgent/doctor-required content.
+- Configurable high-churn prompts/fallback/labels through narrow clinic config.
+
+Partial:
+
+- No full FAQ/prompt admin UI.
+- Classification remains code-owned.
+
+Deferred:
+
+- Prompt CMS.
+- Rules engine.
+
+Patch before clinic-ready:
+
+- Real clinic review of Ask fallback/escalation copy in target languages.
+
+### Phase 7 — Escalation
+
+Implemented:
+
+- Triage classification.
+- Priority and assigned role/user.
+- Acknowledge/respond/resolve/close actor tracking.
+- Tiki Desk cards.
+- Owner/latest actor visibility.
+- SLA-derived markers and attention summary.
+
+Partial:
+
+- No external SLA notifications.
+- SLA thresholds are hardcoded defaults.
+
+Deferred:
+
+- Notification routing.
+- SLA rules engine.
+
+Patch before broader rollout:
+
+- Decide whether SLA reminders need in-app-only, email/SMS, or task notification behavior.
+
+### Phase 8 — Rooms Lite
+
+Implemented:
+
+- Room presets.
+- Occupancy.
+- Ready queue.
+- Assign/clear.
+- Room-ready config knobs.
+- Room transition audit/journey events.
+
+Partial:
+
+- Room-ready config UI is small and only covers current allowed knobs.
+
+Deferred:
+
+- Room workflow builder.
+
+Patch before clinic-ready:
+
+- Verify each deployed clinic’s room presets, naming, and tablet/staff workflow.
+
+### Phase 9 — Tiki Room
+
+Implemented:
+
+- Auth-gated room current/load-next/clear.
+- Doctor-first room prep.
+- Guided patient input -> AI summary -> selectable response loop.
+- Browser-native voice input.
+- Browser TTS playback with multilingual fallback status.
+- Live authenticated current/load-next/clear verification passed.
+
+Partial:
+
+- Browser voice/TTS quality is environment-dependent.
+- Room tablet identity depends on logged-in browser staff session/local room selection, not dedicated room-device auth.
+
+Deferred:
+
+- Backend STT/TTS.
+- Transcript storage.
+- Autonomous voice answer.
+
+Patch before clinic-ready:
+
+- Per-room device acceptance test for mic permission, speech recognition, TTS voice, session expiry, and noise conditions.
+
+### Phase 10 — Aftercare
+
+Implemented:
+
+- Procedure-aware checkpoints.
+- Outbound send path.
+- Duplicate-send prevention.
+- Structured response and concern/urgent branching.
+- Scheduler health/degraded visibility.
+- Tiki Desk aftercare visibility.
+- Narrow aftercare plan editor.
+
+Partial:
+
+- Plan editor is usable but not fully clinic-ready.
+- Trigger/template editing is narrow and not a CMS.
+- Scheduler degraded mode is visible but not a full job dashboard.
+
+Deferred:
+
+- Campaign system.
+- Full template/trigger CMS.
+- Job dashboard.
+
+Patch before clinic-ready:
+
+- Real admin acceptance test:
+  - edit a real procedure step
+  - confirm preview
+  - confirm timing warning
+  - verify future patient-facing content
+  - verify audit/history record
+
+## Cross-Phase Gaps
+
+### Aftercare Plan Editor
+
+- Status: `usable`
+- Why not clinic-ready:
+  - narrow editor works in code, but real clinic admin usage has not been validated.
+- When to do:
+  - before relying on non-engineering staff to maintain aftercare content.
+- Priority: high for clinic rollout, medium for controlled pilot.
+- Code areas:
+  - `server.js`
+  - `src/lib/aftercare-plan-editor.js`
+  - `client/src/components/mytiki/MyTikiTab.jsx`
+  - `tests/aftercare-plan-editor.test.js`
+
+### Tiki Room Browser Voice
+
+- Status: `usable`
+- Why not clinic-ready:
+  - browser/device/microphone/voice availability varies.
+- When to do:
+  - before making voice the primary room input method.
+- Priority: medium.
+- Code areas:
+  - `client/src/pages/TikiRoomPage.jsx`
+  - `client/src/lib/roomVoice.js`
+  - `tests/room-voice.test.js`
+
+### Tiki Desk Operational Visibility
+
+- Status: `stable / pilot-ready`
+- Why not fully clinic-ready:
+  - no external notification workflow and no alert center.
+- When to do:
+  - before broader rollout that requires proactive SLA notification.
+- Priority: medium.
+- Code areas:
+  - `server.js`
+  - `src/lib/escalation-service.js`
+  - `src/lib/audit-history.js`
+  - `client/src/components/mytiki/MyTikiTab.jsx`
+  - `client/src/components/settings/SettingsTab.jsx`
+
+### QR / Patient Link Flow
+
+- Status: `stable / pilot-ready`
+- Why not fully clinic-ready:
+  - code is stable, but each clinic device/display setup still needs manual verification.
+- When to do:
+  - before go-live in front desk or tablet setup.
+- Priority: low-medium.
+- Code areas:
+  - `server.js`
+  - `src/lib/qr-code.js`
+  - `client/src/lib/opsLite.js`
+  - `tests/qr-code.test.js`
+  - `tests/ops-lite.test.js`
+
+## Remaining Blockers
+
+Blocks confident daily clinic use:
+
+- Real clinic acceptance for aftercare plan editor.
+- Real room/tablet device acceptance for Tiki Room browser voice/TTS and session expiry.
+- Confirmation that deployed DB schema matches expected audit/config/aftercare/room columns.
+
+Blocks broader rollout:
+
+- External notification policy for escalation SLA.
+- Provider-grade STT/TTS decision if browser-native quality is insufficient.
+- More robust admin review/export needs.
+- Multi-clinic configuration governance.
+
+Later expansion only:
+
+- full audit/history dashboard
+- aftercare CMS/campaign builder
+- Ask prompt CMS
 - assignment rules engine
-- distributed scheduler platform
+- analytics/reporting
+- job dashboard
 
-## Deferred / Later
+## Explicit Non-Goals
 
-Still intentionally not built:
+- no broad architecture changes
+- no rules engine
+- no CMS
+- no schema-first redesign
+- no backend voice pipeline unless explicitly approved
+- no new major feature bucket without alignment
 
-- Batch 6: richer voice / TTS for Tiki Room
-  - Why:
-    - current room loop is intentionally text-input + browser speech placeholder
-  - When:
-    - Batch 6
+## Safest Next Step
 
-- Batch 6: aftercare trigger editor
-  - Why:
-    - aftercare templates and triggers are still intentionally code/config driven
-  - When:
-    - Batch 6
-
-- Later hardening: external QR dependency removal
-  - Why:
-    - current literal QR flow uses an external QR image service and is operationally acceptable but not ideal
-  - When:
-    - later hardening after current ops closure work
-
-## Recommended next step
-
-- Start Batch 6 roadmap items only
-- Do not reopen stabilization work unless a real issue is found in operations
+Run a release-readiness verification pass and prepare a clean commit/push. Do not start new implementation before that pass.

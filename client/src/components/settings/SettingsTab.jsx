@@ -1,20 +1,69 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Building2, Sparkles, Link2, FileText,
   Clock, Upload, Save, Check, RefreshCw,
   Instagram, MessageCircle, Phone, ChevronRight,
   Plus, Trash2, Edit3, X, ToggleLeft, ToggleRight,
   Sliders, AlignLeft, AlignJustify, Zap, Brain,
+  History, ShieldCheck,
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import KnowledgeSection from './KnowledgeSection';
 
 const MENU_ITEMS = [
   { id: 'general',   icon: Building2,   label: '일반' },
   { id: 'ai',        icon: Sparkles,    label: 'AI 튜닝' },
   { id: 'channels',  icon: Link2,       label: '채널 연동' },
+  { id: 'operations', icon: History,     label: '운영' },
 ];
 
 const DAYS_KO = ['월', '화', '수', '목', '금', '토', '일'];
+const ROOM_READY_STAGES = [
+  ['booked', '예약'],
+  ['pre_visit', '방문 전'],
+  ['treatment', '시술 중'],
+  ['post_care', '사후관리'],
+  ['followup', '팔로업'],
+  ['closed', '완료'],
+];
+
+async function authHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = { 'Content-Type': 'application/json' };
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+  return headers;
+}
+
+function formatAgo(iso) {
+  if (!iso) return '시간 없음';
+  const diff = Date.now() - new Date(iso).getTime();
+  const minutes = Math.max(0, Math.floor(diff / 60000));
+  if (minutes < 1) return '방금';
+  if (minutes < 60) return `${minutes}분 전`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}시간 전`;
+  return `${Math.floor(minutes / 1440)}일 전`;
+}
+
+function getConfigDraft(config) {
+  const roomReady = config?.rooms?.room_ready || {};
+  const tasks = config?.patient_portal?.tasks || {};
+  return {
+    room_ready: {
+      require_checked_in: roomReady.require_checked_in !== false,
+      require_intake_done: roomReady.require_intake_done !== false,
+      require_consent_done: roomReady.require_consent_done !== false,
+      allowed_stages: Array.isArray(roomReady.allowed_stages)
+        ? roomReady.allowed_stages
+        : ['pre_visit', 'treatment', 'post_care'],
+    },
+    patient_tasks: {
+      show_aftercare_due: tasks.show_aftercare_due !== false,
+      show_aftercare_ack: tasks.show_aftercare_ack !== false,
+      show_safe_return: tasks.show_safe_return !== false,
+    },
+  };
+}
 
 // ── General Settings ──────────────────────────────────────────────────────────
 function GeneralSection({ darkMode }) {
@@ -399,6 +448,259 @@ function ChannelsSection({ darkMode }) {
   );
 }
 
+function OperationsSection({ darkMode }) {
+  const { role } = useAuth();
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historySummary, setHistorySummary] = useState({ total: 0, journey: 0, audit: 0 });
+  const [configDraft, setConfigDraft] = useState(null);
+  const [writableKeys, setWritableKeys] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const canPatchConfig = ['owner', 'admin'].includes(role);
+  const card = darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-slate-200';
+  const text = darkMode ? 'text-zinc-100' : 'text-slate-800';
+  const subText = darkMode ? 'text-zinc-500' : 'text-slate-500';
+  const pill = darkMode ? 'bg-zinc-700 text-zinc-300 border-zinc-600' : 'bg-slate-50 text-slate-600 border-slate-200';
+
+  async function loadOperations() {
+    setLoading(true);
+    setMessage('');
+    try {
+      const headers = await authHeaders();
+      const [historyRes, configRes] = await Promise.all([
+        fetch('/api/staff/audit-history?limit=30', { headers }),
+        fetch('/api/staff/clinic-rule-config', { headers }),
+      ]);
+      const history = await historyRes.json().catch(() => ({}));
+      const config = await configRes.json().catch(() => ({}));
+      if (!historyRes.ok) throw new Error(history.error || `Audit HTTP ${historyRes.status}`);
+      if (!configRes.ok) throw new Error(config.error || `Config HTTP ${configRes.status}`);
+      setHistoryItems(history.items || []);
+      setHistorySummary(history.summary || { total: 0, journey: 0, audit: 0 });
+      setWritableKeys(config.writable_keys || []);
+      setConfigDraft(getConfigDraft(config.resolved || {}));
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadOperations(); }, []);
+
+  function setRoomReadyKey(key, value) {
+    setConfigDraft((prev) => ({
+      ...prev,
+      room_ready: { ...prev.room_ready, [key]: value },
+    }));
+  }
+
+  function setPatientTaskKey(key, value) {
+    setConfigDraft((prev) => ({
+      ...prev,
+      patient_tasks: { ...prev.patient_tasks, [key]: value },
+    }));
+  }
+
+  function toggleRoomStage(stage) {
+    setConfigDraft((prev) => {
+      const current = prev.room_ready.allowed_stages || [];
+      const next = current.includes(stage)
+        ? current.filter((item) => item !== stage)
+        : [...current, stage];
+      return {
+        ...prev,
+        room_ready: {
+          ...prev.room_ready,
+          allowed_stages: next.length ? next : current,
+        },
+      };
+    });
+  }
+
+  async function saveConfig() {
+    if (!configDraft || saving) return;
+    setSaving(true);
+    setMessage('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/staff/clinic-rule-config', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          rooms: {
+            room_ready: configDraft.room_ready,
+          },
+          patient_portal: {
+            tasks: configDraft.patient_tasks,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setConfigDraft(getConfigDraft(data.resolved || {}));
+      const savedMessage = `저장됨 · ${data.changed_paths?.length || 0}개 config path 업데이트`;
+      await loadOperations();
+      setMessage(savedMessage);
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className={`rounded-2xl border p-5 ${card}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className={`text-sm font-semibold flex items-center gap-2 ${text}`}>
+              <History size={15} /> 최근 운영 기록
+            </h3>
+            <p className={`text-[11px] mt-1 ${subText}`}>최근 journey/audit 이벤트를 한 곳에서 확인합니다. 편집 UI나 forensic explorer는 아닙니다.</p>
+          </div>
+          <button onClick={loadOperations} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${pill}`}>
+            <RefreshCw size={12} className={loading ? 'inline mr-1 animate-spin' : 'inline mr-1'} /> 새로고침
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            ['Total', historySummary.total],
+            ['Journey', historySummary.journey],
+            ['Audit', historySummary.audit],
+          ].map(([label, value]) => (
+            <div key={label} className={`rounded-xl border px-3 py-2 ${pill}`}>
+              <div className="text-[10px] font-semibold opacity-70">{label}</div>
+              <div className="text-lg font-bold">{loading ? '…' : value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {loading ? (
+            <div className={`text-xs ${subText}`}>운영 기록 불러오는 중…</div>
+          ) : historyItems.length === 0 ? (
+            <div className={`text-xs ${subText}`}>아직 표시할 운영 기록이 없습니다.</div>
+          ) : historyItems.map((item) => (
+            <div key={`${item.source}-${item.id}`} className={`rounded-xl border px-3 py-2 ${darkMode ? 'border-zinc-700 bg-zinc-900' : 'border-slate-100 bg-slate-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${pill}`}>{item.source}</span>
+                  <span className={`text-xs font-semibold truncate ${text}`}>{item.event_type}</span>
+                </div>
+                <span className={`text-[10px] shrink-0 ${subText}`}>{formatAgo(item.created_at)}</span>
+              </div>
+              <div className={`mt-1 text-[10px] ${subText}`}>
+                actor: {item.actor_type || '—'} {item.actor_id ? `· ${item.actor_id}` : ''} {item.status ? `· ${item.status}` : ''}
+              </div>
+              {item.changed_paths?.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {item.changed_paths.slice(0, 4).map((path) => (
+                    <span key={path} className={`text-[10px] rounded-full border px-2 py-0.5 ${pill}`}>{path}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`rounded-2xl border p-5 ${card}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className={`text-sm font-semibold flex items-center gap-2 ${text}`}>
+              <ShieldCheck size={15} /> Clinic rule config
+            </h3>
+            <p className={`text-[11px] mt-1 ${subText}`}>허용된 운영 knob만 편집합니다. Ask prompt/template CMS는 아직 만들지 않습니다.</p>
+          </div>
+          {!canPatchConfig && (
+            <span className={`text-[10px] font-semibold rounded-full border px-2 py-1 ${pill}`}>읽기 전용</span>
+          )}
+        </div>
+
+        {configDraft && (
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className={`text-xs font-bold mb-2 ${text}`}>Room-ready 조건</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['require_checked_in', '체크인 필요'],
+                  ['require_intake_done', '문진 완료 필요'],
+                  ['require_consent_done', '동의서 완료 필요'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => canPatchConfig && setRoomReadyKey(key, !configDraft.room_ready[key])}
+                    disabled={!canPatchConfig}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold ${configDraft.room_ready[key] ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : pill} disabled:opacity-70`}
+                  >
+                    {configDraft.room_ready[key] ? 'ON' : 'OFF'} · {label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {ROOM_READY_STAGES.map(([stage, label]) => (
+                  <button
+                    key={stage}
+                    onClick={() => canPatchConfig && toggleRoomStage(stage)}
+                    disabled={!canPatchConfig}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${configDraft.room_ready.allowed_stages.includes(stage) ? 'bg-sky-50 text-sky-700 border-sky-200' : pill} disabled:opacity-70`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className={`text-xs font-bold mb-2 ${text}`}>My Tiki Today / Next Actions</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ['show_aftercare_due', 'Aftercare due'],
+                  ['show_aftercare_ack', 'Clinic review ack'],
+                  ['show_safe_return', 'Safe return'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => canPatchConfig && setPatientTaskKey(key, !configDraft.patient_tasks[key])}
+                    disabled={!canPatchConfig}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold ${configDraft.patient_tasks[key] ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : pill} disabled:opacity-70`}
+                  >
+                    {configDraft.patient_tasks[key] ? 'ON' : 'OFF'} · {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className={`text-[10px] ${subText}`}>
+                Writable keys: {writableKeys.length}
+              </div>
+              <button
+                onClick={saveConfig}
+                disabled={!canPatchConfig || saving}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
+                style={{ background: '#18181B' }}
+              >
+                {saving ? '저장 중…' : '운영 config 저장'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {message && (
+          <div className={`mt-4 rounded-xl border px-3 py-2 text-[11px] ${message.includes('저장됨') ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            {message}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Template Management ───────────────────────────────────────────────────────
 const DEFAULT_TEMPLATES = [
   {
@@ -539,6 +841,7 @@ export default function SettingsTab({ darkMode }) {
       case 'general':   return <GeneralSection   darkMode={darkMode} />;
       case 'ai':        return <AISection         darkMode={darkMode} />;
       case 'channels':  return <ChannelsSection   darkMode={darkMode} />;
+      case 'operations': return <OperationsSection darkMode={darkMode} />;
       default:          return null;
     }
   };

@@ -797,7 +797,7 @@ function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
 // ═══════════════════════════════════════════════════════════════
 // Journey Tab
 // ═══════════════════════════════════════════════════════════════
-function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare, formsStatus, aftercareState, arrivedAt, onArrived, token }) {
+function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare, formsStatus, aftercareState, clinicRuleConfig, arrivedAt, onArrived, token }) {
   const stage       = visit?.stage || 'booked';
   const stageIdx    = STAGES.indexOf(stage);
   const patientName = patient?.name || '';
@@ -823,6 +823,7 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare
     },
     formsStatus,
     aftercareState,
+    clinicRuleConfig,
   });
 
   function taskCopy(taskKey) {
@@ -869,6 +870,20 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare
         title: tx(lang, 'aftercareAck'),
         body: aftercareState?.acknowledgement || '',
         cta: tx(lang, 'aftercare'),
+        action: onGoToAftercare,
+      };
+    }
+    if (taskKey === 'aftercare_return') {
+      return {
+        title: tx(lang, 'aftercareAck'),
+        body: lang === 'ko'
+          ? '회복 상태가 안정적으로 확인되었습니다. 다음 예약 또는 후속 방문 안내를 확인해 보세요.'
+          : lang === 'ja'
+            ? '回復が安定していることを確認しました。次回予約や再訪案内を確認してください。'
+            : lang === 'zh'
+              ? '恢复状态看起来稳定。请查看下一次预约或复诊建议。'
+              : 'Your recovery looks stable. You can review follow-up or return booking guidance now.',
+        cta: tx(lang, 'rebookCta'),
         action: onGoToAftercare,
       };
     }
@@ -2140,6 +2155,7 @@ export default function MyTikiPortal() {
   const [patient,   setPatient]   = useState(null);
   const [visit,     setVisit]     = useState(null);
   const [clinic,    setClinic]    = useState(null);
+  const [clinicRuleConfig, setClinicRuleConfig] = useState(null);
   const [forms,     setForms]     = useState([]);
   const [aftercarePreview, setAftercarePreview] = useState(null);
   const [tab,       setTab]       = useState('journey'); // journey | forms | ask | aftercare
@@ -2169,6 +2185,7 @@ export default function MyTikiPortal() {
       setPatient(meRes.data?.patient || null);
       setVisit(meRes.data?.visit   || null);
       setClinic(meRes.data?.clinic  || null);
+      setClinicRuleConfig(meRes.data?.clinic_rule_config || null);
       setArrivedAt(meRes.data?.visit?.patient_arrived_at || null);
 
       // Fetch forms in parallel (don't block portal render on form error)
@@ -2274,6 +2291,7 @@ export default function MyTikiPortal() {
             clinic={clinic}
             lang={lang}
             formsStatus={formsStatus}
+            clinicRuleConfig={clinicRuleConfig}
             onGoToForms={() => setTab('forms')}
             onGoToAftercare={() => setTab('aftercare')}
             aftercareState={aftercarePreview}

@@ -70,6 +70,10 @@ import {
   pickNextRoomCandidate,
 } from "./src/lib/tiki-room.js";
 import {
+  buildQrSvgHeaders,
+  generateQrSvg,
+} from "./src/lib/qr-code.js";
+import {
   evaluateAftercareResponse,
   getAftercarePatientAcknowledgement,
 } from "./src/lib/aftercare-engine.js";
@@ -77,8 +81,15 @@ import {
   resolveProcedureFromText,
 } from "./src/lib/procedure-resolution.js";
 import {
+  ensureAftercarePlan,
   fetchPatientAftercareState,
 } from "./src/lib/aftercare-service.js";
+import {
+  buildAftercareStepPreview,
+  detectAftercareStepSafetyFlags,
+  normalizeAftercarePlanRows,
+  validateAftercareStepPatch,
+} from "./src/lib/aftercare-plan-editor.js";
 import {
   applyClinicRulePatchToSettings,
   extractClinicRuleOverrides,
@@ -86,7 +97,9 @@ import {
   resolveClinicRuleConfig,
 } from "./src/lib/clinic-rule-config.js";
 import { validateClinicRulePatch } from "./src/lib/clinic-rule-config-validate.js";
+import { buildAuditHistoryResponse, normalizeAuditHistoryLimit } from "./src/lib/audit-history.js";
 import {
+  attachEscalationSla,
   buildEscalationUpdateForAction,
   createEscalationInsert,
   summarizeEscalationCounts,
@@ -133,6 +146,17 @@ app.use("/webhook/meta", express.raw({ type: "application/json" }), metaWebhookR
 
 app.use(express.json());
 app.use(express.static(join(__dirname, "public")));
+
+// ── GET /api/qr — internal QR SVG rendering for staff-visible patient links
+app.get("/api/qr", async (req, res) => {
+  try {
+    const svg = await generateQrSvg(req.query?.data || "");
+    res.set(buildQrSvgHeaders());
+    return res.status(200).send(svg);
+  } catch (err) {
+    return res.status(400).json({ error: err.message || "Invalid QR payload" });
+  }
+});
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -2145,6 +2169,9 @@ app.get("/api/staff/clinic-rule-config", requireStaffAuth, async (req, res) => {
         "rooms.room_ready.require_intake_done",
         "rooms.room_ready.require_consent_done",
         "rooms.room_ready.allowed_stages",
+        "patient_portal.tasks.show_aftercare_due",
+        "patient_portal.tasks.show_aftercare_ack",
+        "patient_portal.tasks.show_safe_return",
       ],
     });
   } catch (err) {
@@ -2208,6 +2235,43 @@ app.patch("/api/staff/clinic-rule-config", requireStaffAuth, requireRole("owner"
       console.error("[clinic-rule-config:patch]", err.message);
     }
     return res.status(status).json({ error: err.message });
+  }
+});
+
+app.get("/api/staff/audit-history", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const limit = normalizeAuditHistoryLimit(req.query?.limit);
+
+  try {
+    const [journeyRes, auditRes] = await Promise.all([
+      sb
+        .from("patient_journey_events")
+        .select("id, event_type, created_at, actor_type, actor_id, patient_id, visit_id, payload")
+        .eq("clinic_id", clinic_id)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      sb
+        .from("audit_logs")
+        .select("id, event_type, created_at, status, channel, query_type, patient_id, error_message")
+        .eq("clinic_id", clinic_id)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    ]);
+
+    if (journeyRes.error) throw journeyRes.error;
+    if (auditRes.error) throw auditRes.error;
+
+    return res.json(buildAuditHistoryResponse({
+      journeyEvents: journeyRes.data || [],
+      auditLogs: auditRes.data || [],
+      requestedLimit: limit,
+    }));
+  } catch (err) {
+    console.error("[staff/audit-history]", err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -3916,15 +3980,23 @@ app.get("/api/patient/me", requirePatientToken, async (req, res) => {
              .maybeSingle()
         : Promise.resolve({ data: null }),
       sb.from("clinics")
-        .select("id, clinic_name, clinic_short_name, location")
+        .select("id, clinic_name, clinic_short_name, location, settings")
         .eq("id", clinic_id)
         .maybeSingle(),
     ]);
 
+    const clinicSettings = clinicRes.data?.settings || {};
+
     res.json({
       patient:      patientRes.data,
       visit:        visitRes.data,
-      clinic:       clinicRes.data,
+      clinic:       clinicRes.data ? {
+        id: clinicRes.data.id,
+        clinic_name: clinicRes.data.clinic_name,
+        clinic_short_name: clinicRes.data.clinic_short_name,
+        location: clinicRes.data.location,
+      } : null,
+      clinic_rule_config: resolveClinicRuleConfig(clinicSettings),
       patient_lang: req.patient_lang,
     });
   } catch (err) {
@@ -4547,9 +4619,11 @@ app.get("/api/staff/escalations", requireStaffAuth, async (req, res) => {
     ]);
     if (error) throw error;
 
+    const items = attachEscalationSla(rows || []);
+
     res.json({
-      items: rows || [],
-      summary: summarizeEscalationCounts(rows || []),
+      items,
+      summary: summarizeEscalationCounts(items),
       staff_users: staffUsers,
     });
   } catch (err) {
@@ -4606,6 +4680,169 @@ app.get("/api/staff/aftercare", requireStaffAuth, async (req, res) => {
   } catch (err) {
     console.error("[Staff/aftercare]", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/staff/aftercare/plans", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const [{ data: procedures, error: proceduresError }, { data: plans, error: plansError }] = await Promise.all([
+      sb
+        .from("procedures")
+        .select("id, name_ko, name_en, is_active")
+        .eq("clinic_id", clinic_id)
+        .eq("is_active", true)
+        .order("name_ko", { ascending: true }),
+      sb
+        .from("aftercare_plans")
+        .select("id, clinic_id, procedure_id, name, is_active, created_at, updated_at, procedures ( id, name_ko, name_en )")
+        .eq("clinic_id", clinic_id)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false }),
+    ]);
+    if (proceduresError) throw proceduresError;
+    if (plansError) throw plansError;
+
+    const planIds = (plans || []).map((plan) => plan.id);
+    let steps = [];
+    if (planIds.length > 0) {
+      const { data: stepRows, error: stepsError } = await sb
+        .from("aftercare_steps")
+        .select("id, plan_id, step_key, trigger_offset_hours, message_template_key, next_action_type, sort_order, content_template, updated_at")
+        .in("plan_id", planIds)
+        .order("sort_order", { ascending: true });
+      if (stepsError) throw stepsError;
+      steps = stepRows || [];
+    }
+
+    return res.json({
+      ...normalizeAftercarePlanRows(procedures || [], plans || [], steps),
+    });
+  } catch (err) {
+    console.error("[Staff/aftercare-plans]", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/staff/aftercare/plans/ensure", requireStaffAuth, requireRole("owner", "admin"), async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const actor_user_id = req.staff_user_id || null;
+  const { procedureId } = req.body || {};
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+  if (!procedureId) return res.status(400).json({ error: "procedureId required" });
+
+  try {
+    const { data: procedure, error: procedureError } = await sb
+      .from("procedures")
+      .select("id, clinic_id, name_ko, name_en, is_active")
+      .eq("id", procedureId)
+      .eq("clinic_id", clinic_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (procedureError) throw procedureError;
+    if (!procedure) return res.status(404).json({ error: "Procedure not found" });
+
+    const plan = await ensureAftercarePlan(sb, clinic_id, procedure);
+    const { data: steps, error: stepsError } = await sb
+      .from("aftercare_steps")
+      .select("id, plan_id, step_key, trigger_offset_hours, message_template_key, next_action_type, sort_order, content_template, updated_at")
+      .eq("plan_id", plan.id)
+      .order("sort_order", { ascending: true });
+    if (stepsError) throw stepsError;
+
+    await writeAuditLog({
+      eventType: "aftercare_plan_ensured",
+      clinicId: clinic_id,
+      channel: "dashboard",
+      direction: "internal",
+      status: "success",
+      intent: "aftercare_plan_editor",
+      errorMessage: JSON.stringify({
+        actor_user_id,
+        procedure_id: procedure.id,
+        plan_id: plan.id,
+      }),
+    });
+
+    return res.json({
+      ok: true,
+      plan: {
+        ...plan,
+        procedure_name: procedure.name_ko || procedure.name_en || "시술 미지정",
+        steps: steps || [],
+      },
+    });
+  } catch (err) {
+    console.error("[Staff/aftercare-plan-ensure]", err.message);
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/staff/aftercare/steps/:stepId", requireStaffAuth, requireRole("owner", "admin"), async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const actor_user_id = req.staff_user_id || null;
+  const { stepId } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { patch, changedPaths } = validateAftercareStepPatch(req.body || {});
+    const { data: existing, error: existingError } = await sb
+      .from("aftercare_steps")
+      .select(`
+        id, plan_id, step_key, trigger_offset_hours, message_template_key, next_action_type, sort_order, content_template, updated_at,
+        aftercare_plans!inner ( id, clinic_id, procedure_id, name )
+      `)
+      .eq("id", stepId)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing || existing.aftercare_plans?.clinic_id !== clinic_id) {
+      return res.status(404).json({ error: "Aftercare step not found" });
+    }
+
+    const { data: updated, error: updateError } = await sb
+      .from("aftercare_steps")
+      .update(patch)
+      .eq("id", stepId)
+      .select("id, plan_id, step_key, trigger_offset_hours, message_template_key, next_action_type, sort_order, content_template, updated_at")
+      .single();
+    if (updateError) throw updateError;
+    const safetyFlags = detectAftercareStepSafetyFlags({ before: existing, patch });
+
+    await writeAuditLog({
+      eventType: "aftercare_step_updated",
+      clinicId: clinic_id,
+      channel: "dashboard",
+      direction: "internal",
+      status: "success",
+      intent: "aftercare_plan_editor",
+      errorMessage: JSON.stringify({
+        actor_user_id,
+        plan_id: existing.plan_id,
+        step_id: updated.id,
+        changed_paths: changedPaths,
+        safety_flags: safetyFlags,
+        patch,
+      }),
+    });
+
+    return res.json({
+      ok: true,
+      step: updated,
+      preview: buildAftercareStepPreview(updated),
+      safety_flags: safetyFlags,
+      changed_paths: changedPaths,
+    });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) {
+      console.error("[Staff/aftercare-step-patch]", err.message);
+    }
+    return res.status(status).json({ error: err.message });
   }
 });
 

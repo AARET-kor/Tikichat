@@ -68,6 +68,14 @@ const DATE_RANGES = [
   { key: 'all',      label: '전체' },
 ];
 
+const DEFAULT_ESCALATION_SUMMARY = {
+  open: 0,
+  urgent: 0,
+  unanswered: 0,
+  overdue: 0,
+  due_soon: 0,
+};
+
 // ── Auth helper ──────────────────────────────────────────────────────────────
 async function authHeaders() {
   const { data: { session: sb } } = await supabase.auth.getSession();
@@ -766,6 +774,15 @@ function EscalationTaskCard({ item, darkMode, onOpen, staffUsers = [] }) {
   const latestActor = (staffUsers || []).find((user) => user.user_id === latestActorId);
   const ownerLabel = ownerUser?.email || roleLabel || 'queue';
   const latestActorLabel = latestActor?.email || '—';
+  const slaState = item.sla_state?.status;
+  const slaLabel = slaState === 'overdue'
+    ? 'SLA 초과'
+    : slaState === 'due_soon'
+      ? 'SLA 임박'
+      : null;
+  const slaTone = slaState === 'overdue'
+    ? 'text-red-700 bg-red-50 border-red-200'
+    : 'text-amber-700 bg-amber-50 border-amber-200';
 
   return (
     <button
@@ -800,6 +817,12 @@ function EscalationTaskCard({ item, darkMode, onOpen, staffUsers = [] }) {
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-zinc-100'}`}>
           {ESCALATION_STATUS_LABELS[item.status] || item.status}
         </span>
+        {slaLabel && (
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${slaTone}`}>
+            {slaLabel}
+            {Number.isFinite(item.sla_state?.age_minutes) ? ` · ${item.sla_state.age_minutes}분` : ''}
+          </span>
+        )}
       </div>
 
       <p className={`text-[10px] mt-2 line-clamp-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
@@ -1106,7 +1129,7 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
 
 // ── MyTikiTab — Ops Board ────────────────────────────────────────────────────
 export default function MyTikiTab({ darkMode }) {
-  const { clinicId } = useAuth();
+  const { clinicId, role } = useAuth();
 
   const [visits,          setVisits]          = useState([]);
   const [summary,         setSummary]         = useState({ total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0, roomReady: 0 });
@@ -1114,13 +1137,16 @@ export default function MyTikiTab({ darkMode }) {
   const [roomSummary,     setRoomSummary]     = useState({ total: 0, free: 0, occupied: 0, readyQueue: 0 });
   const [roomQueue,       setRoomQueue]       = useState([]);
   const [escalations,     setEscalations]     = useState([]);
-  const [escalationSummary, setEscalationSummary] = useState({ open: 0, urgent: 0, unanswered: 0 });
+  const [escalationSummary, setEscalationSummary] = useState(DEFAULT_ESCALATION_SUMMARY);
   const [aftercareItems,  setAftercareItems]  = useState([]);
   const [aftercareSummary, setAftercareSummary] = useState({ due: 0, responded: 0, concern: 0, urgent: 0, safe_for_return: 0 });
   const [aftercareScheduler, setAftercareScheduler] = useState(null);
+  const [aftercarePlanProcedures, setAftercarePlanProcedures] = useState([]);
+  const [aftercarePlans, setAftercarePlans] = useState([]);
   const [staffUsers,      setStaffUsers]      = useState([]);
   const [loadingEscalations, setLoadingEscalations] = useState(true);
   const [loadingAftercare, setLoadingAftercare] = useState(true);
+  const [loadingAftercarePlans, setLoadingAftercarePlans] = useState(true);
   const [loading,         setLoading]         = useState(true);
   const [fetchError,      setFetchError]      = useState(null);
   const [search,          setSearch]          = useState('');
@@ -1136,9 +1162,13 @@ export default function MyTikiTab({ darkMode }) {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showCsvImport,   setShowCsvImport]   = useState(false);
   const [showRoomSettings, setShowRoomSettings] = useState(false);
+  const [showAftercareEditor, setShowAftercareEditor] = useState(false);
+  const [selectedAftercareProcedureId, setSelectedAftercareProcedureId] = useState('');
   const [checkingInIds,   setCheckingInIds]   = useState(new Set());
   const [assigningRoomIds, setAssigningRoomIds] = useState(new Set());
   const [reviewingAftercareIds, setReviewingAftercareIds] = useState(new Set());
+  const [savingAftercareStepIds, setSavingAftercareStepIds] = useState(new Set());
+  const [ensuringAftercarePlan, setEnsuringAftercarePlan] = useState(false);
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const bg        = darkMode ? 'bg-zinc-950' : 'bg-slate-50';
@@ -1219,7 +1249,7 @@ export default function MyTikiTab({ darkMode }) {
       }
       const data = await res.json();
       setEscalations(data.items || []);
-      setEscalationSummary(data.summary || { open: 0, urgent: 0, unanswered: 0 });
+      setEscalationSummary({ ...DEFAULT_ESCALATION_SUMMARY, ...(data.summary || {}) });
       setStaffUsers(data.staff_users || []);
     } catch (err) {
       console.error('[escalations]', err.message);
@@ -1256,6 +1286,37 @@ export default function MyTikiTab({ darkMode }) {
 
   useEffect(() => { fetchAftercare(); }, [fetchAftercare]);
 
+  const fetchAftercarePlans = useCallback(async () => {
+    if (!clinicId) return;
+    setLoadingAftercarePlans(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/staff/aftercare/plans', { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setAftercarePlanProcedures(data.procedures || []);
+      setAftercarePlans((data.plans || []).map((plan) => ({
+        ...plan,
+        steps: (plan.steps || []).map((step) => ({
+          ...step,
+          original_trigger_offset_hours: step.trigger_offset_hours,
+          original_content_template: step.content_template,
+          original_next_action_type: step.next_action_type,
+        })),
+      })));
+      setSelectedAftercareProcedureId((prev) => prev || data.plans?.[0]?.procedure_id || data.procedures?.[0]?.id || '');
+    } catch (err) {
+      console.error('[aftercare-plans]', err.message);
+    } finally {
+      setLoadingAftercarePlans(false);
+    }
+  }, [clinicId]);
+
+  useEffect(() => { fetchAftercarePlans(); }, [fetchAftercarePlans]);
+
   // ── Derived filtered list ──────────────────────────────────────────────────
   const filtered = visits.filter(v => {
     if (!search) return true;
@@ -1286,6 +1347,8 @@ export default function MyTikiTab({ darkMode }) {
   const aftercareConcernMeta = getOperationalUrgencyMeta({ kind: 'aftercare', riskLevel: 'concern' });
   const aftercareUrgentMeta = getOperationalUrgencyMeta({ kind: 'aftercare', riskLevel: 'urgent', urgentFlag: true });
   const aftercareSafeReturnMeta = getOperationalUrgencyMeta({ kind: 'room', roomReady: true });
+  const canEditAftercarePlans = ['owner', 'admin'].includes(role);
+  const selectedAftercarePlan = aftercarePlans.find((plan) => plan.procedure_id === selectedAftercareProcedureId) || null;
 
   // ── Check-in action ────────────────────────────────────────────────────────
   async function handleCheckIn(visitId) {
@@ -1406,6 +1469,79 @@ export default function MyTikiTab({ darkMode }) {
     }
   }
 
+  function handleAftercareStepDraftChange(stepId, field, value) {
+    setAftercarePlans((prev) => prev.map((plan) => ({
+      ...plan,
+      steps: (plan.steps || []).map((step) => (
+        step.id === stepId ? { ...step, [field]: value } : step
+      )),
+    })));
+  }
+
+  async function handleEnsureAftercarePlan() {
+    if (!selectedAftercareProcedureId || ensuringAftercarePlan) return;
+    setEnsuringAftercarePlan(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/staff/aftercare/plans/ensure', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ procedureId: selectedAftercareProcedureId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchAftercarePlans();
+    } catch (err) {
+      console.error('[aftercare-plan-ensure]', err.message);
+    } finally {
+      setEnsuringAftercarePlan(false);
+    }
+  }
+
+  async function handleSaveAftercareStep(step) {
+    if (!step?.id || savingAftercareStepIds.has(step.id)) return;
+    const timingChanged = Number(step.trigger_offset_hours) !== Number(step.original_trigger_offset_hours);
+    if (timingChanged) {
+      const ok = window.confirm('Trigger timing changed. This affects future aftercare scheduling from this plan. Continue?');
+      if (!ok) return;
+    }
+    setSavingAftercareStepIds((prev) => new Set([...prev, step.id]));
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/aftercare/steps/${step.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          trigger_offset_hours: Number(step.trigger_offset_hours),
+          content_template: step.content_template,
+          next_action_type: step.next_action_type,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setAftercarePlans((prev) => prev.map((plan) => ({
+        ...plan,
+        steps: (plan.steps || []).map((row) => (
+          row.id === step.id ? {
+            ...row,
+            ...data.step,
+            original_trigger_offset_hours: data.step.trigger_offset_hours,
+            original_content_template: data.step.content_template,
+            original_next_action_type: data.step.next_action_type,
+          } : row
+        )),
+      })));
+    } catch (err) {
+      console.error('[aftercare-step-save]', err.message);
+    } finally {
+      setSavingAftercareStepIds((prev) => {
+        const next = new Set(prev);
+        next.delete(step.id);
+        return next;
+      });
+    }
+  }
+
   // ── Stage update ───────────────────────────────────────────────────────────
   function handleStageChange(visitId, stage) {
     setVisits(prev => prev.map(v => v.id === visitId ? { ...v, stage } : v));
@@ -1446,6 +1582,13 @@ export default function MyTikiTab({ darkMode }) {
 
   // ── Today date label ───────────────────────────────────────────────────────
   const todayLabel = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+  const attentionItems = [
+    escalationSummary.overdue > 0 ? `Escalation SLA 초과 ${escalationSummary.overdue}` : null,
+    escalationSummary.due_soon > 0 ? `Escalation SLA 임박 ${escalationSummary.due_soon}` : null,
+    escalationSummary.urgent > 0 ? `긴급 escalation ${escalationSummary.urgent}` : null,
+    aftercareSummary.urgent > 0 ? `긴급 aftercare ${aftercareSummary.urgent}` : null,
+    aftercareScheduler?.status === 'degraded' ? 'Aftercare scheduler degraded' : null,
+  ].filter(Boolean);
 
   async function openEscalation(id) {
     try {
@@ -1541,6 +1684,12 @@ export default function MyTikiTab({ darkMode }) {
           <SummaryCard label="활성 링크"   value={loading ? '…' : summary.activeLinks}   color="#5B72A8" sub="발송·열람됨"     darkMode={darkMode} />
         </div>
 
+        {attentionItems.length > 0 && (
+          <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] font-semibold ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+            Tiki Desk attention · {attentionItems.join(' · ')}
+          </div>
+        )}
+
         {aftercareScheduler?.status === 'degraded' && (
           <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
             Aftercare scheduler degraded · background delivery may be delayed.
@@ -1612,9 +1761,10 @@ export default function MyTikiTab({ darkMode }) {
             </button>
           </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-4">
+        <div className="grid grid-cols-4 gap-2 mt-4">
           <EscalationMiniCard label="Open Items" value={loadingEscalations ? '…' : escalationSummary.open} sub="진행 중 triage" color={TEAL} darkMode={darkMode} />
           <EscalationMiniCard label="Urgent" value={loadingEscalations ? '…' : escalationSummary.urgent} sub="즉시 검토 필요" color={escalationUrgentMeta.color} darkMode={darkMode} />
+          <EscalationMiniCard label="Overdue" value={loadingEscalations ? '…' : escalationSummary.overdue} sub="SLA 초과" color="#DC2626" darkMode={darkMode} />
           <EscalationMiniCard label="Unanswered" value={loadingEscalations ? '…' : escalationSummary.unanswered} sub="아직 확인 전" color={escalationHighMeta.color} darkMode={darkMode} />
         </div>
 
@@ -1718,7 +1868,149 @@ export default function MyTikiTab({ darkMode }) {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => setShowAftercareEditor((prev) => !prev)}
+              className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold border"
+              style={showAftercareEditor
+                ? { background: '#4E8FA0', color: '#fff', borderColor: '#4E8FA0' }
+                : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
+            >
+              {showAftercareEditor ? '플랜 편집 닫기' : '플랜 편집'}
+            </button>
           </div>
+
+          {showAftercareEditor && (
+            <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#3F3F46' : '#E5E7EB', background: darkMode ? '#0F172A' : '#F8FAFC' }}>
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <p className={`text-[11px] font-bold ${textP}`}>Aftercare plan editor</p>
+                  <p className={`text-[11px] mt-1 ${textS}`}>시술별 체크 시점, 안내 문구, 다음 액션을 작게 조정합니다.</p>
+                </div>
+                {!canEditAftercarePlans && (
+                  <div className={`text-[11px] ${textS}`}>관리자/원장만 수정 가능 · 현재는 읽기 전용</div>
+                )}
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 flex-wrap">
+                <select
+                  value={selectedAftercareProcedureId}
+                  onChange={(e) => setSelectedAftercareProcedureId(e.target.value)}
+                  className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+                >
+                  {(aftercarePlanProcedures || []).map((procedure) => (
+                    <option key={procedure.id} value={procedure.id}>
+                      {procedure.name_ko || procedure.name_en || '시술 미지정'}
+                    </option>
+                  ))}
+                </select>
+                {canEditAftercarePlans && !selectedAftercarePlan && (
+                  <button
+                    onClick={handleEnsureAftercarePlan}
+                    disabled={!selectedAftercareProcedureId || ensuringAftercarePlan}
+                    className="px-3 py-1 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
+                    style={{ background: TEAL }}
+                  >
+                    {ensuringAftercarePlan ? '기본 플랜 생성 중…' : '기본 플랜 만들기'}
+                  </button>
+                )}
+                <button
+                  onClick={fetchAftercarePlans}
+                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+                >
+                  플랜 새로고침
+                </button>
+              </div>
+
+              {loadingAftercarePlans ? (
+                <div className={`mt-4 text-xs ${textS}`}>Aftercare plan 불러오는 중…</div>
+              ) : !selectedAftercarePlan ? (
+                <div className={`mt-4 text-xs ${textS}`}>선택한 시술에 아직 aftercare plan이 없습니다. 필요하면 기본 플랜을 먼저 만드세요.</div>
+              ) : (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  {(selectedAftercarePlan.steps || []).map((step) => (
+                    <div
+                      key={step.id}
+                      className="rounded-2xl border p-3"
+                      style={{ borderColor: darkMode ? '#3F3F46' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className={`text-[11px] font-bold ${textP}`}>{step.step_key}</p>
+                          <p className={`text-[10px] ${textS}`}>정렬 {step.sort_order}</p>
+                        </div>
+                        <span className={`text-[10px] ${textS}`}>Updated {fmtAgo(step.updated_at)}</span>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <label className="flex flex-col gap-1">
+                          <span className={`text-[10px] font-semibold ${textS}`}>Trigger (hours)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="720"
+                            value={step.trigger_offset_hours ?? ''}
+                            disabled={!canEditAftercarePlans}
+                            onChange={(e) => handleAftercareStepDraftChange(step.id, 'trigger_offset_hours', e.target.value)}
+                            className={`rounded-lg border px-2 py-1 text-[11px] ${inputBg}`}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className={`text-[10px] font-semibold ${textS}`}>Next action</span>
+                          <select
+                            value={step.next_action_type || 'continue_plan'}
+                            disabled={!canEditAftercarePlans}
+                            onChange={(e) => handleAftercareStepDraftChange(step.id, 'next_action_type', e.target.value)}
+                            className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
+                          >
+                            {['symptom_check', 'progress_check', 'return_prompt', 'extra_check', 'staff_review', 'continue_plan'].map((option) => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="mt-3 flex flex-col gap-1">
+                        <span className={`text-[10px] font-semibold ${textS}`}>Content template</span>
+                        <textarea
+                          rows={4}
+                          value={step.content_template || ''}
+                          disabled={!canEditAftercarePlans}
+                          onChange={(e) => handleAftercareStepDraftChange(step.id, 'content_template', e.target.value)}
+                          className={`rounded-xl border px-3 py-2 text-[11px] resize-y ${inputBg}`}
+                        />
+                      </label>
+
+                      <div className={`mt-3 rounded-xl border px-3 py-2 text-[11px] ${darkMode ? 'border-zinc-700 bg-zinc-900 text-zinc-300' : 'border-sky-100 bg-sky-50 text-sky-900'}`}>
+                        <div className="font-bold mb-1">Patient preview</div>
+                        <div className="leading-relaxed">{step.content_template || 'No message template set.'}</div>
+                        <div className={`mt-2 ${textS}`}>
+                          Sends {step.trigger_offset_hours || '—'}h after aftercare starts · next action: {step.next_action_type || '—'}
+                        </div>
+                        {Number(step.trigger_offset_hours) !== Number(step.original_trigger_offset_hours) && (
+                          <div className="mt-2 font-bold text-amber-700">
+                            Timing changed. Save will ask for confirmation.
+                          </div>
+                        )}
+                      </div>
+
+                      {canEditAftercarePlans && (
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            onClick={() => handleSaveAftercareStep(step)}
+                            disabled={savingAftercareStepIds.has(step.id)}
+                            className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
+                            style={{ background: TEAL }}
+                          >
+                            {savingAftercareStepIds.has(step.id) ? '저장 중…' : 'Step 저장'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 space-y-3">
             {loadingAftercare ? (

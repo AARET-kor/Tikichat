@@ -73,3 +73,36 @@ Before calling a phase “closed”, confirm:
   - scattered hardcoded rules
   - asymmetric state transitions
 
+## Tiki Room voice / TTS QA checklist
+
+Use this after Batch 6B browser-native voice changes and before claiming a room deployment is voice-stable.
+
+1. Open `Tiki Room` in a real authenticated staff browser session.
+2. Confirm `current / load-next / clear` still work before testing voice.
+3. Test voice input in at least one Chromium-based browser:
+   - choose a live room with a current patient
+   - click `Start voice input`
+   - speak one short patient utterance in the patient language
+   - confirm the text box is filled
+   - click `Intent 정리`
+   - confirm AI analysis and recommended responses still require doctor/staff selection
+4. Test unsupported or denied mic permission:
+   - deny microphone permission or use a browser without SpeechRecognition
+   - confirm text input fallback remains usable
+   - confirm the UI does not imply voice is required
+5. Test TTS playback:
+   - select a doctor response
+   - click `Speak selected`
+   - confirm playback starts or a clear unsupported/fallback message appears
+   - click `Stop audio`
+   - click `Replay`
+6. Test multilingual fallback:
+   - Korean, English, Japanese, Chinese, and Arabic patient languages should map to their browser speech locales
+   - if an exact voice is unavailable, the UI should state that a closest voice or browser default is being used
+
+Pass criteria:
+
+- voice input is optional and never bypasses doctor/staff response selection
+- browser TTS fallback is visible when exact language voice is unavailable
+- text input and patient display remain usable if voice APIs are unavailable
+- no transcript storage, autonomous voice response, or backend STT/TTS path is introduced

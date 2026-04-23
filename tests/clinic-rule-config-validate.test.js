@@ -32,6 +32,29 @@ test("validateClinicRulePatch accepts allowed partial ask and room-ready overrid
   ]);
 });
 
+test("validateClinicRulePatch accepts allowed patient portal task overrides", () => {
+  const result = validateClinicRulePatch({
+    patient_portal: {
+      tasks: {
+        show_aftercare_due: true,
+        show_aftercare_ack: false,
+        show_safe_return: true,
+      },
+    },
+  });
+
+  assert.deepEqual(result.patch.patient_portal.tasks, {
+    show_aftercare_due: true,
+    show_aftercare_ack: false,
+    show_safe_return: true,
+  });
+  assert.deepEqual(result.changedPaths, [
+    "patient_portal.tasks.show_aftercare_ack",
+    "patient_portal.tasks.show_aftercare_due",
+    "patient_portal.tasks.show_safe_return",
+  ]);
+});
+
 test("validateClinicRulePatch rejects unknown keys and full replace wrapper", () => {
   assert.throws(
     () => validateClinicRulePatch({ tikidoc_rules: {} }),

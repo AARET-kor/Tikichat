@@ -72,6 +72,13 @@ const DEFAULT_CLINIC_RULE_CONFIG = {
       allowed_stages: ["pre_visit", "treatment", "post_care"],
     },
   },
+  patient_portal: {
+    tasks: {
+      show_aftercare_due: true,
+      show_aftercare_ack: true,
+      show_safe_return: true,
+    },
+  },
 };
 
 function clone(value) {

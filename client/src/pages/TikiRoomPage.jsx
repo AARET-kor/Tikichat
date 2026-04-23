@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -16,6 +16,15 @@ import {
   XCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import {
+  buildRoomInteractionState,
+  canAnalyzeRoomTranscript,
+  getSpeechRecognitionConstructor,
+  getSpeechSupport,
+  getTtsSupport,
+  mapRoomSpeechLang,
+  resolveTtsVoice,
+} from '../lib/roomVoice';
 
 const C = {
   bg: '#F8F3EE',
@@ -46,14 +55,6 @@ const LANG_LABELS = {
   zh: '중국어',
   ar: 'Arabic',
 };
-
-function langForSpeech(lang) {
-  if (lang === 'ja') return 'ja-JP';
-  if (lang === 'zh') return 'zh-CN';
-  if (lang === 'ar') return 'ar-SA';
-  if (lang === 'en') return 'en-US';
-  return 'ko-KR';
-}
 
 async function apiJson(url, options = {}) {
   const { data: { session } } = await supabase.auth.getSession();
@@ -234,6 +235,12 @@ export default function TikiRoomPage() {
   const [selectedResponse, setSelectedResponse] = useState(null);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [toast, setToast] = useState('');
+  const [voiceState, setVoiceState] = useState('idle');
+  const [voiceMessage, setVoiceMessage] = useState('');
+  const [ttsState, setTtsState] = useState('idle');
+  const [ttsMessage, setTtsMessage] = useState('');
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const recognitionRef = useRef(null);
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -272,6 +279,19 @@ export default function TikiRoomPage() {
     window.localStorage.setItem(ROOM_STORAGE_KEY, roomId);
   }, [roomId]);
 
+  useEffect(() => () => {
+    if (recognitionRef.current) recognitionRef.current.stop();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (!window.speechSynthesis) return undefined;
+    const loadVoices = () => setAvailableVoices(window.speechSynthesis.getVoices() || []);
+    loadVoices();
+    window.speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
+    return () => window.speechSynthesis.removeEventListener?.('voiceschanged', loadVoices);
+  }, []);
+
   const availableRooms = boot?.available_rooms || [];
   const currentRoom = boot?.room || availableRooms.find((room) => room.id === roomId) || null;
   const prep = boot?.prep;
@@ -279,17 +299,111 @@ export default function TikiRoomPage() {
   const nextPatient = boot?.next_patient;
 
   const currentLanguage = prep?.patient_language || currentPatient?.patients?.lang || 'en';
+  const speechSupport = useMemo(() => getSpeechSupport(window), []);
+  const ttsSupport = useMemo(() => getTtsSupport(window), []);
+  const roomInteractionState = useMemo(() => buildRoomInteractionState({
+    currentPatient,
+    voiceState,
+    selectedResponse,
+    overlayVisible,
+  }), [currentPatient, overlayVisible, selectedResponse, voiceState]);
+  const canAnalyze = canAnalyzeRoomTranscript({
+    currentPatient,
+    inputText,
+    busyAction,
+    voiceState,
+  });
 
   const speakText = useCallback((text, lang) => {
-    if (!text || !window.speechSynthesis) return;
+    if (!text) return;
+    if (!ttsSupport.supported) {
+      setTtsState('unsupported');
+      showToast('이 브라우저는 TTS playback을 지원하지 않습니다');
+      return;
+    }
+    setTtsState('speaking');
     window.speechSynthesis.cancel();
+    const voiceInfo = resolveTtsVoice({ voices: availableVoices, lang });
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = langForSpeech(lang);
+    utterance.lang = voiceInfo.spokenLang || voiceInfo.requestedLang;
+    if (voiceInfo.voice) utterance.voice = voiceInfo.voice;
+    setTtsMessage(voiceInfo.message || `Using ${voiceInfo.spokenLang || voiceInfo.requestedLang} voice.`);
+    utterance.onend = () => {
+      setTtsState('idle');
+      setTtsMessage(voiceInfo.message || 'Playback complete.');
+    };
+    utterance.onerror = () => {
+      setTtsState('error');
+      setTtsMessage('Playback failed. You can still show the text to the patient.');
+      showToast('TTS playback을 완료하지 못했습니다');
+    };
     window.speechSynthesis.speak(utterance);
+  }, [availableVoices, showToast, ttsSupport.supported]);
+
+  const stopSpeechInput = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setVoiceState('idle');
+  }, []);
+
+  const startSpeechInput = useCallback(() => {
+    if (!speechSupport.supported) {
+      setVoiceState('unsupported');
+      setVoiceMessage('이 브라우저는 음성 입력을 지원하지 않습니다. 텍스트 입력을 사용해 주세요.');
+      return;
+    }
+    if (voiceState === 'listening') {
+      stopSpeechInput();
+      return;
+    }
+
+    const SpeechRecognition = getSpeechRecognitionConstructor(window);
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = mapRoomSpeechLang(currentLanguage);
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    let finalTranscript = '';
+    recognition.onstart = () => {
+      setVoiceState('listening');
+      setVoiceMessage('듣고 있습니다. 환자 발화를 말하면 텍스트로 채웁니다.');
+    };
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const text = result?.[0]?.transcript || '';
+        if (result?.isFinal) finalTranscript += text;
+        else interimTranscript += text;
+      }
+      const nextText = `${finalTranscript}${interimTranscript}`.trim();
+      if (nextText) setInputText(nextText);
+    };
+    recognition.onerror = (event) => {
+      setVoiceState('error');
+      setVoiceMessage(event?.error ? `음성 입력 오류: ${event.error}` : '음성 입력을 완료하지 못했습니다.');
+      recognitionRef.current = null;
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setVoiceState((prev) => (prev === 'error' ? prev : 'idle'));
+      setVoiceMessage((prev) => (prev && prev.startsWith('음성 입력 오류') ? prev : '음성 입력이 완료되었습니다. 필요하면 Intent 정리를 눌러주세요.'));
+    };
+    recognition.start();
+  }, [currentLanguage, speechSupport.supported, stopSpeechInput, voiceState]);
+
+  const stopPlayback = useCallback(() => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    setTtsState('idle');
+    setTtsMessage('Playback stopped.');
   }, []);
 
   const submitLiveInput = async () => {
-    if (!roomId || !inputText.trim()) return;
+    if (!roomId || !canAnalyze) return;
     setBusyAction('analyze');
     try {
       const data = await apiJson('/api/room/live-input', {
@@ -441,13 +555,13 @@ export default function TikiRoomPage() {
             style={{
               borderRadius: 999,
               padding: '8px 12px',
-              background: currentPatient ? C.sageSoft : C.mochaSoft,
-              color: currentPatient ? C.sage : C.mocha,
+              background: roomInteractionState.tone === 'risk' ? C.redSoft : roomInteractionState.tone === 'warn' ? C.amberSoft : roomInteractionState.tone === 'safe' ? C.sageSoft : C.mochaSoft,
+              color: roomInteractionState.tone === 'risk' ? C.red : roomInteractionState.tone === 'warn' ? C.amber : roomInteractionState.tone === 'safe' ? C.sage : C.mocha,
               fontSize: 12,
               fontWeight: 800,
             }}
           >
-            {currentPatient ? 'Current patient loaded' : 'Idle / next patient ready'}
+            {roomInteractionState.label}
           </div>
         </div>
 
@@ -567,8 +681,38 @@ export default function TikiRoomPage() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Mic size={16} color={C.sage} />
-                <span style={{ fontSize: 14, fontWeight: 800 }}>Patient input placeholder</span>
-                <span style={{ fontSize: 11, color: C.textMute }}>voice-ready architecture / text input for now</span>
+                <span style={{ fontSize: 14, fontWeight: 800 }}>Patient input</span>
+                <span style={{ fontSize: 11, color: C.textMute }}>
+                  {speechSupport.supported ? 'browser voice input available' : 'text input fallback'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  onClick={startSpeechInput}
+                  disabled={!currentPatient || !!busyAction || voiceState === 'unsupported'}
+                  style={{
+                    borderRadius: 12,
+                    border: `1px solid ${voiceState === 'listening' ? C.red : C.border}`,
+                    background: voiceState === 'listening' ? C.redSoft : C.panelStrong,
+                    color: voiceState === 'listening' ? C.red : C.text,
+                    padding: '9px 12px',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: !currentPatient || !!busyAction || voiceState === 'unsupported' ? 'default' : 'pointer',
+                    opacity: !currentPatient || !!busyAction || voiceState === 'unsupported' ? 0.5 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Mic size={13} />
+                  {voiceState === 'listening' ? 'Stop voice input' : 'Start voice input'}
+                </button>
+                <span style={{ fontSize: 11, color: voiceState === 'error' ? C.red : C.textMute }}>
+                  {voiceMessage || (speechSupport.supported
+                    ? 'Voice fills the text box. Doctor still chooses the response.'
+                    : 'Voice input is unavailable in this browser. Text input still works.')}
+                </span>
               </div>
               <textarea
                 value={inputText}
@@ -588,13 +732,48 @@ export default function TikiRoomPage() {
                   outline: 'none',
                 }}
               />
+              {inputText.trim() && (
+                <div style={{
+                  borderRadius: 14,
+                  padding: '10px 12px',
+                  background: C.amberSoft,
+                  color: C.amber,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  lineHeight: 1.5,
+                }}>
+                  Verify transcript before Intent 정리. Voice text can be wrong in noisy rooms.
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                 <div style={{ fontSize: 12, color: C.textSub }}>
                   AI는 요약과 추천만 합니다. 응답은 의사가 선택합니다.
                 </div>
+                {inputText.trim() && (
+                  <button
+                    onClick={() => {
+                      setInputText('');
+                      setAnalysis(null);
+                      setSelectedResponse(null);
+                      setVoiceMessage('Transcript cleared. Type or capture again.');
+                    }}
+                    style={{
+                      borderRadius: 12,
+                      border: `1px solid ${C.border}`,
+                      background: C.panelStrong,
+                      color: C.textSub,
+                      padding: '12px 14px',
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Clear transcript
+                  </button>
+                )}
                 <button
                   onClick={submitLiveInput}
-                  disabled={!currentPatient || !inputText.trim() || !!busyAction}
+                  disabled={!canAnalyze}
                   style={{
                     borderRadius: 12,
                     border: 'none',
@@ -603,8 +782,8 @@ export default function TikiRoomPage() {
                     padding: '12px 18px',
                     fontSize: 13,
                     fontWeight: 800,
-                    cursor: !currentPatient || !inputText.trim() || !!busyAction ? 'default' : 'pointer',
-                    opacity: !currentPatient || !inputText.trim() || !!busyAction ? 0.5 : 1,
+                    cursor: !canAnalyze ? 'default' : 'pointer',
+                    opacity: !canAnalyze ? 0.5 : 1,
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
@@ -700,6 +879,21 @@ export default function TikiRoomPage() {
                   </div>
                 </div>
               </div>
+
+              {(selectedResponse?.patient_text || ttsMessage) && (
+                <div style={{
+                  marginTop: 12,
+                  borderRadius: 14,
+                  padding: '10px 12px',
+                  background: C.panelStrong,
+                  border: `1px solid ${C.border}`,
+                  color: ttsState === 'error' ? C.red : C.textSub,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}>
+                  Playback: {ttsSupport.supported ? (ttsMessage || 'Ready. Tiki Room will use the closest available browser voice.') : 'This browser does not support speech playback. Use patient display text instead.'}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -735,7 +929,28 @@ export default function TikiRoomPage() {
             }}
           >
             <Volume2 size={15} />
-            Speak selected
+            {ttsState === 'speaking' ? 'Speaking…' : 'Speak selected'}
+          </button>
+          <button
+            onClick={stopPlayback}
+            disabled={ttsState !== 'speaking'}
+            style={{
+              borderRadius: 12,
+              border: `1px solid ${C.border}`,
+              background: C.panel,
+              color: C.textSub,
+              padding: '11px 16px',
+              fontSize: 13,
+              fontWeight: 800,
+              opacity: ttsState === 'speaking' ? 1 : 0.45,
+              cursor: ttsState === 'speaking' ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <PauseCircle size={15} />
+            Stop audio
           </button>
           <button
             onClick={() => setOverlayVisible(true)}
@@ -777,7 +992,7 @@ export default function TikiRoomPage() {
             }}
           >
             <RotateCcw size={15} />
-            Repeat
+            Replay
           </button>
           <button
             onClick={() => showToast('민감 발화는 clinician check 후보로 유지됩니다')}
