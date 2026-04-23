@@ -50,11 +50,11 @@ test("buildEscalationAck uses config-aware labels with safe defaults", () => {
 
   assert.equal(
     buildEscalationAck({ lang: "ko", requestType: "nurse", clinicRuleConfig }),
-    "간호 코디 확인 요청이 접수되었습니다. 병원에서 확인 후 안내드릴 예정입니다.",
+    "TikiBell이 간호 코디 확인 요청을 접수했습니다. 병원에서 확인 후 안내드릴 예정입니다.",
   );
 
   assert.equal(
     buildEscalationAck({ lang: "en", requestType: "doctor_confirmation", clinicRuleConfig }),
-    "Your request for doctor confirmation review has been received. The clinic will review it and guide you.",
+    "TikiBell received your request for doctor confirmation review. The clinic will review it and guide you.",
   );
 });

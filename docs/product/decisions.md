@@ -4,7 +4,7 @@ Last updated: 2026-04-23
 
 ## Non-negotiable product rules
 
-- Visible surfaces stay limited to `Tiki Paste`, `My Tiki`, `Tiki Room`.
+- Visible surfaces stay limited to `Tiki Paste`, `My Tiki`, `Tiki Desk`, `Tiki Room`.
 - The product is not a generic CRM.
 - The product is not a generic chatbot.
 - The product is not a diagnosis product.
@@ -15,9 +15,9 @@ Last updated: 2026-04-23
 
 ## Current product decisions
 
-### Ask
+### Ask / TikiBell
 
-- `My Tiki Ask` is not a generic patient chatbot.
+- `Ask TikiBell` inside `My Tiki` is not a generic patient chatbot.
 - Ask is a stage-aware, visit-aware, protocol-based patient question layer.
 - Ask answers are restricted to:
   - clinic procedure knowledge
@@ -29,6 +29,7 @@ Last updated: 2026-04-23
   - safe fallback
   - escalation
 - Ask should not invent, diagnose, or over-reassure.
+- `TikiBell` is the patient-facing helper persona for Ask and patient reassurance copy inside `My Tiki`.
 - High-churn Ask knobs may be clinic-configurable through `clinics.settings.tikidoc_rules`, but:
   - only approved prompt/fallback/label subsets are writable
   - classification and source restriction logic stay in code
@@ -44,7 +45,7 @@ Last updated: 2026-04-23
   - assignment target
   - status
   - patient-visible reassurance
-  - Ops Board task visibility
+  - Tiki Desk task visibility
 - “created” is not enough. It is only operationally useful if it becomes a tracked staff task.
 
 ### Room assignment
@@ -52,7 +53,7 @@ Last updated: 2026-04-23
 - Room assignment is not a free-text field on a visit.
 - Room assignment is room traffic control.
 - Clinic rooms should come from presets.
-- Ops Board should answer:
+- Tiki Desk should answer:
   - what rooms exist
   - which are free
   - which are occupied
@@ -119,19 +120,20 @@ Last updated: 2026-04-23
 
 Not built yet:
 
-- Batch 5C:
-  - scheduler degraded mode visibility
-  - light audit trail standardization
-  - ownership / actor tracking standardization
 - Batch 6:
   - richer voice / TTS for Tiki Room
   - aftercare trigger editor
+  - broader patient task layer polish
+  - stronger staff summary surfacing
+  - fuller audit/history browse UI
+  - escalation SLA / notifications
 - later hardening:
   - remove the external QR dependency
 
 Why:
 
-- Current work focused on safe control-layer hardening, not feature expansion.
+- Hardening is now considered stable.
+- Current remaining work is expansion and polish, not stabilization.
 - The minimal clinic config write path is intentionally API-only.
 
 What should explicitly NOT be built yet:
@@ -140,3 +142,10 @@ What should explicitly NOT be built yet:
 - generic settings page
 - no-code rule editor
 - universal rules engine
+
+## Current state lock
+
+- The hardened product is now treated as `stable`.
+- Batch 6 is the active roadmap.
+- The only remaining work is deferred / later expansion.
+- Do not reopen stabilization work unless a real issue is found in operations.

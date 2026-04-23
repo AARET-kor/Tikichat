@@ -1,7 +1,7 @@
 /**
  * client/src/components/mytiki/MyTikiTab.jsx
  * ─────────────────────────────────────────────────────────────
- * Ops Board — morning coordinator whiteboard.
+ * Tiki Desk — staff operations surface.
  *
  * Columns: patient + time | procedure | stage | forms | room | link | actions
  * Default view: Today, sorted by visit_date ASC (earliest first).
@@ -1498,10 +1498,10 @@ export default function MyTikiTab({ darkMode }) {
           <div>
             <div className="flex items-center gap-2">
               <ClipboardCheck size={15} style={{ color: TEAL }} />
-              <h1 className={`text-sm font-bold ${textP}`}>Ops Board</h1>
+              <h1 className={`text-sm font-bold ${textP}`}>Tiki Desk</h1>
               <span className={`text-[11px] font-medium ${textS}`}>— {todayLabel}</span>
             </div>
-            <p className={`text-[11px] mt-0.5 ${textS}`}>코디네이터 운영 현황 · 체크인 · Ask triage · Rooms Lite</p>
+            <p className={`text-[11px] mt-0.5 ${textS}`}>코디네이터 운영 현황 · 체크인 · TikiBell triage · Rooms Lite</p>
             {shouldPollOpsBoard(dateRange) && (
               <p className={`text-[10px] mt-1 ${textS}`}>오늘 보기에서는 20초마다 가볍게 새로고침됩니다.</p>
             )}

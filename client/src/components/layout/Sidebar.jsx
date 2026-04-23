@@ -6,7 +6,7 @@ const SAGE   = '#5A8F80';   // Tiki Talk — Complementary sage
 const GOLD   = '#D09262';   // Procedures — Warm gold
 const AZURE  = '#5B72A8';   // Protocol Library — Muted indigo
 const SLATE  = '#6E7BB8';   // Tiki Room — Muted purple-blue
-const TEAL   = '#4E8FA0';   // My Tiki — Patient management teal
+const TEAL   = '#4E8FA0';   // Tiki Desk — Staff operations teal
 const F      = { sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif" };
 import { useAuth } from '../../context/AuthContext';
 
@@ -45,7 +45,7 @@ const NAV_ITEMS = [
   {
     id:            'my_tiki',
     icon:          Users,
-    label:         'My Tiki',
+    label:         'Tiki Desk',
     requiredRoles: ['owner', 'admin'],
     accent:        TEAL,
   },

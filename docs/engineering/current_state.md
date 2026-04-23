@@ -2,6 +2,13 @@
 
 Last updated: 2026-04-23
 
+Visible naming system:
+
+- `My Tiki` = patient portal / patient link entry
+- `TikiBell` = patient-facing helper inside My Tiki
+- `Tiki Desk` = staff / clinic operations surface
+- `Tiki Room` = in-room treatment surface
+
 ## Latest migrations
 
 - `027_patient_ask.sql`
@@ -9,6 +16,7 @@ Last updated: 2026-04-23
 - `029_rooms_lite.sql`
 - `030_tiki_room.sql`
 - `031_aftercare_engine.sql`
+- `033_light_audit_trail.sql`
 
 ## Recently changed files
 
@@ -56,7 +64,7 @@ Dirty but not automatically dangerous:
   - moderate swelling / worsening / medium-high anxiety -> concern
   - low-risk + good satisfaction -> safe_for_return
 - Background aftercare due marking currently depends on the hourly BullMQ scheduler when Redis exists, and otherwise falls back to lazy due marking on reads.
-- Ops Board urgency/status presentation is now centralized in a shared frontend helper, but this remains a UI-layer taxonomy rather than a backend workflow rewrite.
+- Tiki Desk urgency/status presentation is now centralized in a shared frontend helper, but this remains a UI-layer taxonomy rather than a backend workflow rewrite.
 
 ## What is now implemented
 
@@ -73,17 +81,28 @@ Dirty but not automatically dangerous:
   - `owner` / `admin` only
   - one audit record per successful update
 - Batch 5B is in place:
-  - shared Ops Board urgency/status metadata helper
+  - shared Tiki Desk urgency/status metadata helper
   - shared label/tone handling for escalation priority, aftercare risk, arrival, and room-ready
   - documented naming boundary for `stage`, `status`, `response_status`, and derived urgency
+- Batch 5C is in place:
+  - light audit trail for key escalation / aftercare / room transitions
+  - ownership / actor tracking standardization
+  - aftercare scheduler health visibility in startup logs, staff API payload, and staff UI notice
+  - final live authenticated Tiki Room verification passed
+
+## Hardening status
+
+- Hardening pass status: `stable`
+- Active roadmap: `Batch 6`
+- Remaining work type: `deferred / later expansion only`
+- Reopen stabilization only if a real operational issue is found
 
 ## What remains partial
 
 - Config writes are API-only; there is no internal editing UI.
 - Config audit is practical but lightweight; it does not yet provide a rich review surface.
-- Scheduler degraded mode visibility is still not surfaced to staff.
-- Ownership / actor tracking is improved in some flows but not standardized across the full product.
 - Tiki Room voice capture and playback remain placeholder-level.
+- Staff summary surfacing is stronger than before but still intentionally limited.
 
 ## Current risks
 
@@ -91,18 +110,17 @@ Dirty but not automatically dangerous:
 - `stage` is still the main visit workflow term, but adjacent terms now include escalation `status`, aftercare `response_status`, and derived urgency markers. New work should reuse those boundaries instead of inventing parallel names.
 - There is still a risk of confusing `implemented` with `operationally closed`.
 - Tiki Room is operationally shaped correctly, but hardware/voice assumptions are still placeholder-level.
-- Aftercare delivery is structurally real, but scheduler degraded mode still needs explicit operational visibility.
 - Recent work has multiple dirty files; the key review question is design dirtiness, not just git dirtiness.
 
 ## Intentionally deferred / later
 
-- Batch 5C:
-  - scheduler degraded mode visibility
-  - light audit trail standardization
-  - ownership / actor tracking standardization
 - Batch 6:
   - richer voice / TTS for Tiki Room
   - aftercare trigger editor
+  - broader patient task layer polish
+  - stronger staff summary surfacing
+  - fuller audit/history browse UI
+  - escalation SLA / notifications
 - later hardening:
   - remove external QR dependency
 - explicitly not now:
@@ -113,8 +131,5 @@ Dirty but not automatically dangerous:
 
 ## Next recommended task
 
-- Next recommended task is Batch 5C:
-  - scheduler degraded mode visibility
-  - light audit trail standardization
-  - ownership / actor tracking standardization
-- If Batch 5C is deferred, the fallback next step is an operational closure review for Batch 5A and 5B.
+- Next recommended task is Batch 6 roadmap work only.
+- There is no remaining stabilization blocker at this time.

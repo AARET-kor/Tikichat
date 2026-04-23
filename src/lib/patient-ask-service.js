@@ -259,7 +259,7 @@ export function buildEscalationAck({ lang, requestType, clinicRuleConfig = null 
   const label = labels[requestType] || labels.coordinator || { ko: "코디네이터", en: "coordinator" };
 
   if (lang === "ko") {
-    return `${label.ko} 확인 요청이 접수되었습니다. 병원에서 확인 후 안내드릴 예정입니다.`;
+    return `TikiBell이 ${label.ko} 확인 요청을 접수했습니다. 병원에서 확인 후 안내드릴 예정입니다.`;
   }
-  return `Your request for ${label.en} review has been received. The clinic will review it and guide you.`;
+  return `TikiBell received your request for ${label.en} review. The clinic will review it and guide you.`;
 }

@@ -50,12 +50,12 @@ const DEFAULT_CLINIC_RULE_CONFIG = {
     },
     fallback_copy: {
       ko: {
-        fallback: "지금 바로 단정해서 안내드리기보다, 병원 확인이 필요한 내용입니다. 안전을 위해 스태프 또는 담당 의료진 확인을 권장드립니다.",
-        escalate: "안전을 위해 스태프 또는 담당 의료진이 확인할 수 있도록 바로 전달하겠습니다.",
+        fallback: "TikiBell이 지금 바로 단정해서 안내드리기보다, 병원 확인이 필요한 내용입니다. 안전을 위해 스태프 또는 담당 의료진 확인을 권장드립니다.",
+        escalate: "TikiBell이 안전을 위해 스태프 또는 담당 의료진이 확인할 수 있도록 바로 전달하겠습니다.",
       },
       en: {
-        fallback: "This question needs clinic confirmation rather than a definite answer here. For safety, please ask staff or the clinician to confirm.",
-        escalate: "For safety, we will pass this to staff or the clinician for review.",
+        fallback: "TikiBell needs clinic confirmation rather than giving a definite answer here. For safety, please ask staff or the clinician to confirm.",
+        escalate: "For safety, TikiBell will pass this to staff or the clinician for review.",
       },
     },
     escalation_labels: {

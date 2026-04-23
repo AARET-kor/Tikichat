@@ -2,6 +2,13 @@
 
 Last updated: 2026-04-23
 
+Visible naming system:
+
+- `My Tiki` = patient portal / patient link entry
+- `TikiBell` = patient-facing helper inside My Tiki
+- `Tiki Desk` = staff / clinic operations surface
+- `Tiki Room` = in-room treatment surface
+
 Status meanings:
 
 - `implemented`: code path exists and is connected
@@ -10,6 +17,15 @@ Status meanings:
 - `next`: recommended next closure or hardening task
 
 ## Current register
+
+## Current overall status
+
+- Hardening status: `stable`
+- Active roadmap: `Batch 6`
+- Remaining work type: `deferred / later expansion only`
+- Stabilization note:
+  - the final live authenticated Tiki Room verification for `current / load-next / clear` passed
+  - do not reopen Batch 5 stabilization unless a real issue is found
 
 ### Batch 5A — clinic config layer
 
@@ -48,8 +64,8 @@ Deferred / Later:
   - later hardening, not Batch 5A
 
 Next:
-- Batch 5C if we want stronger audit/ownership consistency
-- or operational closure review if the API-only write path is enough
+- none required for stabilization
+- future work belongs to Batch 6 expansion only
 
 What must explicitly NOT be built yet:
 - full admin UI
@@ -60,7 +76,7 @@ What must explicitly NOT be built yet:
 ### Batch 5B — operational signals and taxonomy
 
 Implemented:
-- Shared Ops Board urgency/status metadata helper
+- Shared Tiki Desk urgency/status metadata helper
 - Unified escalation priority labels and aftercare risk labels in the staff UI
 - Derived urgency markers normalized for:
   - escalation
@@ -74,7 +90,7 @@ Implemented:
   - urgency remains derived, not persisted as a second workflow engine
 
 Partial:
-- The shared taxonomy is currently centered on the Ops Board staff surface.
+- The shared taxonomy is currently centered on the Tiki Desk staff surface.
 - Backend status models were intentionally not rewritten.
 
 Deferred / Later:
@@ -89,10 +105,8 @@ Deferred / Later:
   - Batch 5C
 
 Next:
-- Batch 5C:
-  - light audit trail
-  - ownership / actor tracking standardization
-  - scheduler degraded mode visibility
+- none required for stabilization
+- future work belongs to Batch 6 expansion only
 
 What must explicitly NOT be built yet:
 - large status refactor
@@ -100,27 +114,45 @@ What must explicitly NOT be built yet:
 - alert center
 - notification routing system
 
+### Batch 5C — trustworthiness hardening
+
+Implemented:
+- Light audit trail for key escalation / aftercare / room transitions
+- Ownership / actor tracking standardization
+- Aftercare scheduler health visibility:
+  - healthy vs degraded runtime determination
+  - startup logs
+  - staff API payload
+  - staff-visible degraded notice
+- final live authenticated Tiki Room verification passed
+
+Partial:
+- no broader history browse UI
+- no broader cross-surface scheduler alerting beyond the small staff surfacing
+
+Deferred / Later:
+- Not done:
+  - fuller audit/history browse UI
+  - stronger cross-surface staff summary surfacing
+- Why:
+  - Batch 5C was limited to trustworthiness hardening, not admin/reporting expansion
+- When:
+  - Batch 6 or later polish, if operationally needed
+- Batch:
+  - Batch 6 / later expansion
+
+Next:
+- Batch 6 roadmap only
+
+What must explicitly NOT be built yet:
+- audit dashboard
+- forensic explorer
+- assignment rules engine
+- distributed scheduler platform
+
 ## Deferred / Later
 
 Still intentionally not built:
-
-- Batch 5C: scheduler degraded mode visibility
-  - Why:
-    - current aftercare scheduler fallback exists, but degraded mode is not surfaced operationally
-  - When:
-    - Batch 5C
-
-- Batch 5C: light audit trail standardization
-  - Why:
-    - key actions are logged unevenly across subsystems
-  - When:
-    - Batch 5C
-
-- Batch 5C: ownership / actor tracking standardization
-  - Why:
-    - actor fields exist in some flows but are not standardized end-to-end
-  - When:
-    - Batch 5C
 
 - Batch 6: richer voice / TTS for Tiki Room
   - Why:
@@ -142,7 +174,5 @@ Still intentionally not built:
 
 ## Recommended next step
 
-- If we continue hardening:
-  - start Batch 5C
-- If we pause hardening:
-  - run an operational closure review for Batch 5A and 5B before expanding scope
+- Start Batch 6 roadmap items only
+- Do not reopen stabilization work unless a real issue is found in operations

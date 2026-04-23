@@ -89,13 +89,13 @@ export function evaluateAftercareResponse(payload = {}) {
 
 export function getAftercarePatientAcknowledgement(riskLevel) {
   if (riskLevel === "urgent") {
-    return "Your response needs urgent clinic review. Please contact the clinic immediately if symptoms are severe or worsening.";
+    return "TikiBell flagged your response for urgent clinic review. Please contact the clinic immediately if symptoms are severe or worsening.";
   }
   if (riskLevel === "concern") {
-    return "The clinic will review your response. Please wait for confirmation from our team.";
+    return "TikiBell has shared your response with the clinic for review. Please wait for confirmation from our team.";
   }
   if (riskLevel === "watch") {
-    return "Thank you. We recorded your response and will continue to follow your recovery closely.";
+    return "Thank you. TikiBell recorded your response and will continue to follow your recovery closely.";
   }
-  return "Thank you. Your recovery check was recorded and the normal follow-up plan will continue.";
+  return "Thank you. TikiBell recorded your recovery check and the normal follow-up plan will continue.";
 }

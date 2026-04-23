@@ -42,7 +42,7 @@ test("resolveClinicRuleConfig preserves defaults when config is missing", () => 
   const config = resolveClinicRuleConfig({});
 
   assert.equal(config.ask.quick_prompts.arrived[0].id, "where_to_wait");
-  assert.equal(config.ask.fallback_copy.en.escalate, "For safety, we will pass this to staff or the clinician for review.");
+  assert.equal(config.ask.fallback_copy.en.escalate, "For safety, TikiBell will pass this to staff or the clinician for review.");
   assert.equal(config.rooms.room_ready.require_consent_done, true);
 });
 

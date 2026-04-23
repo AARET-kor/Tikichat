@@ -183,11 +183,11 @@ export default function Dashboard() {
               : <AccessDenied feature="프로토콜 라이브러리" darkMode={darkMode} />
           )}
 
-          {/* ── My Tiki (환자 매직링크 관리) ── */}
+          {/* ── Tiki Desk (환자 운영 surface) ── */}
           {activeTab === 'my_tiki' && (
             canAccess('my_tiki')
               ? <MyTikiTab darkMode={darkMode} />
-              : <AccessDenied feature="My Tiki" darkMode={darkMode} />
+              : <AccessDenied feature="Tiki Desk" darkMode={darkMode} />
           )}
 
           {/* ── 설정 ── */}

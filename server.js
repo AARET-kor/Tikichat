@@ -97,6 +97,7 @@ import { writeAuditLog } from "./src/lib/supabase-server.js";
 // ── 모델 상수 (env로 override 가능) ───────────────────────────────────────────
 const MODEL_HAIKU  = process.env.MODEL_HAIKU  || "claude-haiku-4-5-20251001";
 const MODEL_SONNET = process.env.MODEL_SONNET || "claude-sonnet-4-6-20260217";
+const APP_BASE_URL = (process.env.APP_BASE_URL || "https://app.tikidoc.xyz").replace(/\/+$/, "");
 
 const app = express();
 
@@ -962,7 +963,7 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   }
 }
 
-각 reply: 2~4문장. "${resolvedClinicName}" 자연스럽게 1회 이상 포함. booking reply는 반드시 [예약: app.tikidoc.xyz/book] 링크로 마무리.`;
+각 reply: 2~4문장. "${resolvedClinicName}" 자연스럽게 1회 이상 포함. booking reply는 반드시 [예약: ${APP_BASE_URL}/book] 링크로 마무리.`;
 
   try {
     const resp = await anthropic.messages.create({
@@ -2071,7 +2072,7 @@ app.post("/api/quotes", async (req, res) => {
       throw error;
     }
 
-    const url = `https://app.tikidoc.xyz/quote/${data.id}`;
+    const url = `${APP_BASE_URL}/quote/${data.id}`;
     console.log(`[Quotes] 견적서 생성: id=${data.id} clinic=${clinicId} procs=${procedures.length}`);
     res.json({ id: data.id, url });
 
@@ -2264,13 +2265,12 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
 
     if (lErr) throw lErr;
 
-    const baseUrl = process.env.APP_BASE_URL || "https://app.tikidoc.xyz";
     console.log(`[MyTiki] 링크 발급: visit=${visitId} clinic=${clinic_id}`);
 
     res.json({
       ok:         true,
       link_id:    link.id,
-      url:        `${baseUrl}/t/${token}`,   // raw token은 여기서만 반환 (DB에 미저장)
+      url:        `${APP_BASE_URL}/t/${token}`,   // raw token은 여기서만 반환 (DB에 미저장)
       expires_at: link.expires_at,
       token,                                  // 프론트에서 링크 복사/발송용
     });
@@ -2882,8 +2882,6 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
   const sb = getSbAdmin();
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
-  const baseUrl = process.env.APP_BASE_URL || "https://app.tikidoc.xyz";
-
   // ── Helper: derive flag emoji from lang/nationality ───────────────────────
   function deriveFlag(lang, nationality) {
     const n = String(nationality || '').toLowerCase();
@@ -3130,7 +3128,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
           results[row._i] = {
             patient_id:    row._patient.id,
             visit_id:      visitId,
-            portal_url:    token ? `${baseUrl}/t/${token}` : '',
+            portal_url:    token ? `${APP_BASE_URL}/t/${token}` : '',
             status:        row._patient.isNew ? 'created' : 'visit_created',
             error_message: '',
             ...buildProcedureResolutionMeta(row._procedureMatch),

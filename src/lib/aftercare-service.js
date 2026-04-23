@@ -6,6 +6,7 @@ import { buildJourneyEventInsert, buildOperationalAuditPayload, writeJourneyEven
 import { writeAuditLog } from "./supabase-server.js";
 
 const LINK_SENT_VIA_VALUES = new Set(["whatsapp", "sms", "email", "kakao"]);
+const APP_BASE_URL = (process.env.APP_BASE_URL || "https://app.tikidoc.xyz").replace(/\/+$/, "");
 
 function normalizePhoneForSms(value = "") {
   const digits = String(value || "").replace(/\D/g, "");
@@ -80,8 +81,7 @@ async function createAftercarePortalLink(sb, {
     });
   if (error) throw error;
 
-  const baseUrl = process.env.APP_BASE_URL || "https://app.tikidoc.xyz";
-  return `${baseUrl}/t/${token}`;
+  return `${APP_BASE_URL}/t/${token}`;
 }
 
 async function sendAftercareOutbound({ channel, recipient, text }) {
