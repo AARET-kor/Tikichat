@@ -271,6 +271,11 @@ export default function IntakeParser({
   // ── Parse function ──────────────────────────────────────────
   const parse = useCallback(async (text) => {
     if (!text.trim() || text.trim().length < 3) return;
+    if (!authHeaders?.Authorization) {
+      setErrMsg('로그인 세션을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.');
+      setPhase('error');
+      return;
+    }
     setPhase('parsing');
     setErrMsg('');
     try {

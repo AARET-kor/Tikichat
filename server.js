@@ -52,6 +52,7 @@ import {
   requireStaffAuth,
   requirePatientToken,
   requireRole,
+  resolveStaffAuthContext,
   generatePatientToken,
 } from "./src/middleware/auth.js";
 import {
@@ -1716,9 +1717,14 @@ app.get("/api/patients", async (req, res) => {
 // POST /api/patients  { clinicId?, patient: { name, birth_year?, gender?, nationality?, lang?, tags?, flag?, notes?, channel_refs? } }
 app.post("/api/patients", async (req, res) => {
   const { clinicId, patient } = req.body;
-  const clinic_id = clinicId || CLINIC_UUID;
+  let clinic_id = clinicId || CLINIC_UUID;
   if (!clinic_id || !patient?.name?.trim()) return res.status(400).json({ error: "name required" });
   try {
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      const staffContext = await resolveStaffAuthContext(req);
+      clinic_id = staffContext.clinic_id;
+    }
+
     const sb = getSbAdmin();
     const { data, error } = await sb
       .from("patients")
@@ -1740,7 +1746,7 @@ app.post("/api/patients", async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("[Patients/Post]", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

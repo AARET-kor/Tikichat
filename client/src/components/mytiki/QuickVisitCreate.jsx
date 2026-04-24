@@ -65,6 +65,8 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
   const [parserAuthHeaders, setParserAuthHeaders] = useState({ 'Content-Type': 'application/json' });
+  const [parserAuthReady, setParserAuthReady] = useState(false);
+  const [parserAuthError, setParserAuthError] = useState('');
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const overlay   = darkMode ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.55)';
@@ -79,9 +81,18 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
     async function loadHeaders() {
       try {
         const headers = await getAuthHeaders();
-        if (active) setParserAuthHeaders(headers);
+        if (!headers.Authorization) throw new Error('staff session required');
+        if (active) {
+          setParserAuthHeaders(headers);
+          setParserAuthReady(true);
+          setParserAuthError('');
+        }
       } catch {
-        if (active) setParserAuthHeaders({ 'Content-Type': 'application/json' });
+        if (active) {
+          setParserAuthHeaders({ 'Content-Type': 'application/json' });
+          setParserAuthReady(false);
+          setParserAuthError('로그인 세션을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.');
+        }
       }
     }
     async function loadProcedures() {
@@ -110,13 +121,15 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
 
     try {
       const headers = await getAuthHeaders();
+      if (!headers.Authorization) {
+        throw new Error('로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.');
+      }
 
       // Step 1: Create patient
       const patRes = await fetch('/api/patients', {
         method:  'POST',
         headers,
         body: JSON.stringify({
-          clinicId,
           patient: {
             name:         patient.name,
             birth_year:   patient.birth_year || null,
@@ -206,7 +219,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
       setErrMsg(err.message);
       setStep('error');
     }
-  }, [clinicId, onCreated, procedureOptions]);
+  }, [onCreated, procedureOptions]);
 
   function retry() {
     if (savedPatient && savedVisit) {
@@ -282,7 +295,29 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
           {/* Step: parse */}
-          {step === 'parse' && (
+          {step === 'parse' && !parserAuthReady && (
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 14, padding: 36,
+              textAlign: 'center',
+            }}>
+              {parserAuthError ? (
+                <AlertTriangle size={30} color="#FA573E" strokeWidth={2.2} />
+              ) : (
+                <Loader2 size={30} color={TEAL} style={{ animation: 'spin 1s linear infinite' }} />
+              )}
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700, color: textP, marginBottom: 6 }}>
+                  {parserAuthError ? '세션 확인이 필요합니다' : '로그인 세션 확인 중'}
+                </p>
+                <p style={{ fontSize: 12, color: textS, lineHeight: 1.6, margin: 0 }}>
+                  {parserAuthError || 'Tiki Brief 분석을 안전하게 실행하기 위해 직원 세션을 확인하고 있습니다.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {step === 'parse' && parserAuthReady && (
             <IntakeParser
               authHeaders={parserAuthHeaders}
               procedureOptions={procedureOptions}

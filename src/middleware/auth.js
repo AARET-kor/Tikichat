@@ -47,56 +47,94 @@ function getSbAnon() {
   return (_sbAnon = createClient(url, anon));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function authError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+async function resolveClinicId(clinicClaim) {
+  if (!clinicClaim) return null;
+  if (UUID_RE.test(clinicClaim)) return clinicClaim;
+
+  const sb = getSbAdmin();
+  if (!sb) return null;
+
+  const { data, error } = await sb
+    .from("clinics")
+    .select("id")
+    .eq("slug", clinicClaim)
+    .maybeSingle();
+
+  if (error || !data?.id) return null;
+  return data.id;
+}
+
+export async function resolveStaffAuthContext(req) {
+  // ── Supabase 미설정 → 개발 모드 fallback ─────────────────────────────────
+  if (!process.env.SUPABASE_URL) {
+    const clinicClaim = req.body?.clinicId ?? req.query?.clinicId ?? process.env.CLINIC_UUID_DEV ?? null;
+    const clinic_id = UUID_RE.test(clinicClaim || "") ? clinicClaim : clinicClaim || null;
+    return {
+      clinic_id,
+      staff_role: "owner",
+      staff_user_id: "dev",
+    };
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw authError(401, "Authorization header required (Bearer <token>)");
+  }
+
+  const token = authHeader.slice(7);
+  const sb = getSbAnon();
+  if (!sb) throw authError(503, "Auth service unavailable");
+
+  const { data: { user }, error } = await sb.auth.getUser(token);
+  if (error || !user) {
+    throw authError(401, "Invalid or expired staff token");
+  }
+
+  const clinicClaim = user.app_metadata?.clinic_id
+    || user.user_metadata?.clinic_id;
+  const role = user.app_metadata?.role
+    || user.user_metadata?.role
+    || "staff";
+
+  if (!clinicClaim) {
+    throw authError(403, "No clinic associated with this account");
+  }
+
+  const clinic_id = await resolveClinicId(clinicClaim);
+  if (!clinic_id) {
+    throw authError(403, "Invalid clinic associated with this account");
+  }
+
+  return {
+    clinic_id,
+    staff_role: role,
+    staff_user_id: user.id,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. requireStaffAuth
 //    Express 미들웨어: Authorization: Bearer <supabase_jwt> 검증
 // ─────────────────────────────────────────────────────────────────────────────
 export async function requireStaffAuth(req, res, next) {
-  // ── Supabase 미설정 → 개발 모드 fallback ─────────────────────────────────
-  if (!process.env.SUPABASE_URL) {
-    // dev fallback: clinicId from body/query, or CLINIC_UUID set at startup
-    // Import CLINIC_UUID isn't possible from middleware (circular), so use env hint
-    req.clinic_id     = req.body?.clinicId ?? req.query?.clinicId ?? process.env.CLINIC_UUID_DEV ?? null;
-    req.staff_role    = "owner";       // dev: 모든 권한 허용
-    req.staff_user_id = "dev";
-    return next();
-  }
-
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Authorization header required (Bearer <token>)" });
-  }
-
-  const token = authHeader.slice(7);
-  const sb    = getSbAnon();
-  if (!sb) return res.status(503).json({ error: "Auth service unavailable" });
-
   try {
-    // Supabase가 JWT를 검증하고 user 반환
-    const { data: { user }, error } = await sb.auth.getUser(token);
-
-    if (error || !user) {
-      return res.status(401).json({ error: "Invalid or expired staff token" });
-    }
-
-    const clinic_id = user.app_metadata?.clinic_id
-      || user.user_metadata?.clinic_id;
-    const role = user.app_metadata?.role
-      || user.user_metadata?.role
-      || "staff";
-
-    if (!clinic_id) {
-      return res.status(403).json({ error: "No clinic associated with this account" });
-    }
-
-    req.clinic_id     = clinic_id;
-    req.staff_role    = role;
-    req.staff_user_id = user.id;
+    const context = await resolveStaffAuthContext(req);
+    req.clinic_id     = context.clinic_id;
+    req.staff_role    = context.staff_role;
+    req.staff_user_id = context.staff_user_id;
     next();
 
   } catch (err) {
     console.error("[requireStaffAuth]", err.message);
-    return res.status(401).json({ error: "Authentication failed" });
+    return res.status(err.status || 401).json({ error: err.message || "Authentication failed" });
   }
 }
 

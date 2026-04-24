@@ -56,6 +56,20 @@ test("/api/clinic-procedures only returns active procedures for picker flows", (
   );
 });
 
+test("/api/intake/parse is guarded by staff auth", () => {
+  assert.match(
+    serverSource,
+    /app\.post\(\"\/api\/intake\/parse\", requireStaffAuth,/,
+  );
+});
+
+test("/api/patients uses authenticated staff clinic context when bearer auth is present", () => {
+  assert.match(
+    serverSource,
+    /if \(req\.headers\.authorization\?\.startsWith\(\"Bearer \"\)\) \{\s*const staffContext = await resolveStaffAuthContext\(req\);\s*clinic_id = staffContext\.clinic_id;\s*\}/,
+  );
+});
+
 test("/api/staff/clinic-rule-config routes are staff-gated and patch is admin-only", () => {
   assert.match(
     serverSource,
