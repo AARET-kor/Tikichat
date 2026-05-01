@@ -17,7 +17,7 @@
  *   onCreated(normalizedVisit) — refresh parent after success
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Loader2, Check, Copy, Link2, AlertTriangle, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import IntakeParser from '../shared/IntakeParser';
@@ -31,6 +31,24 @@ async function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   if (sb?.access_token) headers['Authorization'] = `Bearer ${sb.access_token}`;
   return headers;
+}
+
+async function requestJson(path, options, label, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(path, { ...options, signal: controller.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `${label} 실패 (${res.status})`);
+    return data;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error(`${label} 응답이 지연되고 있습니다. 서버 로그와 Network 탭을 확인해 주세요.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ── Step indicator ─────────────────────────────────────────────────────────────
@@ -63,11 +81,13 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
   const [copied,    setCopied]    = useState(false);
   const [savedPatient, setSavedPatient] = useState(null);   // store for retry
   const [savedVisit,   setSavedVisit]   = useState(null);
+  const [creatingLabel, setCreatingLabel] = useState('환자 + 방문 생성 중…');
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
   const [parserAuthHeaders, setParserAuthHeaders] = useState({ 'Content-Type': 'application/json' });
   const [parserAuthReady, setParserAuthReady] = useState(false);
   const [parserAuthError, setParserAuthError] = useState('');
+  const partialCreateRef = useRef({ patientId: '', visitId: '' });
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const overlay   = darkMode ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.55)';
@@ -114,11 +134,12 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
   }, [clinicId]);
 
   // ── Creation flow ──────────────────────────────────────────────────────────
-  const create = useCallback(async (patient, visit) => {
+  const create = useCallback(async (patient, visit, { resetPartial = false } = {}) => {
     setSavedPatient(patient);
     setSavedVisit(visit);
     setStep('creating');
     setErrMsg('');
+    if (resetPartial) partialCreateRef.current = { patientId: '', visitId: '' };
 
     try {
       const headers = await getAuthHeaders();
@@ -126,56 +147,57 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
         throw new Error('로그인 세션이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.');
       }
 
-      // Step 1: Create patient
-      const patRes = await fetch('/api/patients', {
-        method:  'POST',
-        headers,
-        body: JSON.stringify({
-          patient: {
-            name:         patient.name,
-            birth_year:   patient.birth_year || null,
-            gender:       patient.gender     || null,
-            nationality:  patient.nationality || null,
-            lang:         patient.lang       || null,
-            channel_refs: patient.channel_refs || {},
-            flag:         langToFlag(patient.lang, patient.nationality),
-            notes:        visit.internal_notes || null,
-            tags:         [],
-          },
-        }),
-      });
-      const patData = await patRes.json();
-      if (!patRes.ok) throw new Error(patData.error || `환자 생성 실패 (${patRes.status})`);
-
-      const patientId = patData.id;
+      setCreatingLabel(partialCreateRef.current.patientId ? '저장된 환자로 이어서 진행 중…' : '환자 정보를 저장하고 있습니다…');
+      let patientId = partialCreateRef.current.patientId;
+      if (!patientId) {
+        const patData = await requestJson('/api/patients', {
+          method:  'POST',
+          headers,
+          body: JSON.stringify({
+            patient: {
+              name:         patient.name,
+              birth_year:   patient.birth_year || null,
+              gender:       patient.gender     || null,
+              nationality:  patient.nationality || null,
+              lang:         patient.lang       || null,
+              channel_refs: patient.channel_refs || {},
+              flag:         langToFlag(patient.lang, patient.nationality),
+              notes:        visit.internal_notes || null,
+              tags:         [],
+            },
+          }),
+        }, '환자 생성');
+        patientId = patData.id;
+        partialCreateRef.current.patientId = patientId;
+      }
 
       // Step 2: Create visit
-      const visRes = await fetch('/api/my-tiki/visits', {
-        method:  'POST',
-        headers,
-        body: JSON.stringify({
-          patientId,
-          procedureId: visit.procedure_id || null,
-          visitDate:  visit.visit_date    || null,
-          notes:      visit.internal_notes || null,
-        }),
-      });
-      const visData = await visRes.json();
-      if (!visRes.ok) throw new Error(visData.error || `방문 생성 실패 (${visRes.status})`);
-
-      const visitId = visData.id;
+      setCreatingLabel(partialCreateRef.current.visitId ? '저장된 방문으로 링크를 발급 중…' : '방문 일정을 생성하고 있습니다…');
+      let visitId = partialCreateRef.current.visitId;
+      if (!visitId) {
+        const visData = await requestJson('/api/my-tiki/visits', {
+          method:  'POST',
+          headers,
+          body: JSON.stringify({
+            patientId,
+            procedureId: visit.procedure_id || null,
+            visitDate:  visit.visit_date    || null,
+            notes:      visit.internal_notes || null,
+          }),
+        }, '방문 생성');
+        visitId = visData.id;
+        partialCreateRef.current.visitId = visitId;
+      }
 
       // Step 3: Generate My Tiki link
-      const lnkRes = await fetch('/api/my-tiki/links', {
+      setCreatingLabel('My Tiki 링크를 발급하고 있습니다…');
+      const lnkData = await requestJson('/api/my-tiki/links', {
         method:  'POST',
         headers,
         body: JSON.stringify({
           visitId,
-          patientLang: patient.lang || 'ko',
         }),
-      });
-      const lnkData = await lnkRes.json();
-      if (!lnkRes.ok) throw new Error(lnkData.error || `링크 발급 실패 (${lnkRes.status})`);
+      }, 'My Tiki 링크 발급');
 
       setResult({
         patientName: patient.name,
@@ -186,6 +208,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
         expiresAt: lnkData.expires_at,
       });
       setStep('done');
+      partialCreateRef.current = { patientId: '', visitId: '' };
 
       // Notify parent — pass a minimal normalized visit for list refresh
       if (onCreated) {
@@ -217,7 +240,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
         });
       }
     } catch (err) {
-      setErrMsg(err.message);
+      setErrMsg(err.message || '생성 중 오류가 발생했습니다.');
       setStep('error');
     }
   }, [onCreated, procedureOptions]);
@@ -328,7 +351,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
               procedureOptions={procedureOptions}
               selectedProcedureId={selectedProcedureId}
               onProcedureChange={setSelectedProcedureId}
-              onConfirm={(patient, visit) => create(patient, { ...visit, procedure_id: selectedProcedureId || null })}
+              onConfirm={(patient, visit) => create(patient, { ...visit, procedure_id: selectedProcedureId || null }, { resetPartial: true })}
               onCancel={onClose}
               darkMode={darkMode}
               mode="full"
@@ -344,7 +367,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
               <Loader2 size={36} color={TEAL} style={{ animation: 'spin 1s linear infinite' }} />
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: 14, fontWeight: 600, color: textP, marginBottom: 6 }}>
-                  환자 + 방문 생성 중…
+                  {creatingLabel}
                 </p>
                 <p style={{ fontSize: 12, color: textS }}>
                   My Tiki 링크를 발급하고 있습니다

@@ -19,7 +19,7 @@ test("Quick Visit waits for staff auth before rendering Tiki Brief parser", () =
 
 test("Quick Visit creation requires bearer auth and does not send caller clinicId", () => {
   assert.match(quickVisitSource, /if \(!headers\.Authorization\) \{/);
-  const patientCreateStart = quickVisitSource.indexOf("const patRes = await fetch('/api/patients'");
+  const patientCreateStart = quickVisitSource.indexOf("requestJson('/api/patients'");
   const patientCreateEnd = quickVisitSource.indexOf("// Step 2: Create visit", patientCreateStart);
   const patientCreateBlock = quickVisitSource.slice(patientCreateStart, patientCreateEnd);
 

@@ -75,3 +75,20 @@ test("Dashboard shell uses dynamic viewport height and min-height containment", 
   assert.match(dashboardSource, /height: '100dvh'/);
   assert.match(dashboardSource, /min-h-0 overflow-hidden/);
 });
+
+test("Quick Visit creation surfaces stuck API steps and avoids duplicate retry creates", () => {
+  assert.match(quickVisitSource, /async function requestJson/);
+  assert.match(quickVisitSource, /AbortController/);
+  assert.match(quickVisitSource, /creatingLabel/);
+  assert.match(quickVisitSource, /partialCreateRef/);
+});
+
+test("Quick Visit visit creation avoids optional assignment columns", () => {
+  const routeStart = serverSource.indexOf('app.post("/api/my-tiki/visits"');
+  const routeEnd = serverSource.indexOf("// ── PATCH /api/my-tiki/visits/:id/stage", routeStart);
+  const routeSource = serverSource.slice(routeStart, routeEnd);
+
+  assert.ok(routeStart > -1, "visit creation route should exist");
+  assert.doesNotMatch(routeSource, /coordinator_id/);
+  assert.match(routeSource, /\.select\("id, patient_id, procedure_id, visit_date, notes, stage"\)/);
+});

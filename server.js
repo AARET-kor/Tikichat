@@ -2571,9 +2571,8 @@ app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
         visit_date:     visitDate || null,
         notes:          notes || null,
         stage:          "booked",
-        coordinator_id: req.staff_user_id || null,
       })
-      .select("*")
+      .select("id, patient_id, procedure_id, visit_date, notes, stage")
       .single();
 
     if (error) throw error;
@@ -3238,7 +3237,6 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
         notes:         row.note || null,
         stage:         'booked',
         internal_tags: row.procedure ? [`시술: ${row.procedure}`] : [],
-        coordinator_id: req.staff_user_id || null,
       }));
 
       const { data: newVisits, error: vErr } = await sb
