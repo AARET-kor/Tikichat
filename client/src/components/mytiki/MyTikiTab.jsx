@@ -1773,7 +1773,6 @@ export default function MyTikiTab({ darkMode }) {
 
   function handleCreated(rawVisit) {
     fetchVisits();
-    setShowQuickCreate(false);
   }
 
   // ── Today date label ───────────────────────────────────────────────────────

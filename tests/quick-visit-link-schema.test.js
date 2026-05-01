@@ -15,6 +15,14 @@ const dashboardSource = readFileSync(
   new URL("../client/src/pages/Dashboard.jsx", import.meta.url),
   "utf8",
 );
+const myTikiTabSource = readFileSync(
+  new URL("../client/src/components/mytiki/MyTikiTab.jsx", import.meta.url),
+  "utf8",
+);
+const tikiPasteSource = readFileSync(
+  new URL("../client/src/components/magic/TikiPasteTab.jsx", import.meta.url),
+  "utf8",
+);
 const patientAuthSource = readFileSync(
   new URL("../src/middleware/auth.js", import.meta.url),
   "utf8",
@@ -91,4 +99,17 @@ test("Quick Visit visit creation avoids optional assignment columns", () => {
   assert.ok(routeStart > -1, "visit creation route should exist");
   assert.doesNotMatch(routeSource, /coordinator_id/);
   assert.match(routeSource, /\.select\("id, patient_id, procedure_id, visit_date, notes, stage"\)/);
+});
+
+test("Quick Visit success remains visible after parent refresh callbacks", () => {
+  const handleCreatedStart = myTikiTabSource.indexOf("function handleCreated");
+  const handleCreatedEnd = myTikiTabSource.indexOf("// ── Today date label", handleCreatedStart);
+  const handleCreatedSource = myTikiTabSource.slice(handleCreatedStart, handleCreatedEnd);
+  const pasteCreatedStart = tikiPasteSource.indexOf("onCreated={() => {");
+  const pasteCreatedEnd = tikiPasteSource.indexOf("}}", pasteCreatedStart);
+  const pasteCreatedSource = tikiPasteSource.slice(pasteCreatedStart, pasteCreatedEnd);
+
+  assert.ok(handleCreatedStart > -1, "MyTiki handleCreated should exist");
+  assert.doesNotMatch(handleCreatedSource, /setShowQuickCreate\(false\)/);
+  assert.doesNotMatch(pasteCreatedSource, /setQuickVisitOpen\(false\)/);
 });

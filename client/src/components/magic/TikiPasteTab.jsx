@@ -1141,7 +1141,6 @@ export default function TikiPasteTab() {
           initialText={handoffText}
           onClose={() => setQuickVisitOpen(false)}
           onCreated={() => {
-            setQuickVisitOpen(false);
             showToast('Quick Visit과 My Tiki 링크가 준비되었습니다');
           }}
         />
