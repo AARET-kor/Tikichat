@@ -27,22 +27,22 @@ import {
 } from '../lib/roomVoice';
 
 const C = {
-  bg: '#F8F3EE',
-  panel: '#FFFDFC',
+  bg: '#EDF1F5',
+  panel: '#FFFFFF',
   panelStrong: '#FFFFFF',
-  border: 'rgba(164,120,100,0.12)',
-  text: '#2C2420',
-  textSub: '#6F6258',
-  textMute: '#AA9C90',
-  mocha: '#A47864',
-  mochaSoft: '#F2E7DF',
-  sage: '#5A8F80',
-  sageSoft: '#ECF4F2',
+  border: 'rgba(16,54,125,0.14)',
+  text: '#1B262C',
+  textSub: '#40515D',
+  textMute: '#6B7C88',
+  mocha: '#0145F2',
+  mochaSoft: '#E6F0FF',
+  sage: '#3B6500',
+  sageSoft: '#ECFFD1',
   amber: '#B5701A',
   amberSoft: '#FEF8EC',
   red: '#C04A3F',
   redSoft: '#FEF3F2',
-  ink: '#1F2937',
+  ink: '#1B262C',
   sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif",
 };
 

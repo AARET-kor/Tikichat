@@ -28,15 +28,15 @@ function TopBar({ session, onLogout, darkMode, onToggleDark, onOpenSettings }) {
       }}
     >
       <div className="flex items-center gap-4 min-w-0">
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--td-primary)', boxShadow: '0 12px 28px rgba(164,120,100,0.22)' }}>
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'var(--td-primary)', boxShadow: '0 12px 28px rgba(1,69,242,0.22)' }}>
           <Layers size={24} color="#fff" strokeWidth={2.4} />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`text-[23px] leading-none font-black tracking-[-0.04em] truncate ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>{session.clinic.name}</span>
+            <span className={`text-[23px] leading-none font-black tracking-[-0.04em] truncate ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{session.clinic.name}</span>
             <span className="td-badge td-badge-brand shrink-0">{session.clinic.plan}</span>
           </div>
-          <div className={`mt-2 flex items-center gap-1.5 text-[14px] font-bold ${darkMode ? 'text-zinc-400' : 'text-[#6F5D55]'}`}>
+          <div className={`mt-2 flex items-center gap-1.5 text-[14px] font-bold ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>
             <MapPin size={15} />
             <span className="truncate">{session.clinic.location}</span>
           </div>
@@ -45,12 +45,12 @@ function TopBar({ session, onLogout, darkMode, onToggleDark, onOpenSettings }) {
 
       <div className="relative">
         <button onClick={() => setShowMenu(v => !v)}
-          className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl transition-colors ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-[#F8F6F3]'}`}>
+          className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl transition-colors ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-[#EDF1F5]'}`}>
           <div className={`w-11 h-11 rounded-full bg-gradient-to-br ${session.staff.avatarColor} flex items-center justify-center text-white text-[15px] font-black`}>
             {session.staff.initials}
           </div>
           <div className="hidden sm:block text-left">
-            <span className={`block text-[15px] leading-none font-black ${darkMode ? 'text-zinc-200' : 'text-[#211815]'}`}>{session.staff.name}</span>
+            <span className={`block text-[15px] leading-none font-black ${darkMode ? 'text-zinc-200' : 'text-[#1B262C]'}`}>{session.staff.name}</span>
             <span className={`block text-[13px] mt-1.5 font-bold ${darkMode ? 'text-zinc-500' : 'text-[#9A8880]'}`}>{session.staff.role}</span>
           </div>
           <ChevronDown size={16} className={darkMode ? 'text-zinc-500' : 'text-slate-400'} />
@@ -59,16 +59,16 @@ function TopBar({ session, onLogout, darkMode, onToggleDark, onOpenSettings }) {
         {showMenu && (
           <div className={`absolute right-0 top-full mt-2 rounded-xl shadow-xl border py-2 w-56 z-50 ${darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-slate-200'}`}>
             <button onClick={() => { setShowMenu(false); setShowProfileModal(true); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#6F5D55] hover:bg-[#F8F6F3]'}`}>
+              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#40515D] hover:bg-[#EDF1F5]'}`}>
               <User size={16} className="text-slate-500" /> 내 정보 수정
             </button>
             <button onClick={() => { onToggleDark(); setShowMenu(false); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#6F5D55] hover:bg-[#F8F6F3]'}`}>
+              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#40515D] hover:bg-[#EDF1F5]'}`}>
               {darkMode ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-slate-500" />}
               {darkMode ? '라이트 모드' : '다크 모드'}
             </button>
             <button onClick={() => { setShowMenu(false); onOpenSettings(); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#6F5D55] hover:bg-[#F8F6F3]'}`}>
+              className={`w-full flex items-center gap-3 px-4 py-3 text-[14px] font-bold transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-700' : 'text-[#40515D] hover:bg-[#EDF1F5]'}`}>
               <Settings size={16} className="text-slate-500" /> 설정
             </button>
             <div className={`my-1 border-t ${darkMode ? 'border-zinc-700' : 'border-slate-100'}`} />
@@ -106,12 +106,12 @@ function ProfileEditModal({ session, darkMode, onClose }) {
           <div>
             <label className={`block text-[12px] font-bold mb-1.5 ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>이름</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              className={`w-full px-4 py-3 text-[15px] font-semibold rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#D8C0B4] ${darkMode ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-[#F8F6F3] border-[#E7DDD7] text-[#211815]'}`} />
+              className={`w-full px-4 py-3 text-[15px] font-semibold rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#BBE1FA] ${darkMode ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-[#EDF1F5] border-[#D6E1EA] text-[#1B262C]'}`} />
           </div>
           <div>
             <label className={`block text-[12px] font-bold mb-1.5 ${darkMode ? 'text-zinc-400' : 'text-slate-500'}`}>직책</label>
             <input value={role} onChange={e => setRole(e.target.value)}
-              className={`w-full px-4 py-3 text-[15px] font-semibold rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#D8C0B4] ${darkMode ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-[#F8F6F3] border-[#E7DDD7] text-[#211815]'}`} />
+              className={`w-full px-4 py-3 text-[15px] font-semibold rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#BBE1FA] ${darkMode ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-[#EDF1F5] border-[#D6E1EA] text-[#1B262C]'}`} />
           </div>
         </div>
         <div className="px-6 pb-5 flex gap-2.5 justify-end">

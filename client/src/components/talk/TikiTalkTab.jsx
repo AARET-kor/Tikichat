@@ -8,23 +8,23 @@ import {
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  mocha:     '#A47864',
-  mochaDk:   '#7A5545',
-  mochaLt:   '#C4A090',
-  mochaPale: '#F5EDE8',
-  bg:        '#FAF6F3',
-  bgSub:     '#F0E8E3',
-  bgDeep:    '#EAE0D8',
+  mocha:     '#0145F2',
+  mochaDk:   '#10367D',
+  mochaLt:   '#BBE1FA',
+  mochaPale: '#E6F0FF',
+  bg:        '#EDF1F5',
+  bgSub:     '#EBEBEB',
+  bgDeep:    '#D6E1EA',
   white:     '#FFFFFF',
-  text:      '#1C0F0A',
-  textSub:   '#6B4A3A',
-  textMt:    '#B09080',
-  border:    '#E5CFC5',
-  borderMd:  '#CCADA0',
-  sage:      '#5A8F80',
-  sagePale:  '#E4F2EF',
-  gold:      '#D09262',
-  goldPale:  '#FBF0E6',
+  text:      '#1B262C',
+  textSub:   '#40515D',
+  textMt:    '#6B7C88',
+  border:    '#D6E1EA',
+  borderMd:  '#BBE1FA',
+  sage:      '#3B6500',
+  sagePale:  '#ECFFD1',
+  gold:      '#0F4C75',
+  goldPale:  '#E6F4FF',
   red:       '#B85C44',
   redPale:   '#FDF2EE',
 };
@@ -248,7 +248,7 @@ function PatientTurnCard({ turn, isLatest }) {
         borderRadius: '4px 16px 16px 16px',
         padding: '14px 16px',
         position: 'relative',
-        boxShadow: `0 2px 8px rgba(164,120,100,0.08)`,
+        boxShadow: `0 2px 8px rgba(1,69,242,0.08)`,
       }}>
         {/* Language badge */}
         <div style={{ position:'absolute', top:10, right:12, display:'flex', alignItems:'center', gap:4 }}>
@@ -307,7 +307,7 @@ function DoctorTurnCard({ turn, isLatest }) {
         border: `1.5px solid ${C.mocha}40`,
         borderRadius: '16px 4px 16px 16px',
         padding: '14px 16px',
-        boxShadow: `0 2px 12px rgba(164,120,100,0.10)`,
+        boxShadow: `0 2px 12px rgba(1,69,242,0.10)`,
         position:'relative',
       }}>
         <div style={{ position:'absolute', top:10, right:12 }}>
@@ -352,7 +352,7 @@ function LiveCard({ speaker }) {
         border: `1.5px solid ${isPatient ? C.border : C.mocha + '40'}`,
         borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
         display:'flex', alignItems:'center', gap:12,
-        boxShadow: `0 2px 8px rgba(164,120,100,0.08)`,
+        boxShadow: `0 2px 8px rgba(1,69,242,0.08)`,
       }}>
         <ListeningWave color={isPatient ? C.mocha : C.sage} />
         <span style={{ fontSize:12, color:C.textMt, fontWeight:500 }}>
@@ -438,7 +438,7 @@ function SessionSetupView({ onStart }) {
       <div style={{
         background:C.white, borderRadius:22,
         padding:'36px 40px', maxWidth:420, width:'100%',
-        boxShadow:`0 8px 40px rgba(164,120,100,0.12), 0 2px 8px rgba(164,120,100,0.06)`,
+        boxShadow:`0 8px 40px rgba(1,69,242,0.12), 0 2px 8px rgba(1,69,242,0.06)`,
         animation:'ttFadeUp 0.4s ease-out',
       }}>
         {/* Header */}
@@ -509,7 +509,7 @@ function SessionSavedView({ turns, elapsed, onReset }) {
       <div style={{
         background:C.white, borderRadius:22,
         padding:'36px 40px', maxWidth:480, width:'100%',
-        boxShadow:`0 8px 40px rgba(164,120,100,0.12), 0 2px 8px rgba(164,120,100,0.06)`,
+        boxShadow:`0 8px 40px rgba(1,69,242,0.12), 0 2px 8px rgba(1,69,242,0.06)`,
         animation:'ttFadeUp 0.4s ease-out',
       }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:24 }}>

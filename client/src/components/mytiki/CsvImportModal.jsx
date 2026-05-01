@@ -31,8 +31,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-const TEAL = '#4E8FA0';
-const SAGE = '#5A8F80';
+const TEAL = '#0145F2';
+const SAGE = '#3B6500';
 const SANS = "'Pretendard Variable', 'Inter', system-ui, sans-serif";
 const MAX_ROWS = 500;
 
@@ -586,7 +586,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
               <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, padding:'16px 20px', borderBottom:`1px solid ${border}`, flexShrink:0 }}>
                 {[
                   { label:'신규 생성',    value: (summary.created||0)+(summary.visit_created||0), color: SAGE },
-                  { label:'중복 스킵',    value: summary.duplicates || 0,                         color: '#D09262' },
+                  { label:'중복 스킵',    value: summary.duplicates || 0,                         color: '#0F4C75' },
                   { label:'실패',         value: summary.failed     || 0,                         color: summary.failed ? '#EF4444' : '#6B7280' },
                   { label:'전체',         value: summary.total      || 0,                         color: TEAL },
                 ].map(({ label, value, color }) => (

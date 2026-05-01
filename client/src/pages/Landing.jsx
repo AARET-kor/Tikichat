@@ -10,17 +10,17 @@ import {
 const SANS = "'Pretendard Variable', 'Inter', system-ui, -apple-system, sans-serif";
 
 const C = {
-  mocha:      '#A47864',   // Signature — used sparingly and precisely
-  mochaDk:    '#7A5545',   // Hover state, strong text accent
-  mochaLight: '#C4A090',   // Dividers, subtle accents
-  mochaPale:  '#F5EDE8',   // Input backgrounds, secondary surfaces
-  bg:         '#FAF6F3',   // Page background
-  bgSub:      '#F0E8E3',   // Secondary surface
+  mocha:      '#0145F2',
+  mochaDk:    '#10367D',
+  mochaLight: '#BBE1FA',
+  mochaPale:  '#E6F0FF',
+  bg:         '#EDF1F5',
+  bgSub:      '#EBEBEB',
   surface:    '#FFFFFF',   // Cards
-  text:       '#1C0F0A',   // Primary text — near-black warm
-  textSub:    '#6B4A3A',   // Body text
-  textMt:     '#A89080',   // Labels, captions
-  border:     '#E5CFC5',   // Subtle borders (inputs only)
+  text:       '#1B262C',
+  textSub:    '#40515D',
+  textMt:     '#6B7C88',
+  border:     '#D6E1EA',
   white:      '#FFFFFF',
 };
 
@@ -81,7 +81,7 @@ function Divider({ style }) {
   return (
     <div style={{
       width: '100%', height: 1,
-      background: `rgba(164,120,100,0.10)`,
+      background: `rgba(16,54,125,0.10)`,
       ...style,
     }} />
   );
@@ -101,10 +101,10 @@ function Nav() {
       <style>{GLOBAL_CSS}</style>
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        background: scrolled ? `rgba(250,246,243,0.92)` : 'transparent',
+        background: scrolled ? `rgba(237,241,245,0.92)` : 'transparent',
         backdropFilter: scrolled ? 'blur(24px) saturate(160%)' : 'none',
         WebkitBackdropFilter: scrolled ? 'blur(24px) saturate(160%)' : 'none',
-        borderBottom: scrolled ? `1px solid rgba(164,120,100,0.12)` : '1px solid transparent',
+        borderBottom: scrolled ? `1px solid rgba(16,54,125,0.12)` : '1px solid transparent',
         transition: 'background 0.35s, border-color 0.35s',
       }}>
         <div style={{
@@ -178,7 +178,7 @@ function HeroCard() {
     },
     {
       label: '빠른 답장',
-      color: '#5A8F80',
+      color: '#3B6500',
       text: '효과 발현: 직후~3일. 지속: 6~12개월. 붓기는 3~5일 내 소실. 자세한 상담은 방문 예약 부탁드립니다.',
     },
     {
@@ -195,7 +195,7 @@ function HeroCard() {
         background: C.surface,
         borderRadius: 22,
         padding: '26px 26px 22px',
-        boxShadow: '0 32px 80px rgba(164,120,100,0.13), 0 4px 16px rgba(164,120,100,0.07)',
+        boxShadow: '0 32px 80px rgba(1,69,242,0.13), 0 4px 16px rgba(1,69,242,0.07)',
         animation: 'floatSlow 7s ease-in-out infinite',
         maxWidth: 460,
       }}
@@ -249,7 +249,7 @@ function HeroCard() {
         </p>
         <div style={{
           paddingTop: 10,
-          borderTop: `1px solid rgba(164,120,100,0.12)`,
+          borderTop: `1px solid rgba(16,54,125,0.12)`,
         }}>
           <p style={{ fontSize: 11, color: C.textSub, lineHeight: 1.6 }}>
             히알루론산 시술 후 효과가 얼마나 걸리나요? 부작용은 있나요? 가격도 알려주세요.
@@ -335,9 +335,9 @@ function HeroCard() {
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6,
         marginTop: 14, paddingTop: 14,
-        borderTop: `1px solid rgba(164,120,100,0.09)`,
+        borderTop: `1px solid rgba(16,54,125,0.09)`,
       }}>
-        <Check size={10} color='#5A8F80' strokeWidth={2.5} />
+        <Check size={10} color='#3B6500' strokeWidth={2.5} />
         <span style={{ fontSize: 9, color: C.textMt, letterSpacing: '0.02em' }}>
           의료 안전 필터 적용 · 금지 표현 자동 차단
         </span>
@@ -494,7 +494,7 @@ function SignalBar() {
           <div key={i} style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: 10, padding: '20px 24px',
-            borderRight: i < 2 ? `1px solid rgba(164,120,100,0.15)` : 'none',
+            borderRight: i < 2 ? `1px solid rgba(16,54,125,0.15)` : 'none',
           }}>
             <span style={{ fontSize: 18, fontWeight: 800, color: C.mocha, letterSpacing: '-0.04em' }}>{s.n}</span>
             <span style={{ fontSize: 13, color: C.textSub, fontWeight: 400 }}>{s.desc}</span>
@@ -545,7 +545,7 @@ const MODULE_DATA = [
     tag: '진료실 통역',
     headline: '의사와 환자가 각자의 언어로 대화합니다.',
     desc: '진료실 내 실시간 음성 인식과 양방향 번역. 의사는 한국어로, 환자는 모국어로 말합니다. AI는 대화를 실시간으로 해석하고 의심 표현에는 즉각 의료진에게 알립니다.',
-    accent: '#5A8F80',
+    accent: '#3B6500',
     mini: (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         <div style={{
@@ -566,7 +566,7 @@ const MODULE_DATA = [
           fontSize: 10, color: C.textSub, alignSelf: 'flex-end', maxWidth: '80%',
         }}>
           걱정하지 마세요. 천천히 호흡해 보세요.
-          <div style={{ fontSize: 9, color: '#5A8F80', marginTop: 4 }}>→ 心配しないでください。ゆっくり呼吸してください。</div>
+          <div style={{ fontSize: 9, color: '#3B6500', marginTop: 4 }}>→ 心配しないでください。ゆっくり呼吸してください。</div>
         </div>
       </div>
     ),
@@ -601,7 +601,7 @@ const MODULE_DATA = [
           fontSize: 10, color: C.textSub, textAlign: 'right',
         }}>
           히알루론산 필러로 교정 가능합니다.
-          <div style={{ fontSize: 9, color: '#5A8F80', marginTop: 3 }}>ヒアルロン酸フィラーで整えられます。</div>
+          <div style={{ fontSize: 9, color: '#3B6500', marginTop: 3 }}>ヒアルロン酸フィラーで整えられます。</div>
         </div>
       </div>
     ),
@@ -620,7 +620,7 @@ const MODULE_DATA = [
           { label: '시술 관심사', val: '히알루론산 · 눈 밑 교정', color: C.mocha },
           { label: '통증 민감도', val: '높음 — 마취 크림 선호', color: '#C04A3F' },
           { label: '체류 일정', val: '5박 6일 · 4/23 출국', color: '#B5701A' },
-          { label: '컴플레인 위험', val: '낮음 — 협조적', color: '#5A8F80' },
+          { label: '컴플레인 위험', val: '낮음 — 협조적', color: '#3B6500' },
         ].map((item, i) => (
           <div key={i} style={{
             display: 'flex', gap: 8, alignItems: 'flex-start',
@@ -648,7 +648,7 @@ function ModuleCard({ mod, delay }) {
       background: C.surface,
       borderRadius: 20,
       padding: '32px 32px 28px',
-      boxShadow: '0 2px 8px rgba(164,120,100,0.06)',
+      boxShadow: '0 2px 8px rgba(1,69,242,0.06)',
       opacity: visible ? 1 : 0,
       transform: visible ? 'none' : 'translateY(20px)',
       transition: `opacity 0.55s ${delay}ms ease, transform 0.55s ${delay}ms ease`,
@@ -890,7 +890,7 @@ function Trust() {
                 padding: '28px 28px',
                 background: C.surface,
                 borderRadius: 16,
-                boxShadow: '0 2px 8px rgba(164,120,100,0.05)',
+                boxShadow: '0 2px 8px rgba(1,69,242,0.05)',
               }}>
                 <div style={{ fontSize: 28, marginBottom: 16 }}>{item.icon}</div>
                 <h3 style={{
@@ -988,7 +988,7 @@ function Pricing() {
                 padding: '32px 30px',
                 boxShadow: plan.highlight
                   ? `0 16px 48px ${C.mocha}35, 0 4px 16px ${C.mocha}20`
-                  : '0 2px 8px rgba(164,120,100,0.06)',
+                  : '0 2px 8px rgba(1,69,242,0.06)',
                 opacity: cardVisible ? 1 : 0,
                 transform: cardVisible ? (plan.highlight ? 'scale(1.03)' : 'none') : 'translateY(20px)',
                 transition: `opacity 0.5s ${i * 80}ms ease, transform 0.5s ${i * 80}ms ease`,
@@ -1027,7 +1027,7 @@ function Pricing() {
 
                 <div style={{
                   height: 1,
-                  background: plan.highlight ? 'rgba(255,255,255,0.15)' : `rgba(164,120,100,0.10)`,
+                  background: plan.highlight ? 'rgba(255,255,255,0.15)' : `rgba(16,54,125,0.10)`,
                   marginBottom: 24,
                 }} />
 

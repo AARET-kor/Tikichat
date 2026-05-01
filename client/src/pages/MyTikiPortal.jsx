@@ -26,38 +26,38 @@ import { buildPatientTodayTasks } from '../lib/opsLite';
 // ── Design tokens ─────────────────────────────────────────────
 const C = {
   bg:        '#FFFFFF',
-  appBg:     '#F8F6F3',
+  appBg:     '#EDF1F5',
   surface:   '#FFFFFF',
-  surfaceSoft: '#F0EEE9',
-  warm:      '#F8F6F3',
-  mocha:     '#A47864',
-  mochaDark: '#8B624F',
-  mochaSoft: '#D8C0B4',
-  mochaPale: '#F3E8E2',
-  teal:      '#A47864',
-  tealPale:  '#F3E8E2',
-  tealDark:  '#8B624F',
-  text:      '#211815',
-  textSub:   '#6F5D55',
-  textMt:    '#9A8880',
-  border:    '#E7DDD7',
-  borderStrong: '#D8C8BF',
-  success:   '#527500',
-  successPale: '#F2FFD9',
+  surfaceSoft: '#EDF1F5',
+  warm:      '#EDF1F5',
+  mocha:     '#0145F2',
+  mochaDark: '#10367D',
+  mochaSoft: '#BBE1FA',
+  mochaPale: '#E6F0FF',
+  teal:      '#0145F2',
+  tealPale:  '#E6F0FF',
+  tealDark:  '#10367D',
+  text:      '#1B262C',
+  textSub:   '#40515D',
+  textMt:    '#6B7C88',
+  border:    '#D6E1EA',
+  borderStrong: '#BBE1FA',
+  success:   '#3B6500',
+  successPale: '#ECFFD1',
   warn:      '#9A4F00',
   warnPale:  '#FFF0DE',
   error:     '#B42318',
   errorPale: '#FFE6E1',
   stage: {
-    done:    '#527500',
-    current: '#A47864',
-    future:  '#D8C8BF',
+    done:    '#3B6500',
+    current: '#0145F2',
+    future:  '#BBE1FA',
   },
 };
 
 const SANS = "'Pretendard Variable', 'Inter', -apple-system, sans-serif";
 
-const CARD_SHADOW = '0 14px 38px rgba(33, 24, 21, 0.06)';
+const CARD_SHADOW = '0 14px 38px rgba(16, 54, 125, 0.08)';
 
 function PatientCard({ children, tone = 'default', style = {} }) {
   const toneStyle = {
@@ -102,7 +102,7 @@ function PatientButton({ children, variant = 'primary', style = {}, ...props }) 
     fontFamily: SANS,
   };
   const variants = {
-    primary: { background: C.mocha, color: '#fff', boxShadow: '0 14px 28px rgba(164, 120, 100, 0.24)' },
+    primary: { background: C.mocha, color: '#fff', boxShadow: '0 14px 28px rgba(1, 69, 242, 0.22)' },
     secondary: { background: C.surface, color: C.text, borderColor: C.border },
     quiet: { background: C.warm, color: C.textSub, borderColor: C.border },
     danger: { background: C.errorPale, color: C.error, borderColor: 'rgba(250, 87, 62, 0.38)' },
@@ -2276,7 +2276,7 @@ export default function MyTikiPortal() {
               background: C.mocha,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
-              boxShadow: '0 10px 24px rgba(164,120,100,0.22)',
+              boxShadow: '0 10px 24px rgba(1,69,242,0.22)',
             }}>
               <span style={{ color: '#fff', fontSize: 14, fontWeight: 800, letterSpacing: '-0.02em' }}>T</span>
             </div>

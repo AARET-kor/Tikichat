@@ -3,24 +3,24 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { MessageSquare, Eye, EyeOff, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-// ── Design tokens — Mocha Mousse ──────────────────────────────────────────────
+// ── Design tokens — TikiDoc clinical blue ─────────────────────────────────────
 const M = {
-  bg:        '#FAF6F3',
-  bgSub:     '#F0E8E3',
+  bg:        '#EDF1F5',
+  bgSub:     '#EBEBEB',
   white:     '#FFFFFF',
-  text:      '#1C0F0A',
-  textSub:   '#6B4A3A',
-  textMt:    '#B09080',
-  border:    '#E5CFC5',
-  borderMd:  '#CCADA0',
-  mocha:     '#A47764',
-  mochaDk:   '#7A5545',
-  mochaLt:   '#C4A090',
-  mochaPale: '#F5EDE8',
-  sage:      '#5A8F80',
-  sagePale:  '#E4F2EF',
-  gold:      '#D09262',
-  goldPale:  '#FBF0E6',
+  text:      '#1B262C',
+  textSub:   '#40515D',
+  textMt:    '#6B7C88',
+  border:    '#D6E1EA',
+  borderMd:  '#BBE1FA',
+  mocha:     '#0145F2',
+  mochaDk:   '#10367D',
+  mochaLt:   '#BBE1FA',
+  mochaPale: '#E6F0FF',
+  sage:      '#3B6500',
+  sagePale:  '#ECFFD1',
+  gold:      '#0F4C75',
+  goldPale:  '#E6F4FF',
   red:       '#b85c44',
   redBg:     '#fdf2ee',
 };

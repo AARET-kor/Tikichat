@@ -4,30 +4,30 @@
 
 @layer base {
   :root {
-    --td-primary: #A47864;
-    --td-primary-dark: #8B624F;
-    --td-primary-soft: #D8C0B4;
-    --td-primary-wash: #F3E8E2;
+    --td-primary: #0145F2;
+    --td-primary-dark: #10367D;
+    --td-primary-soft: #BBE1FA;
+    --td-primary-wash: #EDF1F5;
     --td-bg: #FFFFFF;
-    --td-surface: #F0EEE9;
-    --td-surface-soft: #F8F6F3;
-    --td-text: #211815;
-    --td-text-secondary: #6F5D55;
-    --td-text-muted: #9A8880;
-    --td-border: #E7DDD7;
-    --td-border-strong: #D8C8BF;
-    --td-success: #B9FA48;
+    --td-surface: #EBEBEB;
+    --td-surface-soft: #EDF1F5;
+    --td-text: #1B262C;
+    --td-text-secondary: #40515D;
+    --td-text-muted: #6B7C88;
+    --td-border: #D6E1EA;
+    --td-border-strong: #BBE1FA;
+    --td-success: #89E900;
     --td-warning: #FFAD5C;
     --td-danger: #FA573E;
-    --td-success-soft: #F2FFD9;
+    --td-success-soft: #ECFFD1;
     --td-warning-soft: #FFF0DE;
     --td-danger-soft: #FFE6E1;
     --td-radius-sm: 12px;
     --td-radius-md: 18px;
     --td-radius-lg: 24px;
     --td-radius-xl: 32px;
-    --td-shadow-soft: 0 12px 36px rgba(33, 24, 21, 0.07);
-    --td-shadow-card: 0 18px 54px rgba(33, 24, 21, 0.09);
+    --td-shadow-soft: 0 12px 36px rgba(16, 54, 125, 0.08);
+    --td-shadow-card: 0 18px 54px rgba(16, 54, 125, 0.11);
   }
 
   * {
@@ -129,7 +129,7 @@
     background: var(--td-primary);
     color: white;
     border: 1px solid var(--td-primary);
-    box-shadow: 0 12px 26px rgba(164, 120, 100, 0.22);
+    box-shadow: 0 12px 26px rgba(1, 69, 242, 0.22);
   }
 
   .td-btn-secondary {
@@ -158,7 +158,7 @@
   }
 
   .td-badge-success {
-    color: #527500;
+    color: #3B6500;
     background: var(--td-success-soft);
     border-color: rgba(185, 250, 72, 0.9);
   }
@@ -199,10 +199,10 @@
     background-color: var(--td-primary-soft);
   }
 
-  /* AI Gradient border — mocha palette */
+  /* AI Gradient border — TikiDoc blue palette */
   .ai-card-border {
     background: linear-gradient(white, white) padding-box,
-                linear-gradient(135deg, var(--td-primary), var(--td-primary-soft), #C4A090) border-box;
+                linear-gradient(135deg, var(--td-primary), var(--td-primary-soft), #0F4C75) border-box;
     border: 1.5px solid transparent;
   }
 

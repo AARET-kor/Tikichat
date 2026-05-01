@@ -55,22 +55,22 @@ function readinessMeta(status) {
     ready: { label: '응대 준비', color: '#527500', bg: '#F2FFD9', border: 'rgba(185, 250, 72, 0.9)' },
     partial: { label: '보완 필요', color: '#9A4F00', bg: '#FFF0DE', border: 'rgba(255, 173, 92, 0.55)' },
     missing: { label: '정보 부족', color: '#B42318', bg: '#FFE6E1', border: 'rgba(250, 87, 62, 0.38)' },
-  }[status] || { label: '확인 필요', color: '#6F5D55', bg: '#F8F6F3', border: '#E7DDD7' };
+  }[status] || { label: '확인 필요', color: '#40515D', bg: '#EDF1F5', border: '#D6E1EA' };
 }
 
-function ProcedureStat({ label, value, helper, tone = '#8B624F', darkMode }) {
+function ProcedureStat({ label, value, helper, tone = '#10367D', darkMode }) {
   return (
     <div
       className="border"
       style={{
-        borderColor: darkMode ? '#27272A' : '#E7DDD7',
+        borderColor: darkMode ? '#27272A' : '#D6E1EA',
         background: darkMode ? '#18181B' : '#FFFFFF',
         borderRadius: 18,
         padding: '18px 20px',
         minHeight: 112,
       }}
     >
-      <div style={{ fontSize: 15, fontWeight: 850, color: darkMode ? '#D4D4D8' : '#6F5D55' }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 850, color: darkMode ? '#D4D4D8' : '#40515D' }}>{label}</div>
       <div style={{ marginTop: 11, fontSize: 38, lineHeight: 1, fontWeight: 950, letterSpacing: '-0.05em', color: tone }}>{value}</div>
       <div style={{ marginTop: 9, fontSize: 13, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#9A8880' }}>{helper}</div>
     </div>
@@ -110,17 +110,17 @@ function EditModal({ proc, darkMode, onSave, onClose }) {
     onClose();
   };
 
-  const modal = darkMode ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-[#E7DDD7]';
+  const modal = darkMode ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-[#D6E1EA]';
   const input = darkMode
     ? 'bg-zinc-800 border-zinc-600 text-zinc-100 placeholder-zinc-500 focus:ring-zinc-400/30'
-    : 'bg-[#F8F6F3] border-[#E7DDD7] text-[#211815] placeholder-[#9A8880] focus:ring-[#D8C0B4]';
-  const label = darkMode ? 'text-zinc-400' : 'text-[#6F5D55]';
+    : 'bg-[#EDF1F5] border-[#D6E1EA] text-[#1B262C] placeholder-[#6B7C88] focus:ring-[#BBE1FA]';
+  const label = darkMode ? 'text-zinc-400' : 'text-[#40515D]';
   const tabActive = darkMode
     ? 'bg-zinc-800 text-zinc-100 border-zinc-600'
-    : 'bg-[#A47864] text-white border-[#A47864]';
+    : 'bg-[#0145F2] text-white border-[#0145F2]';
   const tabInactive = darkMode
     ? 'text-zinc-500 hover:text-zinc-300 border-transparent'
-    : 'text-[#9A8880] hover:text-[#211815] border-transparent';
+    : 'text-[#6B7C88] hover:text-[#1B262C] border-transparent';
 
   const TABS = [
     { id: 'basic', label: '기본 정보' },
@@ -132,22 +132,22 @@ function EditModal({ proc, darkMode, onSave, onClose }) {
       <div className={`w-full max-w-3xl rounded-2xl shadow-2xl border flex flex-col max-h-[90vh] ${modal}`}>
 
         {/* Header */}
-        <div className={`flex items-center justify-between px-8 py-6 border-b ${darkMode ? 'border-zinc-700' : 'border-[#E7DDD7]'}`}>
+        <div className={`flex items-center justify-between px-8 py-6 border-b ${darkMode ? 'border-zinc-700' : 'border-[#D6E1EA]'}`}>
           <div>
-            <h3 className={`text-[24px] tracking-[-0.045em] font-black ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>
+            <h3 className={`text-[24px] tracking-[-0.045em] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
               시술 정보 수정
             </h3>
-            <p className={`text-[14px] mt-2 font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6F5D55]'}`}>
+            <p className={`text-[14px] mt-2 font-bold ${darkMode ? 'text-zinc-500' : 'text-[#40515D]'}`}>
               직원 응대와 AI 답변에 쓰이는 병원 기준 정보를 정리합니다 · {proc.name_ko}
             </p>
           </div>
-          <button onClick={onClose} className={`p-2.5 rounded-2xl transition-colors ${darkMode ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-[#F8F6F3] text-[#9A8880]'}`}>
+          <button onClick={onClose} className={`p-2.5 rounded-2xl transition-colors ${darkMode ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-[#EDF1F5] text-[#6B7C88]'}`}>
             <X size={20} />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className={`flex gap-2 px-8 pt-5 border-b ${darkMode ? 'border-zinc-800' : 'border-[#E7DDD7]'}`}>
+        <div className={`flex gap-2 px-8 pt-5 border-b ${darkMode ? 'border-zinc-800' : 'border-[#D6E1EA]'}`}>
           {TABS.map(t => (
             <button
               key={t.id}
@@ -419,21 +419,21 @@ export default function ProceduresTab({ darkMode }) {
   // ─────────────────────────────────────────────────────────────────────────
   // Styles
   // ─────────────────────────────────────────────────────────────────────────
-  const panel      = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#E7DDD7]';
-  const panelTitle = darkMode ? 'text-zinc-100' : 'text-[#211815]';
+  const panel      = darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#D6E1EA]';
+  const panelTitle = darkMode ? 'text-zinc-100' : 'text-[#1B262C]';
   const muted      = darkMode ? 'text-zinc-500' : 'text-[#9A8880]';
   const inputCls   = darkMode
     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600 focus:ring-zinc-400/30'
-    : 'bg-[#F8F6F3] border-[#E7DDD7] text-[#211815] placeholder-[#9A8880] focus:ring-[#D8C0B4]';
-  const rowHover   = darkMode ? 'hover:bg-zinc-800/70' : 'hover:bg-[#F8F6F3]';
+    : 'bg-[#EDF1F5] border-[#D6E1EA] text-[#1B262C] placeholder-[#6B7C88] focus:ring-[#BBE1FA]';
+  const rowHover   = darkMode ? 'hover:bg-zinc-800/70' : 'hover:bg-[#EDF1F5]';
   const divider    = darkMode ? 'divide-zinc-800' : 'divide-slate-100';
-  const border     = darkMode ? 'border-zinc-800' : 'border-[#E7DDD7]';
+  const border     = darkMode ? 'border-zinc-800' : 'border-[#D6E1EA]';
   const catActive  = darkMode
     ? 'bg-zinc-900 text-zinc-100 border-zinc-700'
-    : 'bg-[#A47864] text-white border-[#A47864]';
+    : 'bg-[#0145F2] text-white border-[#0145F2]';
   const catInact   = darkMode
     ? 'text-zinc-500 hover:text-zinc-300 border-zinc-700 hover:border-zinc-600'
-    : 'text-[#6F5D55] hover:text-[#211815] border-[#E7DDD7] hover:border-[#D8C0B4]';
+    : 'text-[#40515D] hover:text-[#1B262C] border-[#D6E1EA] hover:border-[#BBE1FA]';
 
   const availableChecked = filteredTemplates.filter(t =>
     !addedTemplateIds.has(t.template_id) && checkedIds.has(t.template_id)
@@ -455,7 +455,7 @@ export default function ProceduresTab({ darkMode }) {
         <div className={`px-7 py-6 border-b ${border}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: '#A47864', boxShadow: '0 12px 28px rgba(164,120,100,0.22)' }}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: '#0145F2', boxShadow: '0 12px 28px rgba(1,69,242,0.22)' }}>
                 <Database size={22} className="text-white" />
               </div>
               <div>
@@ -464,7 +464,7 @@ export default function ProceduresTab({ darkMode }) {
               </div>
             </div>
             <span className={`text-[12px] font-bold px-3 py-1.5 rounded-full border ${
-              darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-[#F3E8E2] border-[#D8C0B4] text-[#8B624F]'
+              darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-[#E6F0FF] border-[#BBE1FA] text-[#10367D]'
             }`}>
               {templates.length}개
             </span>
@@ -518,7 +518,7 @@ export default function ProceduresTab({ darkMode }) {
             <div className="flex flex-col items-center justify-center py-16 gap-2 px-6 text-center">
               <AlertCircle size={20} className="text-red-400" />
               <p className="text-xs text-red-400">{templateError}</p>
-              <button onClick={fetchTemplates} className="text-xs text-[#A47864] hover:underline mt-1">다시 시도</button>
+              <button onClick={fetchTemplates} className="text-xs text-[#0145F2] hover:underline mt-1">다시 시도</button>
             </div>
           ) : filteredTemplates.length === 0 ? (
             <div className={`flex flex-col items-center justify-center py-16 gap-1 ${muted}`}>
@@ -553,7 +553,7 @@ export default function ProceduresTab({ darkMode }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[16px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>
+                      <span className={`text-[16px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
                         {t.name_ko}
                       </span>
                       <span className={`text-[12px] font-semibold ${muted}`}>{t.name_en}</span>
@@ -582,7 +582,7 @@ export default function ProceduresTab({ darkMode }) {
           <button
             onClick={handleSelectAll}
             className={`flex items-center gap-2 text-[13px] font-bold transition-colors ${
-              darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-[#6F5D55] hover:text-[#211815]'
+              darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-[#40515D] hover:text-[#1B262C]'
             }`}
           >
             {filteredTemplates.filter(t => !addedTemplateIds.has(t.template_id)).every(t => checkedIds.has(t.template_id)) && filteredTemplates.filter(t => !addedTemplateIds.has(t.template_id)).length > 0
@@ -607,7 +607,7 @@ export default function ProceduresTab({ darkMode }) {
             disabled={availableChecked === 0 || copying || !clinicId}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-bold transition-all shadow-sm
               ${availableChecked > 0 && !copying
-                ? 'bg-[#A47864] text-white hover:bg-[#8B624F]'
+                ? 'bg-[#0145F2] text-white hover:bg-[#10367D]'
                 : darkMode
                   ? 'bg-zinc-700 text-zinc-500 cursor-not-allowed'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -629,11 +629,11 @@ export default function ProceduresTab({ darkMode }) {
 
         {/* Header */}
         <div className={`px-8 pt-7 border-b shrink-0 ${
-          darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#E7DDD7]'
+          darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#D6E1EA]'
         }`}>
           <div className="flex items-start justify-between gap-5 mb-5">
             <div className="flex items-center gap-4 min-w-0">
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white" style={{ background: '#A47864', boxShadow: '0 12px 28px rgba(164,120,100,0.22)' }}>
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white" style={{ background: '#0145F2', boxShadow: '0 12px 28px rgba(1,69,242,0.22)' }}>
                 <Stethoscope size={27} strokeWidth={2.3} />
               </div>
               <div className="min-w-0">
@@ -644,7 +644,7 @@ export default function ProceduresTab({ darkMode }) {
           </div>
 
           <div className="grid grid-cols-4 gap-3 mb-5">
-            <ProcedureStat label="등록 시술" value={clinicProcs.length} helper="병원에서 쓰는 항목" tone="#8B624F" darkMode={darkMode} />
+            <ProcedureStat label="등록 시술" value={clinicProcs.length} helper="병원에서 쓰는 항목" tone="#10367D" darkMode={darkMode} />
             <ProcedureStat label="응대 준비" value={readyCount} helper="가격·FAQ·주의사항 충분" tone="#527500" darkMode={darkMode} />
             <ProcedureStat label="보완 필요" value={partialCount} helper="일부 정보 누락" tone="#9A4F00" darkMode={darkMode} />
             <ProcedureStat label="정보 부족" value={missingCount} helper="우선 보완 대상" tone="#B42318" darkMode={darkMode} />
@@ -659,28 +659,28 @@ export default function ProceduresTab({ darkMode }) {
                   rightTab === 'procedures'
                     ? darkMode
                       ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
-                      : 'bg-[#A47864] border-[#A47864] text-white'
+                      : 'bg-[#0145F2] border-[#0145F2] text-white'
                     : darkMode
                       ? 'border-transparent text-zinc-500 hover:text-zinc-300'
-                      : 'border-transparent text-[#9A8880] hover:text-[#6F5D55]'
+                      : 'border-transparent text-[#6B7C88] hover:text-[#40515D]'
                 }`}
               >
                 <Clipboard size={16} />
                 시술 목록
                 <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                   rightTab === 'procedures'
-                    ? darkMode ? 'bg-zinc-700 text-zinc-300' : 'bg-[#8B624F] text-white'
-                    : darkMode ? 'bg-zinc-700 text-zinc-400' : 'bg-[#F0EEE9] text-[#6F5D55]'
+                    ? darkMode ? 'bg-zinc-700 text-zinc-300' : 'bg-[#10367D] text-white'
+                    : darkMode ? 'bg-zinc-700 text-zinc-400' : 'bg-[#EDF1F5] text-[#40515D]'
                 }`}>{clinicProcs.length}</span>
               </button>
               <button
                 onClick={() => setRightTab('knowledge')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-bold border transition-all ${
                   rightTab === 'knowledge'
-                    ? 'bg-[#A47864] border-[#A47864] text-white'
+                    ? 'bg-[#0145F2] border-[#0145F2] text-white'
                     : darkMode
                       ? 'border-transparent text-zinc-500 hover:text-zinc-300'
-                      : 'border-transparent text-[#9A8880] hover:text-[#6F5D55]'
+                      : 'border-transparent text-[#6B7C88] hover:text-[#40515D]'
                 }`}
               >
                 <Brain size={16} />
@@ -727,13 +727,13 @@ export default function ProceduresTab({ darkMode }) {
             <div className="flex flex-col items-center justify-center py-24 gap-3 px-8 text-center">
               <AlertCircle size={24} className="text-red-400" />
               <p className="text-sm text-red-400 font-medium">{clinicError}</p>
-              <button onClick={fetchClinicProcs} className="text-xs text-[#A47864] hover:underline">다시 시도</button>
+              <button onClick={fetchClinicProcs} className="text-xs text-[#0145F2] hover:underline">다시 시도</button>
             </div>
           ) : filteredClinicProcs.length === 0 ? (
             <div className={`flex flex-col items-center justify-center py-24 gap-3 ${muted}`}>
               <Clipboard size={36} strokeWidth={1.2} />
               <div className="text-center">
-                <p className={`text-sm font-semibold ${darkMode ? 'text-zinc-400' : 'text-[#6F5D55]'}`}>
+                <p className={`text-sm font-semibold ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>
                   {clinicSearch ? '검색 결과가 없습니다' : '등록된 시술이 없습니다'}
                 </p>
                 {!clinicSearch && (
@@ -753,12 +753,12 @@ export default function ProceduresTab({ darkMode }) {
                   <div className="flex items-center px-8 py-6 gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className={`text-[20px] leading-tight font-black tracking-[-0.035em] ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>
+                        <span className={`text-[20px] leading-tight font-black tracking-[-0.035em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
                           {p.name_ko}
                         </span>
                         {p.category && (
                           <span className={`text-[12px] font-bold px-2.5 py-1 rounded-full border ${
-                            darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-[#F8F6F3] border-[#E7DDD7] text-[#6F5D55]'
+                            darkMode ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-[#EDF1F5] border-[#D6E1EA] text-[#40515D]'
                           }`}>
                             {CATEGORY_LABELS[p.category] || p.category}
                           </span>
@@ -808,7 +808,7 @@ export default function ProceduresTab({ darkMode }) {
                       <button
                         onClick={() => setExpandedId(isExpanded ? null : p.id)}
                         className={`p-2.5 rounded-2xl transition-colors ${
-                          darkMode ? 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'text-[#9A8880] hover:bg-[#F8F6F3] hover:text-[#6F5D55]'
+                          darkMode ? 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'text-[#6B7C88] hover:bg-[#EDF1F5] hover:text-[#40515D]'
                         }`}
                         title="상세 보기"
                       >
@@ -819,7 +819,7 @@ export default function ProceduresTab({ darkMode }) {
                       <button
                         onClick={() => setEditingProc(p)}
                         className={`p-2.5 rounded-2xl transition-colors ${
-                          darkMode ? 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'text-[#9A8880] hover:bg-[#F8F6F3] hover:text-[#6F5D55]'
+                          darkMode ? 'text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'text-[#6B7C88] hover:bg-[#EDF1F5] hover:text-[#40515D]'
                         }`}
                         title="수정"
                       >
@@ -844,24 +844,24 @@ export default function ProceduresTab({ darkMode }) {
                   {isExpanded && (
                     <div className={`px-7 pb-5 pt-0 border-t ${border} mt-0`}>
                       <div className="grid grid-cols-3 gap-3 mt-4">
-                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#E7DDD7] bg-[#F8F6F3]'}`}>
+                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#D6E1EA] bg-[#EDF1F5]'}`}>
                           <div className="flex items-center gap-2">
-                            <Sparkles size={17} className={darkMode ? 'text-zinc-400' : 'text-[#8B624F]'} />
-                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>AI 답변 기반</p>
+                            <Sparkles size={17} className={darkMode ? 'text-zinc-400' : 'text-[#10367D]'} />
+                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>AI 답변 기반</p>
                           </div>
                           <p className={`text-[12px] mt-2 leading-relaxed font-semibold ${muted}`}>효과, 주의사항, FAQ가 채워질수록 Tiki Paste와 Ask TikiBell 답변이 안정됩니다.</p>
                         </div>
-                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#E7DDD7] bg-[#F8F6F3]'}`}>
+                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#D6E1EA] bg-[#EDF1F5]'}`}>
                           <div className="flex items-center gap-2">
-                            <FileText size={17} className={darkMode ? 'text-zinc-400' : 'text-[#8B624F]'} />
-                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>환자 안내 기반</p>
+                            <FileText size={17} className={darkMode ? 'text-zinc-400' : 'text-[#10367D]'} />
+                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>환자 안내 기반</p>
                           </div>
                           <p className={`text-[12px] mt-2 leading-relaxed font-semibold ${muted}`}>가격, 다운타임, 지속 기간은 직원 응대와 My Tiki 안내에 직접 영향을 줍니다.</p>
                         </div>
-                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#E7DDD7] bg-[#F8F6F3]'}`}>
+                        <div className={`rounded-2xl border p-4 ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#D6E1EA] bg-[#EDF1F5]'}`}>
                           <div className="flex items-center gap-2">
-                            <ShieldCheck size={17} className={darkMode ? 'text-zinc-400' : 'text-[#8B624F]'} />
-                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#211815]'}`}>안전 기준</p>
+                            <ShieldCheck size={17} className={darkMode ? 'text-zinc-400' : 'text-[#10367D]'} />
+                            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>안전 기준</p>
                           </div>
                           <p className={`text-[12px] mt-2 leading-relaxed font-semibold ${muted}`}>주의사항이 비어 있으면 민감한 문의를 더 자주 직원 확인으로 넘겨야 합니다.</p>
                         </div>
@@ -932,7 +932,7 @@ export default function ProceduresTab({ darkMode }) {
 
         {/* Footer notice */}
         <div className={`px-6 py-2.5 border-t flex items-center gap-2 shrink-0 ${
-          darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-[#F8F6F3] border-[#E7DDD7]'
+          darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-[#EDF1F5] border-[#D6E1EA]'
         }`}>
           <AlertCircle size={11} className={muted} />
           <p className={`text-[10px] ${muted}`}>

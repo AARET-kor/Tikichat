@@ -1,14 +1,14 @@
 const POSITIVE_META = { color: "#16A34A", bg: "#F0FDF4", tone: "positive" };
 const NORMAL_META = { color: "#5B72A8", bg: "#EEF2FF", tone: "normal" };
-const HIGH_META = { color: "#D09262", bg: "#FFF7ED", tone: "high" };
+const HIGH_META = { color: "#0F4C75", bg: "#E6F4FF", tone: "high" };
 const URGENT_META = { color: "#DC2626", bg: "#FEF2F2", tone: "urgent" };
 const NEUTRAL_META = { color: "#6B7280", bg: "#F3F4F6", tone: "neutral" };
 
 export const STAGE_META = {
   booked: { label: "예약 확정", color: "#5B72A8", bg: "#5B72A810" },
-  pre_visit: { label: "방문 전", color: "#D09262", bg: "#D0926210" },
-  treatment: { label: "시술 중", color: "#5A8F80", bg: "#5A8F8010" },
-  post_care: { label: "사후 관리", color: "#A47764", bg: "#A4776410" },
+  pre_visit: { label: "방문 전", color: "#0F4C75", bg: "#0F4C7510" },
+  treatment: { label: "시술 중", color: "#3B6500", bg: "#89E90020" },
+  post_care: { label: "사후 관리", color: "#0145F2", bg: "#0145F210" },
   followup: { label: "팔로업", color: "#9B72CF", bg: "#9B72CF10" },
   closed: { label: "완료", color: "#6B7280", bg: "#6B728010" },
 };
@@ -18,8 +18,8 @@ export const STAGE_ORDER = ["booked", "pre_visit", "treatment", "post_care", "fo
 export const LINK_META = {
   none: { label: "미발송", color: "#9CA3AF" },
   active: { label: "발송됨", color: "#5B72A8" },
-  opened: { label: "열람됨", color: "#5A8F80" },
-  expired: { label: "만료됨", color: "#D09262" },
+  opened: { label: "열람됨", color: "#3B6500" },
+  expired: { label: "만료됨", color: "#0F4C75" },
   revoked: { label: "폐기됨", color: "#EF4444" },
 };
 

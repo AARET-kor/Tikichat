@@ -9,17 +9,17 @@ import {
 } from 'lucide-react';
 
 const C = {
-  mocha: '#A47864',
-  mochaDark: '#8B624F',
-  mochaSoft: '#D8C0B4',
-  green: '#527500',
+  mocha: '#0145F2',
+  mochaDark: '#10367D',
+  mochaSoft: '#BBE1FA',
+  green: '#3B6500',
   red: '#B42318',
   amber: '#9A4F00',
-  text: '#211815',
-  sub: '#6F5D55',
-  muted: '#9A8880',
-  line: '#E7DDD7',
-  surface: '#F8F6F3',
+  text: '#1B262C',
+  sub: '#40515D',
+  muted: '#6B7C88',
+  line: '#D6E1EA',
+  surface: '#EDF1F5',
 };
 
 const F = { sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif" };
@@ -270,7 +270,7 @@ function GapChecklist({ darkMode }) {
 }
 
 export default function ProtocolTab({ darkMode }) {
-  const bg = darkMode ? '#09090B' : '#F8F6F3';
+  const bg = darkMode ? '#09090B' : '#EDF1F5';
   const headerBg = darkMode ? '#18181B' : '#FFFFFF';
 
   return (
@@ -297,7 +297,7 @@ export default function ProtocolTab({ darkMode }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 12px 28px rgba(164, 120, 100, 0.22)',
+                boxShadow: '0 12px 28px rgba(1, 69, 242, 0.22)',
               }}
             >
               <BookOpen size={26} strokeWidth={2.4} />

@@ -19,25 +19,25 @@ const KEYFRAMES = `
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg:        '#FAF7F4',
+  bg:        '#EDF1F5',
   surface:   '#FFFFFF',
-  mocha:     '#A47864',
-  mochaDark: '#8B6352',
-  mochaLight:'#E8D8CF',
-  mochaPale: '#F5EDE8',
-  sage:      '#5A8F80',
-  sagePale:  '#ECF4F2',
+  mocha:     '#0145F2',
+  mochaDark: '#10367D',
+  mochaLight:'#BBE1FA',
+  mochaPale: '#E6F0FF',
+  sage:      '#3B6500',
+  sagePale:  '#ECFFD1',
   risk:      '#C04A3F',
   riskPale:  '#FEF3F2',
   riskBorder:'rgba(192,74,63,0.18)',
   warn:      '#B5701A',
   warnPale:  '#FEF8EC',
   amberBorder:'rgba(181,112,26,0.18)',
-  text:      '#2C2420',
-  textMid:   '#7A6858',
-  textLight: '#B5A498',
-  border:    'rgba(164,120,100,0.10)',
-  borderMid: 'rgba(164,120,100,0.18)',
+  text:      '#1B262C',
+  textMid:   '#40515D',
+  textLight: '#6B7C88',
+  border:    'rgba(16,54,125,0.12)',
+  borderMid: 'rgba(1,69,242,0.18)',
   F:         "'Pretendard Variable', 'Inter', system-ui, sans-serif",
 };
 
@@ -294,7 +294,7 @@ const MEMORY_RECORDS = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const LANG_COLOR = { ja: C.mocha, zh: '#D07030', en: '#5A8F80', vi: '#7058A8', th: '#C07040', ko: '#4A7EB5' };
+const LANG_COLOR = { ja: C.mocha, zh: '#0F4C75', en: '#3B6500', vi: '#10367D', th: '#0145F2', ko: '#1B262C' };
 
 const CAT_CONFIG = {
   concern: { label: '불만',      color: C.mocha,   bg: C.mochaPale  },
@@ -364,7 +364,7 @@ function ContextCard({ icon: Icon, label, children, sessionRef, accent = C.mocha
       borderRadius: 12,
       padding: '14px 16px',
       display: 'flex', flexDirection: 'column', gap: 8,
-      boxShadow: '0 1px 6px rgba(164,120,100,0.05)',
+      boxShadow: '0 1px 6px rgba(1,69,242,0.05)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <div style={{
@@ -404,7 +404,7 @@ function SessionCard({ session, defaultOpen = false }) {
       border: `1px solid ${C.border}`,
       borderRadius: 12,
       overflow: 'hidden',
-      boxShadow: '0 1px 6px rgba(164,120,100,0.04)',
+      boxShadow: '0 1px 6px rgba(1,69,242,0.04)',
     }}>
       <button
         onClick={() => setOpen(v => !v)}
@@ -521,7 +521,7 @@ function FollowUpCard({ item }) {
       borderRadius: 12,
       padding: '12px 16px',
       display: 'flex', gap: 12, alignItems: 'flex-start',
-      boxShadow: '0 1px 6px rgba(164,120,100,0.04)',
+      boxShadow: '0 1px 6px rgba(1,69,242,0.04)',
     }}>
       <div style={{
         width: 28, height: 28, borderRadius: 8,
@@ -660,7 +660,7 @@ function MemoryDetail({ record }) {
         border: `1px solid ${C.border}`,
         borderRadius: 16,
         padding: '22px 24px',
-        boxShadow: '0 2px 12px rgba(164,120,100,0.06)',
+        boxShadow: '0 2px 12px rgba(1,69,242,0.06)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 16 }}>
           <div style={{

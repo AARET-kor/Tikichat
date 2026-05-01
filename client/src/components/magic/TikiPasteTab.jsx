@@ -11,23 +11,23 @@ import QuickVisitCreate from '../mytiki/QuickVisitCreate';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  mocha:     '#A47864',
-  mochaDk:   '#7A5545',
-  mochaLt:   '#C4A090',
-  mochaPale: '#F5EDE8',
-  bg:        '#FAF6F3',
-  bgSub:     '#F0E8E3',
-  bgDeep:    '#EAE0D8',
+  mocha:     '#0145F2',
+  mochaDk:   '#10367D',
+  mochaLt:   '#BBE1FA',
+  mochaPale: '#E6F0FF',
+  bg:        '#EDF1F5',
+  bgSub:     '#EBEBEB',
+  bgDeep:    '#D6E1EA',
   white:     '#FFFFFF',
-  text:      '#1C0F0A',
-  textSub:   '#6B4A3A',
-  textMt:    '#B09080',
-  border:    '#E5CFC5',
-  borderMd:  '#CCADA0',
-  sage:      '#5A8F80',
-  sagePale:  '#E4F2EF',
-  gold:      '#D09262',
-  goldPale:  '#FBF0E6',
+  text:      '#1B262C',
+  textSub:   '#40515D',
+  textMt:    '#6B7C88',
+  border:    '#D6E1EA',
+  borderMd:  '#BBE1FA',
+  sage:      '#3B6500',
+  sagePale:  '#ECFFD1',
+  gold:      '#0F4C75',
+  goldPale:  '#E6F4FF',
   red:       '#B85C44',
   redPale:   '#FDF2EE',
 };
@@ -58,9 +58,9 @@ const GLOBAL_STYLE = `
     100% { transform: translateX(220%); }
   }
   @keyframes pasteFlash {
-    0%   { box-shadow: 0 0 0 0 rgba(164,120,100,0), 0 2px 8px rgba(164,120,100,0.06); }
-    35%  { box-shadow: 0 0 0 4px rgba(164,120,100,0.22), 0 6px 28px rgba(164,120,100,0.14); }
-    100% { box-shadow: 0 0 0 3px rgba(164,120,100,0.10), 0 2px 8px rgba(164,120,100,0.06); }
+    0%   { box-shadow: 0 0 0 0 rgba(1,69,242,0), 0 2px 8px rgba(1,69,242,0.06); }
+    35%  { box-shadow: 0 0 0 4px rgba(1,69,242,0.22), 0 6px 28px rgba(1,69,242,0.14); }
+    100% { box-shadow: 0 0 0 3px rgba(1,69,242,0.10), 0 2px 8px rgba(1,69,242,0.06); }
   }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -113,7 +113,7 @@ function TikiFlash({ active }) {
   if (!active) return null;
   return (
     <div style={{ position:'fixed', inset:0, pointerEvents:'none', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ position:'absolute', inset:0, background:`radial-gradient(circle at 50% 44%, rgba(164,120,100,0.18) 0%, transparent 55%)`, animation:'tikiBackdrop 0.95s ease forwards' }} />
+      <div style={{ position:'absolute', inset:0, background:`radial-gradient(circle at 50% 44%, rgba(1,69,242,0.18) 0%, transparent 55%)`, animation:'tikiBackdrop 0.95s ease forwards' }} />
       <div style={{ position:'absolute', width:120, height:120, borderRadius:'50%', border:`2px solid ${C.mocha}`, animation:'tikiRing 0.9s ease-out forwards' }} />
       <div style={{ position:'absolute', width:60, height:60, borderRadius:'50%', border:`1.5px solid ${C.gold}`, animation:'tikiRing 0.7s ease-out 80ms forwards' }} />
       <div style={{ position:'relative', fontSize:42, lineHeight:1, color:C.mocha, zIndex:1, filter:`drop-shadow(0 0 14px ${C.mocha}) drop-shadow(0 0 6px ${C.gold})`, animation:'tikiBurst 0.95s ease-out forwards', userSelect:'none', fontFamily:'serif' }}>✦</div>
@@ -134,7 +134,7 @@ function Toast({ message }) {
       background: C.text, border:`1px solid ${C.mocha}55`,
       color:'#fff', fontSize:12, fontWeight:600,
       animation:'fadeSlideUp 0.2s ease-out',
-      boxShadow:`0 4px 24px rgba(164,120,100,0.28)`,
+      boxShadow:`0 4px 24px rgba(1,69,242,0.28)`,
       pointerEvents:'none', whiteSpace:'nowrap',
     }}>
       <Check size={13} style={{ color:C.mocha }} />
@@ -152,14 +152,14 @@ function PasteZone({ value, onChange, onPaste, pasting }) {
       background:C.white,
       border:`1.5px solid ${focused || pasting ? C.mocha + '70' : C.border}`,
       boxShadow: pasting ? undefined
-        : focused ? `0 0 0 3px rgba(164,120,100,0.12), 0 2px 12px rgba(164,120,100,0.08)`
-        : `0 1px 4px rgba(164,120,100,0.06)`,
+        : focused ? `0 0 0 3px rgba(1,69,242,0.12), 0 2px 12px rgba(1,69,242,0.08)`
+        : `0 1px 4px rgba(1,69,242,0.06)`,
       animation: pasting ? 'pasteFlash 0.75s ease-out forwards' : 'none',
       transition:'border-color 0.2s, box-shadow 0.2s',
     }}>
       {pasting && (
         <div style={{ position:'absolute', inset:0, zIndex:10, pointerEvents:'none', overflow:'hidden', borderRadius:14 }}>
-          <div style={{ position:'absolute', inset:0, background:'linear-gradient(105deg, transparent 35%, rgba(164,120,100,0.12) 50%, transparent 65%)', animation:'shimmerSweep 0.6s ease-out' }} />
+          <div style={{ position:'absolute', inset:0, background:'linear-gradient(105deg, transparent 35%, rgba(1,69,242,0.12) 50%, transparent 65%)', animation:'shimmerSweep 0.6s ease-out' }} />
         </div>
       )}
       <textarea
@@ -192,7 +192,7 @@ function PasteZone({ value, onChange, onPaste, pasting }) {
           padding:'4px 10px', borderRadius:999,
           background:`linear-gradient(135deg, ${C.mocha}, ${C.mochaDk})`,
           color:'#fff', fontSize:10, fontWeight:700,
-          boxShadow:`0 2px 12px rgba(164,120,100,0.4)`,
+          boxShadow:`0 2px 12px rgba(1,69,242,0.4)`,
           animation:'fadeSlideUp 0.2s ease-out',
         }}>
           <Sparkles size={10} /> 분석 시작
@@ -313,7 +313,7 @@ function WorkspaceInput({
             color: canGenerate && !loading ? '#fff' : C.textMt,
             fontSize:12, fontWeight:850, letterSpacing:'-0.01em',
             cursor: canGenerate && !loading ? 'pointer' : 'not-allowed',
-            boxShadow: canGenerate && !loading ? `0 3px 14px rgba(164,120,100,0.34)` : 'none',
+            boxShadow: canGenerate && !loading ? `0 3px 14px rgba(1,69,242,0.34)` : 'none',
           }}>
             {loading
               ? <><Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> 분석 중</>
@@ -475,10 +475,10 @@ function ReplyCard({ type, option, onCopy, delay }) {
       overflow: 'hidden',
       display: 'flex', flexDirection: 'column',
       animation: `cardIn 0.4s ease-out ${delay}ms both`,
-      boxShadow: `0 2px 12px rgba(164,120,100,0.08), 0 1px 2px rgba(164,120,100,0.04)`,
+      boxShadow: `0 2px 12px rgba(1,69,242,0.08), 0 1px 2px rgba(1,69,242,0.04)`,
     }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 28px rgba(164,120,100,0.14), 0 2px 6px rgba(164,120,100,0.06)`; }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 12px rgba(164,120,100,0.08), 0 1px 2px rgba(164,120,100,0.04)`; }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 8px 28px rgba(1,69,242,0.14), 0 2px 6px rgba(1,69,242,0.06)`; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 2px 12px rgba(1,69,242,0.08), 0 1px 2px rgba(1,69,242,0.04)`; }}
     >
       {/* Header */}
       <div style={{ padding:'12px 14px', background:C.bgSub, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
@@ -769,7 +769,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
         padding:'7px 16px', borderRadius:8,
         background:C.mocha, color:'#fff',
         border:'none', fontSize:11, fontWeight:700,
-        boxShadow:`0 3px 12px rgba(164,120,100,0.3)`,
+        boxShadow:`0 3px 12px rgba(1,69,242,0.3)`,
         cursor:'pointer', letterSpacing:'-0.01em', flexShrink:0,
       }}>
         <Save size={11} />
@@ -794,7 +794,7 @@ function EmptyState({ mode }) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'40px 24px 32px', gap:24 }}>
-      <div style={{ width:56, height:56, borderRadius:16, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:`0 4px 20px rgba(164,120,100,0.12)` }}>
+      <div style={{ width:56, height:56, borderRadius:16, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:`0 4px 20px rgba(1,69,242,0.12)` }}>
         <Sparkles size={24} color={C.mocha} strokeWidth={1.5} />
       </div>
       <div style={{ textAlign:'center' }}>
@@ -805,7 +805,7 @@ function EmptyState({ mode }) {
         <div style={{ width:'100%', maxWidth:480, display:'flex', flexDirection:'column', gap:8 }}>
           <p style={{ fontSize:10, fontWeight:700, color:C.textMt, textTransform:'uppercase', letterSpacing:'0.1em', textAlign:'center', marginBottom:4 }}>예시 메시지</p>
           {examples.map((ex, i) => (
-            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', background:C.white, boxShadow:`0 1px 6px rgba(164,120,100,0.07)`, borderRadius:10 }}>
+            <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 14px', background:C.white, boxShadow:`0 1px 6px rgba(1,69,242,0.07)`, borderRadius:10 }}>
               <span style={{ fontSize:16, flexShrink:0 }}>{ex.flag}</span>
               <p style={{ fontSize:12, color:C.textSub, lineHeight:1.6, letterSpacing:'-0.01em' }}>{ex.text}</p>
             </div>
@@ -989,12 +989,12 @@ export default function TikiPasteTab() {
         background:`${C.bg}f0`,
         backdropFilter:'blur(16px)',
         WebkitBackdropFilter:'blur(16px)',
-        boxShadow:`0 1px 0 ${C.border}, 0 4px 16px rgba(164,120,100,0.04)`,
+        boxShadow:`0 1px 0 ${C.border}, 0 4px 16px rgba(1,69,242,0.04)`,
         display:'flex', alignItems:'center', gap:16,
       }}>
         {/* Logo */}
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <div style={{ width:34, height:34, borderRadius:10, background:`linear-gradient(135deg, ${C.mocha}, ${C.mochaDk})`, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:`0 3px 12px rgba(164,120,100,0.40)`, flexShrink:0 }}>
+          <div style={{ width:34, height:34, borderRadius:10, background:`linear-gradient(135deg, ${C.mocha}, ${C.mochaDk})`, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:`0 3px 12px rgba(1,69,242,0.40)`, flexShrink:0 }}>
             <Sparkles size={15} color="#fff" fill="rgba(255,255,255,0.5)" />
           </div>
           <div>
@@ -1114,7 +1114,7 @@ export default function TikiPasteTab() {
                 padding:'9px 14px', borderRadius:9,
                 background:C.mocha, color:'#fff', border:'none',
                 fontSize:12, fontWeight:850,
-                boxShadow:`0 3px 12px rgba(164,120,100,0.26)`,
+                boxShadow:`0 3px 12px rgba(1,69,242,0.26)`,
               }}>
                 <UserPlus size={13} /> Quick Visit
               </button>

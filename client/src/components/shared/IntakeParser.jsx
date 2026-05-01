@@ -385,7 +385,7 @@ export default function IntakeParser({
   const border   = darkMode ? '#3F3F46' : '#E5E7EB';
   const textP    = darkMode ? '#F4F4F5' : '#111827';
   const textS    = darkMode ? '#A1A1AA' : '#6B7280';
-  const teal     = '#4E8FA0';
+  const teal     = '#0145F2';
 
   const conf   = draft?.confidence   ?? {};
   const evid   = draft?.raw_evidence ?? {};

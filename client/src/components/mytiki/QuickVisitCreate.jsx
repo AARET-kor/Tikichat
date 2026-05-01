@@ -22,7 +22,7 @@ import { X, Loader2, Check, Copy, Link2, AlertTriangle, UserPlus } from 'lucide-
 import { supabase } from '../../lib/supabase';
 import IntakeParser from '../shared/IntakeParser';
 
-const TEAL = '#4E8FA0';
+const TEAL = '#0145F2';
 const SANS = "'Pretendard Variable', 'Inter', system-ui, sans-serif";
 
 // ── Auth headers helper ────────────────────────────────────────────────────────

@@ -13,14 +13,14 @@ import { BarChart3, Settings, Shield, Stethoscope, Sparkles, Brain,
 import { useAuth } from '../../context/AuthContext';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const MOCHA = '#A47864';   // signature identity
-const MOCHA_DARK = '#8B624F';
-const MOCHA_SOFT = '#D8C0B4';
-const SURFACE = '#F8F6F3';
-const BORDER = '#E7DDD7';
-const TEXT = '#211815';
-const TEXT_SECONDARY = '#6F5D55';
-const TEXT_MUTED = '#9A8880';
+const MOCHA = '#0145F2';   // signature identity
+const MOCHA_DARK = '#10367D';
+const MOCHA_SOFT = '#BBE1FA';
+const SURFACE = '#EDF1F5';
+const BORDER = '#D6E1EA';
+const TEXT = '#1B262C';
+const TEXT_SECONDARY = '#40515D';
+const TEXT_MUTED = '#6B7C88';
 const F     = { sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif" };
 
 // ── 중단 내비 아이템 (순서 고정) ────────────────────────────────────────────
@@ -71,8 +71,8 @@ const NAV_ITEMS = [
 function RoleBadge({ role }) {
   if (!role) return null;
   const m = {
-    owner: { label: '원장',   bg: '#F3E8E2', text: MOCHA_DARK },
-    admin: { label: '관리자', bg: '#F3E8E2', text: MOCHA_DARK },
+    owner: { label: '원장',   bg: '#EDF1F5', text: MOCHA_DARK },
+    admin: { label: '관리자', bg: '#EDF1F5', text: MOCHA_DARK },
     staff: { label: '직원',   bg: SURFACE,  text: TEXT_SECONDARY },
   }[role] || { label: role, bg: SURFACE, text: TEXT_SECONDARY };
 
@@ -127,7 +127,7 @@ function NavButton({ item, isActive, darkMode, onClick }) {
         cursor: 'pointer',
         transition: 'all 0.15s',
         borderRadius: 18,
-        background: isActive ? '#F3E8E2' : 'transparent',
+        background: isActive ? '#E6F0FF' : 'transparent',
         color: isActive ? MOCHA_DARK : mutedTxt,
         boxShadow: isActive ? '0 12px 28px rgba(33, 24, 21, 0.06)' : 'none',
         textAlign: 'left',
@@ -153,7 +153,7 @@ function NavButton({ item, isActive, darkMode, onClick }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: isActive ? '#FFFFFF' : '#F3E8E2',
+          background: isActive ? '#FFFFFF' : '#E6F0FF',
           flexShrink: 0,
         }}
       >
@@ -180,7 +180,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
 
   function btnStyle(isActive, accent) {
     if (isActive) return {
-      background: '#F3E8E2',
+      background: '#E6F0FF',
       border: `1px solid ${MOCHA_SOFT}`,
       borderRadius: 18,
       color: MOCHA_DARK,
@@ -207,7 +207,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
           width: 50, height: 50, borderRadius: 18,
           background: MOCHA,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: `0 8px 18px ${MOCHA}38`,
+          boxShadow: `0 8px 18px ${MOCHA}30`,
           flexShrink: 0,
         }}>
           <Layers size={25} color="#fff" strokeWidth={2.4} />
@@ -232,7 +232,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
             ...btnStyle(activeTab === 'tiki_paste', MOCHA),
           }}
         >
-          <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: activeTab === 'tiki_paste' ? '#fff' : '#F3E8E2' }}>
+          <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: activeTab === 'tiki_paste' ? '#fff' : '#E6F0FF' }}>
             <Sparkles size={25} strokeWidth={activeTab === 'tiki_paste' ? 2.5 : 2.1} />
           </span>
           <span style={{ textAlign: 'left' }}>
@@ -253,7 +253,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
             ...btnStyle(false, MOCHA),
           }}
         >
-          <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F3E8E2' }}>
+          <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#E6F0FF' }}>
             <Monitor size={25} strokeWidth={2.1} />
           </span>
           <span style={{ textAlign: 'left' }}>
@@ -312,7 +312,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
             onMouseEnter={e => { if (activeTab !== 'settings') { e.currentTarget.style.background = darkMode ? '#27272A' : SURFACE; e.currentTarget.style.color = MOCHA_DARK; } }}
             onMouseLeave={e => { if (activeTab !== 'settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = mutedTxt; } }}
           >
-            <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: activeTab === 'settings' ? '#fff' : '#F3E8E2' }}>
+            <span style={{ width: 40, height: 40, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', background: activeTab === 'settings' ? '#fff' : '#E6F0FF' }}>
               <Settings size={24} strokeWidth={activeTab === 'settings' ? 2.4 : 2.1} color={activeTab === 'settings' ? MOCHA_DARK : undefined} />
             </span>
             <span style={{ textAlign: 'left' }}>

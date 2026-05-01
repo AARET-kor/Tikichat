@@ -48,19 +48,19 @@ import {
 } from '../../lib/opsStatusMeta';
 
 // ── Design tokens ────────────────────────────────────────────────────────────
-const MOCHA = '#A47864';
-const MOCHA_DARK = '#8B624F';
-const MOCHA_SOFT = '#D8C0B4';
+const MOCHA = '#0145F2';
+const MOCHA_DARK = '#10367D';
+const MOCHA_SOFT = '#BBE1FA';
 const TEAL = MOCHA;
-const SAGE = '#527500';
+const SAGE = '#3B6500';
 const F    = { sans: "'Pretendard Variable', 'Inter', system-ui, sans-serif" };
 
 // ── Link status meta ─────────────────────────────────────────────────────────
 const LINK_META = {
   none:    { label: '미발송', icon: Clock,         color: '#9CA3AF' },
-  active:  { label: '발송됨', icon: Send,          color: '#5B72A8' },
+  active:  { label: '발송됨', icon: Send,          color: '#0145F2' },
   opened:  { label: '열람됨', icon: Eye,           color: SAGE },
-  expired: { label: '만료됨', icon: AlertTriangle, color: '#D09262' },
+  expired: { label: '만료됨', icon: AlertTriangle, color: '#9A4F00' },
   revoked: { label: '폐기됨', icon: XCircle,       color: '#EF4444' },
 };
 
@@ -301,9 +301,9 @@ const DESK_TONE = {
   urgent: { color: '#B42318', bg: '#FFE6E1', border: 'rgba(250, 87, 62, 0.38)' },
   warn: { color: '#9A4F00', bg: '#FFF0DE', border: 'rgba(255, 173, 92, 0.55)' },
   ready: { color: '#527500', bg: '#F2FFD9', border: 'rgba(185, 250, 72, 0.9)' },
-  steady: { color: MOCHA_DARK, bg: '#F3E8E2', border: MOCHA_SOFT },
-  info: { color: MOCHA_DARK, bg: '#F8F6F3', border: '#E7DDD7' },
-  muted: { color: '#6F5D55', bg: '#F8F6F3', border: '#E7DDD7' },
+  steady: { color: MOCHA_DARK, bg: '#E6F0FF', border: MOCHA_SOFT },
+  info: { color: MOCHA_DARK, bg: '#EDF1F5', border: '#D6E1EA' },
+  muted: { color: '#40515D', bg: '#EDF1F5', border: '#D6E1EA' },
 };
 
 function DeskMetric({ label, value, helper, tone = 'info', darkMode }) {
@@ -320,7 +320,7 @@ function DeskMetric({ label, value, helper, tone = 'info', darkMode }) {
         boxShadow: darkMode ? 'none' : '0 12px 32px rgba(33, 24, 21, 0.06)',
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 850, color: darkMode ? '#D4D4D8' : '#6F5D55' }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 850, color: darkMode ? '#D4D4D8' : '#40515D' }}>{label}</div>
       <div style={{ marginTop: 10, fontSize: 38, lineHeight: 1, fontWeight: 950, letterSpacing: '-0.05em', color: m.color }}>{value}</div>
       <div style={{ marginTop: 9, fontSize: 13, lineHeight: 1.35, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#9A8880' }}>{helper}</div>
     </div>
@@ -340,7 +340,7 @@ function FlowPatientLine({ visit, mode, darkMode }) {
     <div
       className="border"
       style={{
-        borderColor: darkMode ? '#27272A' : '#E7DDD7',
+        borderColor: darkMode ? '#27272A' : '#D6E1EA',
         background: darkMode ? '#111827' : '#FFFFFF',
         borderRadius: 16,
         padding: '14px 15px',
@@ -349,10 +349,10 @@ function FlowPatientLine({ visit, mode, darkMode }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div style={{ fontSize: 16, lineHeight: 1.2, fontWeight: 900, color: darkMode ? '#FAFAFA' : '#211815' }} className="truncate">
+          <div style={{ fontSize: 16, lineHeight: 1.2, fontWeight: 900, color: darkMode ? '#FAFAFA' : '#1B262C' }} className="truncate">
             {visit.patient_flag} {visit.patient_name}
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.3, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#6F5D55' }} className="truncate">
+          <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.3, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
             {visit.procedure_name}
           </div>
         </div>
@@ -373,10 +373,10 @@ function FlowPatientLine({ visit, mode, darkMode }) {
         </span>
       </div>
       <div className="flex items-center justify-between gap-3" style={{ marginTop: 10 }}>
-        <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 950, color: darkMode ? '#E4E4E7' : '#211815' }}>
+        <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 950, color: darkMode ? '#E4E4E7' : '#1B262C' }}>
           {fmtVisitTime(timeSource, 'today')}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#6F5D55' }} className="truncate">
+        <span style={{ fontSize: 13, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
           {mode === 'next' ? action.detail : visit.link_status === 'opened' ? 'My Tiki 열람' : LINK_META[visit.link_status]?.label || '상태 확인'}
         </span>
       </div>
@@ -389,16 +389,16 @@ function FlowColumn({ title, subtitle, empty, visits, mode, darkMode }) {
     <section
       className="border"
       style={{
-        borderColor: darkMode ? '#27272A' : '#E7DDD7',
-        background: darkMode ? '#18181B' : '#F8F6F3',
+        borderColor: darkMode ? '#27272A' : '#D6E1EA',
+        background: darkMode ? '#18181B' : '#EDF1F5',
         borderRadius: 22,
         padding: 16,
         minHeight: 398,
       }}
     >
       <div>
-        <h3 style={{ fontSize: 21, lineHeight: 1.14, fontWeight: 950, letterSpacing: '-0.04em', color: darkMode ? '#FAFAFA' : '#211815' }}>{title}</h3>
-        <p style={{ marginTop: 6, fontSize: 13, lineHeight: 1.35, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#6F5D55' }}>{subtitle}</p>
+        <h3 style={{ fontSize: 21, lineHeight: 1.14, fontWeight: 950, letterSpacing: '-0.04em', color: darkMode ? '#FAFAFA' : '#1B262C' }}>{title}</h3>
+        <p style={{ marginTop: 6, fontSize: 13, lineHeight: 1.35, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }}>{subtitle}</p>
       </div>
       <div className="mt-4 space-y-2.5">
         {visits.length === 0 ? (
@@ -1022,7 +1022,7 @@ function EscalationTaskCard({ item, darkMode, onOpen, staffUsers = [] }) {
       </div>
 
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: '#4E8FA0', background: '#EDF4F6' }}>
+        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: '#10367D', background: '#E6F0FF' }}>
           {typeLabel}
         </span>
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${darkMode ? 'text-zinc-300 bg-zinc-800' : 'text-zinc-600 bg-zinc-100'}`}>
@@ -1386,13 +1386,13 @@ export default function MyTikiTab({ darkMode }) {
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const bg        = darkMode ? 'bg-zinc-950' : 'td-page';
-  const textP     = darkMode ? 'text-zinc-100' : 'text-[#211815]';
-  const textS     = darkMode ? 'text-zinc-400' : 'text-[#6F5D55]';
-  const borderCls = darkMode ? 'border-zinc-800' : 'border-[#E7DDD7]';
+  const textP     = darkMode ? 'text-zinc-100' : 'text-[#1B262C]';
+  const textS     = darkMode ? 'text-zinc-400' : 'text-[#40515D]';
+  const borderCls = darkMode ? 'border-zinc-800' : 'border-[#D6E1EA]';
   const headerBg  = darkMode ? 'bg-zinc-900' : 'bg-white';
   const inputBg   = darkMode
     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
-    : 'bg-white border-[#E7DDD7] text-[#211815] placeholder-[#9A8880]';
+    : 'bg-white border-[#D6E1EA] text-[#1B262C] placeholder-[#6B7C88]';
 
   // ── Fetch visits ───────────────────────────────────────────────────────────
   const fetchVisits = useCallback(async () => {
@@ -1899,7 +1899,7 @@ export default function MyTikiTab({ darkMode }) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowCsvImport(true)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[14px] font-bold border transition-colors ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-[#E7DDD7] text-[#6F5D55] hover:bg-[#F8F6F3]'}`}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[14px] font-bold border transition-colors ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
               title="CSV 일괄 가져오기"
             >
               CSV 가져오기
@@ -1913,7 +1913,7 @@ export default function MyTikiTab({ darkMode }) {
             </button>
             <button
               onClick={fetchVisits}
-              className={`p-3 rounded-2xl transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-800' : 'text-[#9A8880] hover:bg-[#F8F6F3]'}`}
+              className={`p-3 rounded-2xl transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-800' : 'text-[#6B7C88] hover:bg-[#EDF1F5]'}`}
               title="새로고침"
             >
               <RefreshCw size={18} />
@@ -1942,7 +1942,7 @@ export default function MyTikiTab({ darkMode }) {
           </div>
         )}
 
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFCF8' }}>
+          <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#F8FBFF' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1963,7 +1963,7 @@ export default function MyTikiTab({ darkMode }) {
             <EscalationMiniCard label="방 목록" value={loading ? '…' : roomSummary.total} sub="등록된 운영 방" color={TEAL} darkMode={darkMode} />
             <EscalationMiniCard label="빈 방" value={loading ? '…' : roomSummary.free} sub="즉시 배정 가능" color="#16A34A" darkMode={darkMode} />
             <EscalationMiniCard label="사용 중" value={loading ? '…' : roomSummary.occupied} sub="현재 사용 중" color="#DC2626" darkMode={darkMode} />
-            <EscalationMiniCard label="대기 중" value={loading ? '…' : roomSummary.readyQueue} sub="다음 방 후보" color="#D09262" darkMode={darkMode} />
+            <EscalationMiniCard label="대기 중" value={loading ? '…' : roomSummary.readyQueue} sub="다음 방 후보" color="#0F4C75" darkMode={darkMode} />
           </div>
 
           <div className="grid grid-cols-4 gap-3 mt-4">
@@ -1993,11 +1993,11 @@ export default function MyTikiTab({ darkMode }) {
           )}
         </div>
 
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFDFC' }}>
+        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <UserCheck size={14} style={{ color: '#A47764' }} />
+                <UserCheck size={14} style={{ color: '#10367D' }} />
                 <h2 className={`text-sm font-bold ${textP}`}>에스컬레이션</h2>
               </div>
               <p className={`text-[11px] mt-1 ${textS}`}>환자 질문이 운영 task로 전환된 항목</p>
@@ -2025,7 +2025,7 @@ export default function MyTikiTab({ darkMode }) {
                 onClick={() => setEscalationGroupBy(key)}
                 className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
                 style={escalationGroupBy === key
-                  ? { background: '#A47764', color: '#fff', borderColor: '#A47764' }
+                  ? { background: '#10367D', color: '#fff', borderColor: '#10367D' }
                   : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
               >
                 {label}
@@ -2071,11 +2071,11 @@ export default function MyTikiTab({ darkMode }) {
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFDFC' }}>
+        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <ClipboardCheck size={14} style={{ color: '#4E8FA0' }} />
+                <ClipboardCheck size={14} style={{ color: '#0145F2' }} />
                 <h2 className={`text-sm font-bold ${textP}`}>사후관리</h2>
               </div>
               <p className={`text-[11px] mt-1 ${textS}`}>사후관리 체크인, 위험 신호, 리턴 가능 상태를 운영 task로 확인합니다.</p>
@@ -2108,7 +2108,7 @@ export default function MyTikiTab({ darkMode }) {
                 onClick={() => setAftercareFilter(key)}
                 className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
                 style={aftercareFilter === key
-                  ? { background: '#4E8FA0', color: '#fff', borderColor: '#4E8FA0' }
+                  ? { background: '#0145F2', color: '#fff', borderColor: '#0145F2' }
                   : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
               >
                 {label}
@@ -2118,7 +2118,7 @@ export default function MyTikiTab({ darkMode }) {
               onClick={() => setShowAftercareEditor((prev) => !prev)}
               className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold border"
               style={showAftercareEditor
-                ? { background: '#4E8FA0', color: '#fff', borderColor: '#4E8FA0' }
+                ? { background: '#0145F2', color: '#fff', borderColor: '#0145F2' }
                 : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
             >
               {showAftercareEditor ? '플랜 편집 닫기' : '플랜 편집'}
