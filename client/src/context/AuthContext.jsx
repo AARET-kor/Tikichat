@@ -94,6 +94,17 @@ const MOCK_TENANTS = {
   },
 };
 
+function hasSupabaseConfig() {
+  return !!import.meta.env.VITE_SUPABASE_URL &&
+    !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+}
+
+function allowsMockAuth() {
+  return import.meta.env.DEV ||
+    import.meta.env.VITE_ENABLE_MOCK_AUTH === 'true' ||
+    !hasSupabaseConfig();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // JWT 디코더 — jwt-decode 패키지 없이 순수 base64 디코딩
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,18 +213,21 @@ export function AuthProvider({ children }) {
 
   // ── 앱 시작 시: 기존 세션 복원 ────────────────────────────────────────────
   useEffect(() => {
-    const supabaseConfigured =
-      !!import.meta.env.VITE_SUPABASE_URL &&
-      !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseConfigured = hasSupabaseConfig();
 
     if (supabaseConfigured) {
       // Supabase 세션 복원 시도
       supabase.auth.getSession().then(({ data: { session: sbSession } }) => {
         if (sbSession) {
           hydrateFromSupabase(sbSession);
-        } else {
-          // Supabase 세션 없으면 sessionStorage mock 확인
+        } else if (allowsMockAuth()) {
+          // 로컬/명시적 데모 모드에서만 mock 세션 복원
           restoreMockSession();
+        } else {
+          sessionStorage.removeItem('tikidoc_session');
+          setSession(null);
+          setRole(null);
+          setClinicId(null);
         }
         setAuthReady(true);
       });
@@ -224,7 +238,7 @@ export function AuthProvider({ children }) {
           if (sbSession) {
             hydrateFromSupabase(sbSession);
           } else {
-            // 로그아웃됨
+            if (!allowsMockAuth()) sessionStorage.removeItem('tikidoc_session');
             setSession(null);
             setRole(null);
             setClinicId(null);
@@ -256,9 +270,8 @@ export function AuthProvider({ children }) {
     setIsLoggingIn(true);
     setLoginError('');
 
-    const supabaseConfigured =
-      !!import.meta.env.VITE_SUPABASE_URL &&
-      !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseConfigured = hasSupabaseConfig();
+    const mockAuthAllowed = allowsMockAuth();
 
     // 1️⃣  Supabase 실 인증 시도
     if (supabaseConfigured) {
@@ -269,8 +282,8 @@ export function AuthProvider({ children }) {
           setIsLoggingIn(false);
           return true;
         }
-        // Supabase 에러지만 mock 계정이 없으면 에러 표시
-        if (error && !MOCK_TENANTS[email.toLowerCase()]) {
+        // 운영 환경에서는 mock 폴백을 허용하지 않는다.
+        if (error && (!mockAuthAllowed || !MOCK_TENANTS[email.toLowerCase()])) {
           setLoginError(error.message || '로그인에 실패했습니다.');
           setIsLoggingIn(false);
           return false;
@@ -285,6 +298,12 @@ export function AuthProvider({ children }) {
     }
 
     // 2️⃣  Mock 폴백 (데모 계정 / 오프라인)
+    if (!mockAuthAllowed) {
+      setLoginError('실제 직원 계정으로 다시 로그인해 주세요.');
+      setIsLoggingIn(false);
+      return false;
+    }
+
     await new Promise(r => setTimeout(r, 600));
     const tenant = MOCK_TENANTS[email.toLowerCase()];
     if (!tenant || tenant.password !== password) {
