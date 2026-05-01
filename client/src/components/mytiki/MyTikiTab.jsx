@@ -137,6 +137,42 @@ function fmtVisitTime(iso, dateRange) {
   return `${mm}/${dd} ${time}`;
 }
 
+function startOfLocalDay(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function addLocalDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function visitFitsDateRange(iso, range) {
+  if (!iso || range === 'all') return true;
+  const visitTime = new Date(iso).getTime();
+  const today = startOfLocalDay();
+  if (range === 'today') {
+    return visitTime >= today.getTime() && visitTime < addLocalDays(today, 1).getTime();
+  }
+  if (range === 'tomorrow') {
+    return visitTime >= addLocalDays(today, 1).getTime() && visitTime < addLocalDays(today, 2).getTime();
+  }
+  if (range === 'week') {
+    return visitTime >= today.getTime() && visitTime < addLocalDays(today, 7).getTime();
+  }
+  return true;
+}
+
+function preferredDateRangeForVisit(iso) {
+  if (!iso) return 'all';
+  if (visitFitsDateRange(iso, 'today')) return 'today';
+  if (visitFitsDateRange(iso, 'tomorrow')) return 'tomorrow';
+  if (visitFitsDateRange(iso, 'week')) return 'week';
+  return 'all';
+}
+
 function fmtTime(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1772,7 +1808,16 @@ export default function MyTikiTab({ darkMode }) {
   }
 
   function handleCreated(rawVisit) {
-    fetchVisits();
+    const normalized = normalizeVisit(rawVisit);
+    setVisits(prev => [normalized, ...prev.filter(v => v.id !== normalized.id)]);
+    const nextRange = visitFitsDateRange(normalized.visit_date, dateRange)
+      ? dateRange
+      : preferredDateRangeForVisit(normalized.visit_date);
+    if (nextRange !== dateRange) {
+      setDateRange(nextRange);
+    } else {
+      fetchVisits();
+    }
   }
 
   // ── Today date label ───────────────────────────────────────────────────────
@@ -1828,7 +1873,7 @@ export default function MyTikiTab({ darkMode }) {
   }
 
   return (
-    <div className={`flex-1 flex flex-col overflow-hidden ${bg}`} style={{ fontFamily: F.sans }}>
+    <div className={`flex-1 flex flex-col overflow-y-auto ${bg}`} style={{ fontFamily: F.sans, minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className={`px-8 py-7 border-b ${headerBg} ${borderCls} shrink-0`}>

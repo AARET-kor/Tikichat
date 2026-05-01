@@ -15,6 +15,10 @@ const dashboardSource = readFileSync(
   new URL("../client/src/pages/Dashboard.jsx", import.meta.url),
   "utf8",
 );
+const indexCssSource = readFileSync(
+  new URL("../client/src/index.css", import.meta.url),
+  "utf8",
+);
 const myTikiTabSource = readFileSync(
   new URL("../client/src/components/mytiki/MyTikiTab.jsx", import.meta.url),
   "utf8",
@@ -67,7 +71,7 @@ test("patient link list and token auth avoid optional patient_links extension co
   const authSelectSource = authSource.slice(authSelectStart, authSelectEnd);
 
   assert.ok(authSelectStart > -1, "patient auth should select patient_links columns");
-  for (const optionalColumn of ["patient_lang", "sent_via", "generated_by", "custom_message", "link_type"]) {
+  for (const optionalColumn of ["patient_lang", "sent_via", "generated_by", "custom_message", "link_type", "access_count", "first_opened_at", "last_accessed_at"]) {
     assert.doesNotMatch(authSelectSource, new RegExp(optionalColumn));
   }
 });
@@ -82,6 +86,8 @@ test("Quick Visit modal uses bounded touch-friendly scroll containers", () => {
 test("Dashboard shell uses dynamic viewport height and min-height containment", () => {
   assert.match(dashboardSource, /height: '100dvh'/);
   assert.match(dashboardSource, /min-h-0 overflow-hidden/);
+  assert.match(indexCssSource, /html\s*\{[\s\S]*overflow: auto;/);
+  assert.match(indexCssSource, /body\s*\{[\s\S]*overflow: auto;/);
 });
 
 test("Quick Visit creation surfaces stuck API steps and avoids duplicate retry creates", () => {
@@ -111,5 +117,7 @@ test("Quick Visit success remains visible after parent refresh callbacks", () =>
 
   assert.ok(handleCreatedStart > -1, "MyTiki handleCreated should exist");
   assert.doesNotMatch(handleCreatedSource, /setShowQuickCreate\(false\)/);
+  assert.match(handleCreatedSource, /setVisits\(prev => \[normalized/);
+  assert.match(handleCreatedSource, /setDateRange\(nextRange\)/);
   assert.doesNotMatch(pasteCreatedSource, /setQuickVisitOpen\(false\)/);
 });

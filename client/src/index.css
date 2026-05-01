@@ -44,11 +44,11 @@
     height: 100%;
   }
   html {
-    overflow: hidden;
+    overflow: auto;
   }
   body {
     margin: 0;
-    overflow: hidden;
+    overflow: auto;
     overscroll-behavior: none;
   }
   button,

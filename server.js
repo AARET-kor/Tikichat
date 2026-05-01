@@ -2447,7 +2447,7 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
     res.json({
       ok:         true,
       link_id:    link.id,
-      url:        `${APP_BASE_URL}/t/${token}`,   // raw token은 여기서만 반환 (DB에 미저장)
+      url:        `${APP_BASE_URL}/t/${encodeURIComponent(token)}`,   // raw token은 여기서만 반환 (DB에 미저장)
       expires_at: link.expires_at,
       token,                                  // 프론트에서 링크 복사/발송용
     });

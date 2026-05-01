@@ -164,7 +164,7 @@ export async function requirePatientToken(req, res, next) {
       .from("patient_links")
       .select(`
         id, clinic_id, patient_id, visit_id,
-        status, expires_at, first_opened_at, access_count
+        status, expires_at
       `)
       .eq("token_hash", tokenHash)
       .maybeSingle();
@@ -195,8 +195,7 @@ export async function requirePatientToken(req, res, next) {
     sb.from("patient_links")
       .update({
         last_accessed_at: now,
-        access_count:     (link.access_count || 0) + 1,
-        ...(link.first_opened_at ? {} : { first_opened_at: now }),
+        first_opened_at: now,
       })
       .eq("id", link.id)
       .then(() => {})
