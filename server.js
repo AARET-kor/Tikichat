@@ -2397,7 +2397,7 @@ app.get("/api/staff/audit-history", requireStaffAuth, async (req, res) => {
 // 새 My Tiki 매직 링크 발급 (예약 확정 후 스태프가 호출)
 // body: { visitId, patientLang?, sentVia? }
 app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
-  const { visitId, patientLang = "ko", sentVia } = req.body;
+  const { visitId } = req.body;
   const clinic_id = req.clinic_id;
 
   if (!visitId) return res.status(400).json({ error: "visitId required" });
@@ -2419,7 +2419,7 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
 
     // 기존 active 링크 폐기 (방문당 링크 1개 유지)
     await sb.from("patient_links")
-      .update({ status: "revoked", revoked_by: req.staff_user_id, revoked_at: new Date().toISOString() })
+      .update({ status: "revoked" })
       .eq("visit_id", visitId)
       .eq("status", "active");
 
@@ -2434,12 +2434,8 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
         patient_id:     visit.patient_id,
         visit_id:       visitId,
         token_hash:     tokenHash,
-        link_type:      "portal",        // v2: link_type (not status)
-        status:         "active",        // v2 added status column (patched in 009)
+        status:         "active",
         expires_at:     expiresAt,
-        patient_lang:   patientLang,
-        sent_via:       sentVia || null,
-        generated_by:   req.staff_user_id,  // v2: generated_by (was created_by)
       })
       .select("id, expires_at, status")
       .single();
@@ -2475,7 +2471,7 @@ app.get("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
       .select(`
         id, visit_id, patient_id, status, expires_at,
         first_opened_at, last_accessed_at, access_count,
-        patient_lang, sent_via, created_at, generated_by
+        created_at
       `)
       .eq("clinic_id", clinic_id)
       .order("created_at", { ascending: false })
@@ -2503,9 +2499,7 @@ app.post("/api/my-tiki/links/:id/revoke", requireStaffAuth, async (req, res) => 
     const { error } = await sb
       .from("patient_links")
       .update({
-        status:     "revoked",
-        revoked_by: req.staff_user_id,
-        revoked_at: new Date().toISOString(),
+        status: "revoked",
       })
       .eq("id", id)
       .eq("clinic_id", clinic_id);   // clinic 소속 확인
@@ -3282,11 +3276,8 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
             patient_id:   row._patient.id,
             visit_id:     visitId,
             token_hash:   tokenHash,
-            link_type:    'portal',
             status:       'active',
             expires_at:   new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-            patient_lang: row.lang || 'ko',
-            generated_by: req.staff_user_id || null,
           });
         }
 

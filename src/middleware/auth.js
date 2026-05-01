@@ -164,8 +164,7 @@ export async function requirePatientToken(req, res, next) {
       .from("patient_links")
       .select(`
         id, clinic_id, patient_id, visit_id,
-        status, expires_at, first_opened_at, access_count,
-        patient_lang
+        status, expires_at, first_opened_at, access_count
       `)
       .eq("token_hash", tokenHash)
       .maybeSingle();
@@ -208,7 +207,7 @@ export async function requirePatientToken(req, res, next) {
     req.clinic_id     = link.clinic_id;
     req.patient_id    = link.patient_id;
     req.visit_id      = link.visit_id;
-    req.patient_lang  = link.patient_lang || "ko";
+    req.patient_lang  = "ko";
 
     next();
 
