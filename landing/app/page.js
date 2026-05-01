@@ -1,63 +1,111 @@
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.tikidoc.xyz";
 
-const products = [
+const journeySteps = [
   {
-    name: "My Tiki",
-    stage: "환자 포털",
-    title: "환자가 링크 하나로 방문 여정을 완성합니다",
-    body: "QR 링크를 받으면 환자는 언어를 선택하고, 문진을 작성하고, 도착을 직접 체크인합니다. 직원 호출 없이, 다국어 환자도 같은 흐름 안에서 준비합니다.",
-    note: "환자에게는 단순하고, 직원에게는 누락이 바로 보입니다.",
-    className: "mytiki",
+    step: "예약 확정",
+    title: "처음부터 환자 언어로 안내합니다",
+    body: "링크 하나로 My Tiki가 열리고, 환자는 방문 전 필요한 정보와 준비할 일을 자기 언어로 확인합니다.",
+  },
+  {
+    step: "문진 · 동의",
+    title: "접수 전 공백을 줄입니다",
+    body: "문진표와 동의서를 미리 작성하고, 병원은 누락된 준비 상태를 Tiki Desk에서 바로 봅니다.",
+  },
+  {
+    step: "내원 · 이동",
+    title: "지금 어디에 있고, 다음에 뭘 할지 보입니다",
+    body: "환자는 My Tiki에서 자신의 단계와 다음 액션을 확인하고, 직원은 도착 순서와 준비 상태를 함께 봅니다.",
+  },
+  {
+    step: "시술실",
+    title: "Tiki Room이 의료진 통제 아래 소통을 돕습니다",
+    body: "환자 말은 요약되고, 의료진이 고른 표현만 환자 언어로 전달됩니다. 자동 답변이 아니라 통제된 소통입니다.",
+  },
+  {
+    step: "사후관리",
+    title: "설명은 시술실에서 끝나지 않습니다",
+    body: "주의사항, 회복 체크, follow-up까지 이어지고, 이상 신호는 병원 운영 화면에 올라옵니다.",
+  },
+];
+
+const surfaces = [
+  {
+    name: "Tiki Paste",
+    label: "상담 내용 정리",
+    title: "채팅 내용을 붙여 넣으면, 직원 답변의 기준이 생깁니다",
+    body: "기존 CRM이나 메신저를 갈아엎지 않아도 됩니다. 대화 내용을 붙여 넣으면 환자 의도, 위험 신호, 추천 답변을 정리하고 Quick Visit으로 넘길 수 있습니다.",
+    meta: "CRM 교체 없이 시작",
+  },
+  {
+    name: "My Tiki + TikiBell",
+    label: "환자 안내",
+    title: "환자는 혼자 눈치 보지 않아도 됩니다",
+    body: "My Tiki는 환자의 개인 링크입니다. TikiBell은 그 안에서 문진, 동의, 오늘 할 일, 사후관리 질문을 차분하게 안내합니다.",
+    meta: "환자 여정 동행",
   },
   {
     name: "Tiki Room",
-    stage: "진료실 소통",
-    title: "진료실 안에서 언어가 장벽이 되지 않도록",
-    body: "환자 말을 요약하고, 의사가 선택한 표현을 환자 언어로 전달합니다. 소통의 주도권은 항상 의료진에게 있습니다. 자동 답변 없음, 인터프리터 없음.",
-    note: "doctor-controlled flow — 의사가 모든 응답을 선택합니다.",
-    className: "room",
+    label: "시술실 소통",
+    title: "통역이 사라지는 순간에도 설명은 이어집니다",
+    body: "진료실과 시술실에서 환자 말을 요약하고, 의료진이 선택한 표현을 환자 언어로 전달합니다. 의료진 통제는 유지됩니다.",
+    meta: "doctor-controlled",
+  },
+];
+
+const valueCards = [
+  {
+    title: "잘 쓰던 CRM, 굳이 바꾸지 않아도 됩니다",
+    body: "TikiDoc은 기존 시스템을 갈아엎는 제품이 아닙니다. 병원이 이미 쓰고 있는 운영 방식 위에 얹어, 외국인 환자 소통과 환자 경험을 향상시키는 AI 플랫폼입니다.",
   },
   {
-    name: "TikiBell",
-    stage: "사후관리",
-    title: "퇴원 후에도 케어 흐름이 이어집니다",
-    body: "TikiBell이 시술 후 체크포인트마다 환자와 연결됩니다. 이상 신호는 운영 보드에 올라오고, 안전이 확인되면 재방문 안내로 이어집니다.",
-    note: "안전 확인 → 재방문 유도 순서를 지킵니다.",
-    className: "",
+    title: "복잡한 API 연동 없이도 시작할 수 있습니다",
+    body: "초기 도입 장벽을 낮추고, 병원 현장에서 바로 쓸 수 있도록 설계됩니다. 먼저 실제 상담과 방문 흐름을 정리하고, 필요한 연동은 이후에 판단합니다.",
+  },
+  {
+    title: "직원마다 다른 답변, 이제 하나의 기준으로 맞춥니다",
+    body: "병원별 protocol과 승인된 정보를 기반으로 더 일정하고 신뢰할 수 있는 소통을 돕습니다. 환자마다 설명이 달라지는 위험을 줄입니다.",
+  },
+  {
+    title: "언어별 환자 흐름이 흔들리지 않게 합니다",
+    body: "일본인 환자가 많은 날, 중국인 환자가 많은 날마다 코디를 더 뽑고 교육하기는 어렵습니다. TikiDoc은 접수부터 사후관리까지 응대의 공백을 줄입니다.",
   },
 ];
 
 const plans = [
   {
-    name: "Pilot Clinic",
-    scale: "작은 클리닉 / 첫 도입",
-    highlight: "낮은 리스크로 시작",
-    description: "한 지점에서 실제 환자 흐름을 검증하고 싶은 클리닉에 맞춥니다.",
-    features: ["기본 환자 링크 흐름", "My Tiki / Tiki Room / TikiBell", "초기 운영 세팅 지원"],
-    featured: false,
+    name: "Start",
+    scale: "외국인 환자 응대를 막 시작하는 병원",
+    badge: "가볍게 검증",
+    body: "기존 운영을 유지하면서 My Tiki 링크, Tiki Paste, 기본 환자 안내 흐름부터 시작합니다.",
+    features: ["초기 세팅 상담", "기본 환자 링크 플로우", "직원용 sidecar 사용", "도입 범위 점검"],
   },
   {
-    name: "Growth Clinic",
-    scale: "운영량이 있는 클리닉",
-    highlight: "권장",
-    description: "반복 문의, 다국어 환자, 사후관리 흐름을 안정적으로 운영하려는 팀에 적합합니다.",
-    features: ["운영 보드 중심 워크플로", "시술 / 프로토콜 기반 응답", "사후관리 플랜 운영", "직원 사용 온보딩"],
+    name: "Operate",
+    scale: "외국인 환자 비중이 꾸준한 병원",
+    badge: "추천",
+    body: "예약, 내원, 시술실, 사후관리까지 이어지는 운영 흐름을 병원 기준에 맞춰 정리합니다.",
+    features: ["Tiki Desk 운영 보드", "My Tiki + TikiBell", "Tiki Room", "사후관리 체크인", "프로토콜 기반 응대"],
     featured: true,
   },
   {
-    name: "Clinic Group",
-    scale: "다지점 / 확장 운영",
-    highlight: "상담 후 설계",
-    description: "여러 지점, 여러 역할, 운영 정책 차이가 있는 조직에 맞춰 도입 범위를 정합니다.",
-    features: ["지점별 운영 구성", "고급 설정 협의", "도입 / 교육 계획", "확장 로드맵 정리"],
-    featured: false,
+    name: "Scale",
+    scale: "여러 지점 또는 확장 운영",
+    badge: "상담 후 설계",
+    body: "여러 역할, 여러 지점, 여러 언어권 환자 흐름을 단계적으로 확장할 때 맞춥니다.",
+    features: ["지점별 운영 설계", "고급 설정 협의", "직원 온보딩", "확장 로드맵 정리"],
   },
+];
+
+const shortCopies = [
+  "외국인 환자 응대, 상담실에서만 끝내지 마세요",
+  "통역이 사라진 뒤의 공백을 메우는 AI",
+  "설명은 끝까지 이어져야 합니다",
+  "병원은 더 효율적으로, 환자는 덜 불안하게",
 ];
 
 export default function LandingPage() {
   return (
     <>
-      {/* ── Nav ───────────────────────────────────────────────────── */}
       <nav className="nav">
         <div className="nav-inner wrap">
           <a href="/" className="brand" aria-label="TikiDoc home">
@@ -65,253 +113,168 @@ export default function LandingPage() {
             <span>TikiDoc</span>
           </a>
           <ul className="nav-links">
-            <li><a href="#why-now">문제</a></li>
+            <li><a href="#problem">문제</a></li>
             <li><a href="#journey">환자 여정</a></li>
-            <li><a href="#products">제품</a></li>
+            <li><a href="#surfaces">제품</a></li>
             <li><a href="#pricing">도입 상담</a></li>
           </ul>
           <div className="nav-actions">
-            <a className="btn btn-quiet" href={`${APP_URL}/login`}>로그인</a>
+            <a className="btn btn-ghost" href={`${APP_URL}/login`}>로그인</a>
             <a className="btn btn-primary" href={APP_URL}>앱 열기</a>
           </div>
         </div>
       </nav>
 
       <main>
-
-        {/* ── Hero ──────────────────────────────────────────────────── */}
         <section className="hero wrap">
-          <div className="hero-copy">
-            <p className="eyebrow"><span />클리닉 전용 AI 운영 도구</p>
-            <h1>
-              외국인 환자도,<br />
-              복잡한 시술도.<br />
-              클리닉은 흔들리지 않습니다.
-            </h1>
+          <div className="hero-copy reveal" style={{ "--i": 0 }}>
+            <p className="eyebrow"><span />AI communication platform for clinics</p>
+            <h1>외국인 환자와의 소통,<br />더이상 중간에 끊기지 않습니다</h1>
             <p className="hero-lead">
-              TikiDoc은 환자 포털, 진료실 소통, 사후관리를 하나의 운영 흐름으로 연결합니다.
-              화려한 기능보다 실제 클리닉이 매일 쓰는 도구를 만들었습니다.
+              병원은 모든 외국인 환자에게 전담 코디를 끝까지 붙여줄 수 없습니다. 대신 TikiDoc이 예약, 내원, 시술, 사후관리까지 환자의 여정을 따라가는 개인화 AI 비서가 되어 병원과 환자의 소통을 이어줍니다.
             </p>
             <div className="hero-actions">
-              <a className="btn btn-primary btn-large" href={APP_URL}>앱에서 확인하기</a>
-              <a className="btn btn-secondary btn-large" href="#pricing">도입 상담 보기</a>
+              <a className="btn btn-primary btn-large" href={APP_URL}>TikiDoc 시작하기</a>
+              <a className="btn btn-secondary btn-large" href="#problem">왜 필요한지 보기</a>
             </div>
+            <p className="brand-line">통역이 아니라, 믿음이 끊기지 않게 만드는 시스템</p>
           </div>
 
-          {/* Tiki Room scene — the first proof */}
-          <div className="hero-board" aria-label="Tiki Room live demo">
-            <div className="board-top">
-              <div>
-                <span className="board-kicker">TIKI ROOM · 진료실 A</span>
-                <strong>실시간 소통 중</strong>
+          <div className="hero-visual reveal" style={{ "--i": 1 }} aria-label="TikiDoc patient journey rotor">
+            <div className="orbital-scene">
+              <div className="core-card">
+                <span>Trust loop</span>
+                <strong>신뢰로 시작해,<br />안심으로 끝나는 병원 경험</strong>
+                <p>예약 · 내원 · 시술 · 회복 · follow-up</p>
               </div>
-              <span className="board-status">● LIVE</span>
-            </div>
-            <div className="flow-stack">
-              <div className="flow-row active">
-                <span className="flow-time">🗣️</span>
-                <div>
-                  <strong>환자 입력 (中文)</strong>
-                  <p>"시술 후 얼굴이 많이 당기는데 정상인가요?"</p>
-                </div>
-                <span className="flow-badge">수신됨</span>
-              </div>
-              <div className="flow-row">
-                <span className="flow-time">🧠</span>
-                <div>
-                  <strong>의사 검토 (한국어 요약)</strong>
-                  <p>시술 후 당김 — 정상 반응 여부 확인 요청</p>
-                </div>
-                <span className="flow-badge calm">검토 중</span>
-              </div>
-              <div className="flow-row">
-                <span className="flow-time">✓</span>
-                <div>
-                  <strong>의사 선택 → 전달</strong>
-                  <p>"정상입니다. 48시간 내 완화됩니다." → 中文 전달</p>
-                </div>
-                <span className="flow-badge">전달 완료</span>
-              </div>
-            </div>
-            <div className="board-metrics">
-              <div><strong>🇺🇸🇯🇵🇨🇳</strong><span>오늘 언어</span></div>
-              <div><strong>3명</strong><span>진료 중</span></div>
-              <div><strong>0</strong><span>자동 답변</span></div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Why now ───────────────────────────────────────────────── */}
-        <section className="section" id="why-now">
-          <div className="wrap split">
-            <div className="section-copy">
-              <p className="eyebrow"><span />Why now</p>
-              <h2>클리닉 운영의 병목은 이미 환자 여정 안에서 생깁니다.</h2>
-              <p>
-                직원은 문의, 문진, 도착 확인, 진료실 소통, 사후관리까지 계속 끊긴 화면을 오갑니다.
-                TikiDoc은 이 병목을 더 많은 대시보드가 아니라 더 명확한 환자 흐름으로 정리합니다.
-              </p>
-            </div>
-            <div className="problem-list">
-              <article>
-                <span>01</span>
-                <strong>반복 질문이 직원 시간을 갉아먹습니다</strong>
-                <p>시술 전 같은 안내가 매번 직원 손을 거칩니다. Tiki Paste가 검토 가능한 답변을 미리 정리합니다.</p>
-              </article>
-              <article>
-                <span>02</span>
-                <strong>도착 후 누가 무엇을 해야 하는지 늦게 보입니다</strong>
-                <p>예약 순서, 실제 도착 순서, 준비 상태가 분리되면 현장 판단이 늦어집니다.</p>
-              </article>
-              <article>
-                <span>03</span>
-                <strong>사후관리는 중요하지만 운영에서는 자주 빠집니다</strong>
-                <p>환자 반응과 이상 신호가 보이지 않으면 재방문과 안전 관리가 모두 약해집니다.</p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Patient journey ───────────────────────────────────────── */}
-        <section className="section warm" id="journey">
-          <div className="wrap">
-            <div className="section-header">
-              <p className="eyebrow"><span />Patient journey</p>
-              <h2>예약부터 사후관리까지, 한 번에 읽히는 환자 흐름.</h2>
-            </div>
-            <div className="journey-track">
-              {[
-                { step: "문의", desc: "Tiki Paste가 반복 문의를 직원 검토 가능한 답변으로 정리합니다." },
-                { step: "예약", desc: "환자 링크가 생성되고, 방문 전 준비 안내가 자동으로 전달됩니다." },
-                { step: "방문 준비", desc: "My Tiki에서 언어 선택, 문진 작성, 주의사항 확인을 완료합니다." },
-                { step: "도착", desc: "환자가 직접 체크인하면 Tiki Desk 운영 보드에 즉시 반영됩니다." },
-                { step: "진료실", desc: "Tiki Room이 의사와 환자의 다국어 소통을 의사 통제 아래 돕습니다." },
-                { step: "사후관리", desc: "TikiBell이 케어 흐름을 이어가고, 이상 신호는 운영 보드에 올라옵니다." },
-              ].map(({ step, desc }, index) => (
-                <article className="journey-card" key={step}>
-                  <span className="journey-number">{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{step}</strong>
-                  <p>{desc}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Product surfaces ──────────────────────────────────────── */}
-        <section className="section" id="products">
-          <div className="wrap">
-            <div className="section-header">
-              <p className="eyebrow"><span />Product surfaces</p>
-              <h2>세 개의 제품이 각자 한 가지 일을 분명하게 합니다.</h2>
-              <p>모든 것을 하나의 챗봇으로 밀어 넣지 않고, 현장 사용 맥락에 맞춰 나눴습니다.</p>
-            </div>
-            <div className="product-grid">
-              {products.map((product) => (
-                <article className={`product-card ${product.className}`} key={product.name}>
-                  <div className="product-card-head">
-                    <div className="product-dot" />
-                    <span>{product.stage}</span>
+              <div className="orbit orbit-one">
+                {journeySteps.map((item, index) => (
+                  <div className="orbit-chip" key={item.step} style={{ "--n": index }}>
+                    <strong>{item.step}</strong>
+                    <span>{index + 1}</span>
                   </div>
-                  <h3>{product.name}</h3>
-                  <h4>{product.title}</h4>
-                  <p>{product.body}</p>
-                  <div className="product-note">{product.note}</div>
+                ))}
+              </div>
+              <div className="orbit orbit-two">
+                {shortCopies.map((copy, index) => (
+                  <div className="ribbon-copy" key={copy} style={{ "--n": index }}>{copy}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="section problem-section" id="problem">
+          <div className="wrap split">
+            <div className="section-copy reveal">
+              <p className="eyebrow"><span />Problem recognition</p>
+              <h2>외국인 환자는 병원이 무섭습니다</h2>
+            </div>
+            <div className="long-copy reveal" style={{ "--i": 1 }}>
+              <p>상담할 때는 통역이 붙어 있어도, 막상 접수하고, 이동하고, 시술을 받고, 회복실에 누워 있을 때는 환자 혼자 손짓과 눈치로 버텨야 하는 순간이 많습니다.</p>
+              <p>지금 내가 받는 시술이 무엇인지, 이 통증이 괜찮은 건지, 지금 어떤 순서로 진행되는지, 호텔로 돌아간 뒤 무엇을 조심해야 하는지 정확히 이해하지 못한 채 지나가는 순간이 너무 많습니다.</p>
+              <p>병원은 환자 한 명 한 명에게 전담 코디를 끝까지 붙여줄 수 없으니까요. 그래서 필요한 것은 단순 번역기가 아니라, 환자의 여정을 따라다니는 AI 비서, TikiDoc입니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="section solution-section" id="journey">
+          <div className="wrap">
+            <div className="section-header reveal">
+              <p className="eyebrow"><span />Patient journey</p>
+              <h2>TikiDoc은 환자의 동선을 따라갑니다</h2>
+              <p>예약이 확정되는 순간부터 TikiDoc은 환자에게 개인화된 안내와 소통 창구를 제공합니다. My Tiki와 Tiki Room, 그리고 TikiBell이 환자의 여정을 상담실 문 앞에서만 끝나지 않게 만듭니다.</p>
+            </div>
+            <div className="journey-grid">
+              {journeySteps.map((item, index) => (
+                <article className="journey-card reveal" key={item.step} style={{ "--i": index }}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <strong>{item.step}</strong>
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
                 </article>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ── Tiki Desk ops layer ───────────────────────────────────── */}
-        <section className="section warm">
-          <div className="wrap ops-grid">
-            <div className="section-copy">
-              <p className="eyebrow"><span />Tiki Desk · 내부 운영</p>
-              <h2>직원이 보는 운영 보드. 환자에게는 보이지 않습니다.</h2>
-              <p>
-                도착 순서, 방 배정, 에스컬레이션, 사후관리 — Tiki Desk가 클리닉 전체를 한 화면에 정리합니다.
-                직원 전용 내부 도구로, 더 많은 대시보드가 아니라 더 명확한 운영 판단을 위해 만들었습니다.
-              </p>
+        <section className="section surfaces-section" id="surfaces">
+          <div className="wrap">
+            <div className="section-header reveal">
+              <p className="eyebrow"><span />Product surfaces</p>
+              <h2>환자에게는 안심을, 병원에게는 기준을.</h2>
+              <p>TikiDoc은 하나의 챗봇이 아닙니다. 상담을 정리하는 도구, 환자가 보는 포털, 시술실 소통 화면이 각자의 자리에서 이어집니다.</p>
             </div>
-            <div className="ops-panel">
-              <div className="ops-line">
-                <span>🇺🇸 Sarah M. · 필러</span>
-                <strong>룸 A 배정 완료</strong>
-              </div>
-              <div className="ops-line">
-                <span>🇨🇳 李小红 · 보톡스</span>
-                <strong>도착 · 문진 완료</strong>
-              </div>
-              <div className="ops-line urgent">
-                <span>🇯🇵 田中 花子 · 리프팅</span>
-                <strong>동의서 미완료 ⚠</strong>
-              </div>
-              <div className="ops-line">
-                <span>🇰🇷 김지수 · 실리프팅</span>
-                <strong>예약 · 대기 중</strong>
-              </div>
-              <div className="ops-line">
-                <span>사후관리 팔로업</span>
-                <strong>오늘 3건 발송 예정</strong>
-              </div>
+            <div className="surface-grid">
+              {surfaces.map((surface, index) => (
+                <article className="surface-card reveal" key={surface.name} style={{ "--i": index }}>
+                  <div className="surface-top"><span>{surface.label}</span><em>{surface.meta}</em></div>
+                  <h3>{surface.name}</h3>
+                  <h4>{surface.title}</h4>
+                  <p>{surface.body}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* ── Pricing / 도입 상담 ───────────────────────────────────── */}
-        <section className="section" id="pricing">
+        <section className="section value-section">
           <div className="wrap">
-            <div className="section-header pricing-header">
-              <p className="eyebrow"><span />도입 상담</p>
-              <h2>클리닉 규모에 맞게 시작합니다.</h2>
-              <p>작은 검증부터 다지점 확장까지, 실제 운영 규모에 맞춰 도입 범위를 정합니다.</p>
+            <div className="section-header reveal">
+              <p className="eyebrow"><span />Operational value</p>
+              <h2>기존 운영을 갈아엎지 않고, 외국인 환자 응대의 기준을 세웁니다</h2>
+            </div>
+            <div className="value-grid">
+              {valueCards.map((card, index) => (
+                <article className="value-card reveal" key={card.title} style={{ "--i": index }}>
+                  <span>{index + 1}</span>
+                  <h3>{card.title}</h3>
+                  <p>{card.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="section pricing-section" id="pricing">
+          <div className="wrap">
+            <div className="section-header pricing-header reveal">
+              <p className="eyebrow"><span />Pricing</p>
+              <h2>코디네이터 1명보다 적은 비용으로, 예약부터 사후관리까지 이어지는 외국인 환자 운영 시스템</h2>
+              <p>외국인 환자가 늘어날수록 필요한 것은 더 많은 임시 인력이 아니라, 더 일정하고, 더 오래 작동하고, 더 쉽게 확장되는 시스템입니다. TikiDoc은 코디네이터 한 명의 월급보다 적은 비용으로 환자 여정과 병원 커뮤니케이션을 정리해줍니다.</p>
             </div>
             <div className="pricing-grid">
-              {plans.map((plan) => (
-                <article className={`plan-card${plan.featured ? " featured" : ""}`} key={plan.name}>
-                  <div className="plan-top">
-                    <span className="plan-scale">{plan.scale}</span>
-                    <span className="plan-highlight">{plan.highlight}</span>
-                  </div>
+              {plans.map((plan, index) => (
+                <article className={`plan-card reveal${plan.featured ? " featured" : ""}`} key={plan.name} style={{ "--i": index }}>
+                  <div className="plan-top"><span>{plan.scale}</span><em>{plan.badge}</em></div>
                   <h3>{plan.name}</h3>
-                  <p>{plan.description}</p>
+                  <p>{plan.body}</p>
                   <div className="plan-price">상담 후 안내</div>
-                  <ul>
-                    {plan.features.map((f) => <li key={f}>{f}</li>)}
-                  </ul>
-                  <a
-                    className={`btn${plan.featured ? " btn-primary" : " btn-secondary"}`}
-                    href={`${APP_URL}/login`}
-                  >
-                    {plan.featured ? "시작하기" : "문의하기"}
-                  </a>
+                  <ul>{plan.features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
+                  <a className={plan.featured ? "btn btn-primary" : "btn btn-secondary"} href={`${APP_URL}/login`}>{plan.featured ? "도입 상담 시작" : "문의하기"}</a>
                 </article>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ── CTA ───────────────────────────────────────────────────── */}
         <section className="cta-section">
           <div className="wrap">
-            <div className="cta-panel">
+            <div className="cta-panel reveal">
               <div>
-                <p className="eyebrow light"><span />지금 시작하기</p>
-                <h2>다음 예약이 외국인 환자여도<br />클리닉은 준비되어 있어야 합니다.</h2>
-                <p>app.tikidoc.xyz에서 바로 시작할 수 있습니다.</p>
+                <p className="eyebrow light"><span />TikiDoc</p>
+                <h2>티키닥, 소통이 끊기지 않게.<br />신뢰가 끊기지 않게.</h2>
+                <p>외국인 환자와 병원의 신뢰와 존중을 처음부터 끝까지 연결하는 AI 커뮤니케이션 플랫폼.</p>
               </div>
               <div className="cta-actions">
-                <a className="btn btn-invert btn-large" href={APP_URL}>앱 열기 →</a>
+                <a className="btn btn-invert btn-large" href={APP_URL}>앱 열기</a>
                 <a className="cta-login" href={`${APP_URL}/login`}>이미 계정이 있으신가요? 로그인</a>
               </div>
             </div>
           </div>
         </section>
-
       </main>
 
-      {/* ── Footer ────────────────────────────────────────────────── */}
       <footer className="footer">
         <div className="footer-inner wrap">
           <div className="footer-brand">
@@ -319,7 +282,7 @@ export default function LandingPage() {
               <span className="brand-mark small">T</span>
               <span>TikiDoc</span>
             </a>
-            <p>클리닉 운영을 위한 전용 AI 도구</p>
+            <p>통역이 아니라, 믿음이 끊기지 않게 만드는 시스템</p>
           </div>
           <ul className="footer-links">
             <li><a href={APP_URL}>앱 열기</a></li>

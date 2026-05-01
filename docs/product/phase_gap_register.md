@@ -1,6 +1,6 @@
 # TikiDoc Phase Gap Register
 
-Last updated: 2026-04-23
+Last updated: 2026-05-01
 
 This register tracks the practical gaps after hardening and Batch 6A / 6B / 6C / 6D. It distinguishes code completion from real-world clinic readiness.
 
@@ -36,6 +36,10 @@ This register tracks the practical gaps after hardening and Batch 6A / 6B / 6C /
 - Stabilization note:
   - live authenticated Tiki Room verification for `current / load-next / clear` passed
   - do not reopen hardening unless a real issue is found
+- May 1 runtime note:
+  - production auth, Quick Visit, My Tiki links, and Tiki Desk scroll received real bug fixes
+  - these fixes are coded, tested, committed, and pushed
+  - final closure requires one deployed smoke test after Railway finishes deploying the latest commit
 
 ## Phase Gaps
 
@@ -63,14 +67,19 @@ Implemented:
 
 - Staff-auth gated memory write route.
 - Clinic context is resolved from authenticated staff context.
+- Web-sidecar TikiPaste workspace for pasted conversations, selected chat text, screenshot fallback, summaries, intent, urgency/risk signal, recommended replies, copy actions, and handoff actions.
 
 Partial:
 
 - Knowledge hygiene and content review remain broader product concerns.
+- TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior.
 
 Deferred:
 
 - Generic knowledge CMS.
+- Chrome extension direction.
+- Desktop/native overlay.
+- Large OCR platform.
 
 Patch before closure:
 
@@ -84,10 +93,16 @@ Implemented:
 - Journey/forms/Ask/aftercare access.
 - Patient Today / next-actions layer.
 - Aftercare due, clinic review acknowledgement, and safe return items.
+- Patient-link route `/t/:token`.
+- Latest link hardening:
+  - generated URLs encode the raw token
+  - token auth selects only required `patient_links` fields
+  - optional schema fields no longer block link validity
 
 Partial:
 
 - Broader patient task UX polish.
+- Multilingual patient UI needs real device QA after the latest design-system pass.
 
 Deferred:
 
@@ -96,6 +111,7 @@ Deferred:
 Patch before clinic-ready:
 
 - Run real patient-link walkthrough for each target language and visit state.
+- Run one deployed smoke test with a newly generated link after the latest deploy.
 
 ### Phase 4 — Activation Wedge
 
@@ -105,10 +121,19 @@ Implemented:
 - CSV import.
 - Conservative procedure resolution.
 - Patient link generation.
+- Latest Quick Visit stabilization:
+  - staff-auth session check before parse/create
+  - visible step labels
+  - timeout messaging
+  - partial retry reuses existing patient/visit IDs
+  - success screen remains visible
+  - new visit is inserted into Tiki Desk immediately
+  - date filter shifts if the new visit is outside today's range
 
 Partial:
 
 - Operational speed should be observed in live desk usage, especially unmatched/ambiguous procedure cases.
+- Deployment smoke test is still needed after the latest commit to confirm the generated link opens and the visit is visible.
 
 Deferred:
 
@@ -126,10 +151,12 @@ Implemented:
 - Staff check-in.
 - Ops Board lightweight refresh.
 - Staff-visible QR flow.
+- Tiki Desk document and internal scroll restoration after the design-system enlargement.
 
 Partial:
 
 - External QR dependency has been removed; current remaining risk is only real device/browser display acceptance.
+- Staff dashboard scroll must still be manually verified on actual clinic staff devices after deploy.
 
 Deferred:
 
@@ -151,6 +178,7 @@ Partial:
 
 - No full FAQ/prompt admin UI.
 - Classification remains code-owned.
+- Patient-facing copy has TikiBell naming direction, but multilingual copy polish remains ongoing.
 
 Deferred:
 
@@ -208,6 +236,7 @@ Deferred:
 Patch before clinic-ready:
 
 - Verify each deployed clinic’s room presets, naming, and tablet/staff workflow.
+- Verify scroll and card density in Tiki Desk when rooms, escalations, and aftercare sections all contain real data.
 
 ### Phase 9 — Tiki Room
 
@@ -252,6 +281,7 @@ Partial:
 - Plan editor is usable but not fully clinic-ready.
 - Trigger/template editing is narrow and not a CMS.
 - Scheduler degraded mode is visible but not a full job dashboard.
+- Admin editing flow needs real clinic validation with a real procedure and future patient-facing message.
 
 Deferred:
 
@@ -269,6 +299,96 @@ Patch before clinic-ready:
   - verify audit/history record
 
 ## Cross-Phase Gaps
+
+### Production Auth / Environment Alignment
+
+- Phase number: cross-phase
+- Gap name: Supabase env/build alignment
+- Status: `stable after deploy`
+- Why it is not fully closed:
+  - code now expects real Supabase Auth, but deployed frontend bundles bake `VITE_*` values at build time.
+  - a stale bundle can still point at an old Supabase project.
+- When it should be done:
+  - before every controlled pilot deploy.
+- Priority: high.
+- Where it exists:
+  - `client/src/lib/supabase.js`
+  - `client/src/pages/Login.jsx`
+  - Railway variables
+  - Supabase Auth dashboard
+- Smallest next check:
+  - login network request must target the current Supabase project hostname.
+
+### Quick Visit / My Tiki Link Smoke Test
+
+- Phase number: 3 / 4
+- Gap name: deployed link-open verification
+- Status: `verify`
+- Why it is not fully closed:
+  - code and tests pass, but the latest link-token and schema-safety patch must be verified against the deployed Railway service and live Supabase project.
+- When it should be done:
+  - immediately after the latest deploy finishes.
+- Priority: high.
+- Where it exists:
+  - `server.js`
+  - `src/middleware/auth.js`
+  - `client/src/components/mytiki/QuickVisitCreate.jsx`
+  - `client/src/components/mytiki/MyTikiTab.jsx`
+- Pass condition:
+  - create a patient + visit, copy the generated `/t/:token`, open it, and see the My Tiki patient portal instead of invalid-link state.
+
+### Staff Dashboard Scroll / Screen Fit
+
+- Phase number: 5 / cross-phase UX
+- Gap name: Tiki Desk scroll and viewport acceptance
+- Status: `verify`
+- Why it is not fully closed:
+  - code now restores document scroll and Tiki Desk internal scroll, but the earlier issue was observed in a real browser viewport after design enlargement.
+- When it should be done:
+  - immediately after latest deploy, before daily staff use.
+- Priority: high.
+- Where it exists:
+  - `client/src/index.css`
+  - `client/src/pages/Dashboard.jsx`
+  - `client/src/components/mytiki/MyTikiTab.jsx`
+- Pass condition:
+  - at 100% zoom, staff can scroll Tiki Desk vertically and reach lower room/escalation/aftercare sections on desktop and mobile/tablet.
+
+### New Visit Visibility
+
+- Phase number: 4 / 5
+- Gap name: newly created visit appears in the operational board
+- Status: `stable after deploy smoke test`
+- Why it is not fully closed:
+  - code now inserts the created visit optimistically and moves date range, but deployed behavior should be confirmed with real clinic timezone/date input.
+- When it should be done:
+  - with the Quick Visit smoke test.
+- Priority: high.
+- Where it exists:
+  - `client/src/components/mytiki/MyTikiTab.jsx`
+  - `server.js` `/api/staff/ops-board`
+  - `server.js` `/api/my-tiki/visits`
+- Pass condition:
+  - new visit is visible in `오늘`, `내일`, `이번주`, or `전체` according to its visit date without staff needing to guess.
+
+### TikiPaste Web-Sidecar Validation
+
+- Phase number: 2 / Batch 6 expansion
+- Gap name: real staff sidecar workflow validation
+- Status: `usable`
+- Why it is not fully closed:
+  - the sidecar works as a normal web app, but staff must validate copy/paste flow next to the actual chat tools they use.
+- When it should be done:
+  - during controlled pilot workflow rehearsal.
+- Priority: medium.
+- Where it exists:
+  - `client/src/components/magic/TikiPasteTab.jsx`
+  - `/api/tiki-paste`
+- Explicitly not built:
+  - Chrome extension
+  - desktop overlay
+  - automatic DOM reading
+  - large OCR platform
 
 ### Aftercare Plan Editor
 

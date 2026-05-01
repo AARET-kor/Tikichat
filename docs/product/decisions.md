@@ -1,6 +1,6 @@
 # TikiDoc Product Decisions
 
-Last updated: 2026-04-24
+Last updated: 2026-05-01
 
 ## Product Surface Naming
 
@@ -28,8 +28,21 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 ### Tiki Paste
 
 - Tiki Paste remains the staff-facing paste/extraction workflow.
+- The Chrome extension direction is paused for now.
+- The current product direction is a web-only sidecar workspace that staff keep open next to KakaoTalk, WhatsApp, Instagram DM, or another chat tool.
+- Tiki Paste may support:
+  - pasted conversation text
+  - pasted selected chat text
+  - screenshot upload/drop as fallback
+  - summary
+  - last-message intent
+  - urgency/risk signal
+  - recommended replies
+  - copy actions
+  - Quick Visit / My Tiki link / Tiki Desk handoff actions
 - Memory writes are staff-auth gated and must resolve clinic context from authenticated staff context, not caller-provided clinic input.
 - Do not broaden Tiki Paste into a generic document CMS without a separate decision.
+- Do not build extension-only behavior, desktop overlays, automatic arbitrary browser DOM reading, or a large OCR platform without a separate decision.
 
 ### My Tiki
 
@@ -37,6 +50,10 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 - Patient task layer is a practical “today / next action” layer, not a separate task engine.
 - Current task types include arrival, forms, aftercare due, clinic review acknowledgement, and safe return.
 - Broader patient task polish is later expansion, not a workflow rewrite.
+- Patient links use `/t/:token`.
+- Raw patient link tokens are not stored in the DB; only `token_hash` is stored.
+- Generated patient-link URLs should encode the raw token before returning it to staff.
+- Patient-token auth should depend on the smallest required `patient_links` fields, because deployed clinic schemas may not all have optional tracking columns.
 
 ### Ask / TikiBell
 
@@ -80,6 +97,9 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 - Phase 3 Protocol UX reset is implemented as a read/scan-oriented standards board with clearer Korean copy, response standards, prohibited phrases, approved wording, and an improvement checklist.
 - Phase 4 Procedure Management UX reset is implemented around operational readiness: registered procedure count, AI-response readiness, missing-field visibility, larger master-template import, and larger editing controls.
 - My Tiki preview surfacing remains separate follow-up work.
+- Tiki Desk must remain scrollable at normal browser zoom after visual enlargement.
+- If a newly created Quick Visit is outside the current date filter, the UI should move staff to the relevant date range instead of silently hiding the new visit.
+- Do not treat “created but hidden by filter” as acceptable staff UX.
 
 ### Escalation
 
@@ -149,6 +169,47 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 - Concern and urgent signals must become reviewable operational items, not just stored responses.
 - The aftercare plan editor is intentionally narrow. It is not a campaign system or template CMS.
 
+### Auth And Deployment
+
+- Production login must use real Supabase Auth.
+- Signup and login must use the same auth system.
+- Production must not silently fall back to mock staff sessions.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are frontend build-time values. Updating Railway variables is not enough unless the frontend bundle is rebuilt/redeployed.
+- Server-side Supabase variables must point at the same project as the frontend bundle:
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- If login shows `Failed to fetch`, first check the browser Network request hostname before changing auth code.
+
+### Design System
+
+- The visual direction is warm clinical minimalism:
+  - calm
+  - premium
+  - bright
+  - not flashy
+  - not generic SaaS
+- Mocha remains the signature identity color, but it should be used narrowly:
+  - main buttons
+  - active states
+  - important badges
+  - key icons
+  - CTA accents
+  - section accent lines
+- Large product card backgrounds should generally stay light.
+- Staff surfaces should prioritize:
+  - larger typography
+  - stronger hierarchy
+  - readable Korean copy
+  - obvious operational purpose
+  - scrollable layouts at normal zoom
+- Landing and app are split:
+  - `tikidoc.xyz` = landing / marketing
+  - `app.tikidoc.xyz` = product app
+- The landing app is separate from the Railway product app. Do not move the product app to Vercel as part of landing work.
+
 ## Naming And State Rules
 
 - `stage` remains the main visit workflow term unless there is a strong reason not to.
@@ -191,6 +252,11 @@ Not built yet:
 - generic settings page
 - no-code rule editor
 - universal rules engine
+- Chrome extension / native overlay version of TikiPaste
+- automatic arbitrary browser DOM reader
+- backend OCR platform
+- broad patient task engine
+- full admin CMS for protocol/procedure/aftercare/settings
 
 Why:
 
@@ -203,4 +269,6 @@ Why:
 - Hardening is treated as stable.
 - Batch 6A / 6B / 6C are implemented for their bounded scopes.
 - Batch 6D reviewability/admin polish is implemented as a small surface, not a full admin system.
+- Design-system and staff UX reset are implemented in code, but still require real device/manual visual QA.
+- Quick Visit and My Tiki link hotfixes are implemented and pushed; final operational closure depends on one deployed smoke test after Railway deploy completes.
 - Do not reopen stabilization work unless a real issue is found in operations.

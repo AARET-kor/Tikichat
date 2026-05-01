@@ -1,8 +1,8 @@
 # Current Engineering State
 
-Last updated: 2026-04-24
+Last updated: 2026-05-01
 
-This document is the short engineering truth snapshot for TikiDoc after the hardening pass and Batch 6A / 6B / 6C / 6D work.
+This document is the short engineering truth snapshot for TikiDoc after hardening, Batch 6A / 6B / 6C / 6D, the design-system pass, TikiPaste web-sidecar pivot, auth fixes, and Quick Visit / My Tiki link stabilization.
 
 ## Product Surface Model
 
@@ -29,10 +29,22 @@ No new schema migration was added for Batch 6C / 6D. Recent QR and audit-history
 
 Stable:
 
+- Production auth direction:
+  - signup creates real Supabase Auth users
+  - login uses Supabase Auth
+  - production mock-session fallback is disabled unless explicitly allowed for development
+  - frontend Supabase config is expected to come from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` at build time
 - Staff auth gates for `/api/memory` and `/api/room/*`.
 - Clinic-scoped room access for authenticated staff sessions.
 - Tiki Desk room traffic visibility, load-next, clear, and current patient flow.
 - My Tiki patient link flow and internal QR rendering through `/api/qr`.
+- Quick Visit creation flow:
+  - requires staff auth
+  - creates patient, visit, and My Tiki link
+  - keeps the success/link screen visible after parent refresh
+  - reuses partial patient/visit creation on retry to avoid duplicate writes
+  - uses deployed-safe `patient_links` columns only
+  - auto-adjusts the Tiki Desk date range when a newly created visit is not in today's filter
 - Clinic rule config read/write path for the narrow allowlisted keys.
 - Scheduler health/degraded visibility for aftercare.
 - Light audit/actor tracking for key escalation, room, and aftercare transitions.
@@ -41,18 +53,33 @@ Stable:
 - Dashboard shell UX reset Phase 2: the staff sidebar is now a wider readable operations nav with larger icons, labels, sublabels, and clearer product/management grouping. The top bar now uses larger clinic/staff identity treatments.
 - Protocol UX reset Phase 3: the staff protocol surface now reads as an operational standards board with larger Korean copy, clear response standards, prohibited phrases, approved wording, and a visible improvement checklist.
 - Procedure Management UX reset Phase 4: the staff procedure surface now emphasizes AI-response readiness, missing fields, readable master-template import, and larger procedure editing controls.
+- Standardized design system:
+  - mocha remains the narrow signature accent
+  - staff/product surfaces use larger type, stronger spacing, consistent radii, status tones, and bright/warm clinical surfaces
+  - `/landing` has its own landing-only app target and refreshed structure for `tikidoc.xyz`
+- TikiPaste web-sidecar:
+  - the Chrome extension direction is paused
+  - staff can paste conversation text or screenshot fallback into the web app
+  - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
+- Staff dashboard scroll behavior:
+  - app-level document scroll is no longer globally locked
+  - Tiki Desk content has a touch-friendly vertical scroll container
 
 Usable but not fully clinic-ready:
 
 - Aftercare plan editor. It can edit narrow step fields and preview patient-facing content, but it still needs real clinic admin workflow validation before daily reliance.
 - Tiki Room browser-native voice input and browser TTS fallback. They are useful optional aids, but quality depends on browser, device, microphone permission, room noise, and installed voices.
 - Tiki Room live communication loop. Current/load-next/clear manual verification passed, but clinic deployment still needs device/browser acceptance testing per room.
+- TikiPaste web-sidecar. It is now a realistic staff workspace without extension dependency, but it still depends on staff-pasted text/screenshot input and is not an automatic browser DOM reader.
+- Staff dashboard UX. It is much clearer than the earlier cramped dashboard, but real front-desk usage should still validate screen size, scroll behavior, and Korean copy under daily workload.
 
 Prototype-level or intentionally bounded:
 
 - Settings / operations polish is intentionally small. It is not a full admin CMS, rule builder, audit dashboard, or forensic explorer.
 - Ask and room-ready config are narrow knobs layered over code-owned workflow logic.
 - Browser voice is not a backend STT/TTS pipeline and does not store transcripts.
+- Patient screenshot/OCR fallback in TikiPaste remains bounded. It is not a giant OCR platform or cross-browser overlay.
+- My Tiki patient UI kit is improved and reusable, but not every multilingual patient route has been manually device-tested after the latest visual pass.
 
 Intentionally deferred:
 
@@ -62,6 +89,54 @@ Intentionally deferred:
 - Full CMS/no-code editor for aftercare or Ask.
 - Generic rules engine.
 - Schema-first redesign of workflow state.
+- Chrome extension / desktop overlay version of TikiPaste.
+- Automatic arbitrary browser DOM reading.
+- Backend OCR platform.
+
+## May 1, 2026 Runtime Fixes And Product Changes
+
+Implemented:
+
+- Rebuilt the deployed frontend with the correct `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` so the login bundle no longer points at the old Supabase project.
+- Removed production mock-auth fallback from the real login path.
+- Fixed signup/login mismatch so clinic signup provisions a real Supabase Auth user and the login page uses the same auth system.
+- Fixed staff Quick Visit auth propagation and clinic scoping.
+- Hardened Quick Visit and patient-link creation against deployed schema drift:
+  - removed optional `patient_links` fields from the critical create/list/token-auth path
+  - removed optional visit assignment columns from Quick Visit insert
+  - reduced patient-token auth to required link fields only
+- Fixed Quick Visit UX:
+  - no silent modal close after success
+  - visible creating step labels
+  - request timeout messaging
+  - partial retry without duplicate patient/visit writes
+- Fixed My Tiki link URL generation by encoding raw tokens in generated URLs.
+- Fixed Tiki Desk visibility after Quick Visit:
+  - new visit is inserted optimistically in the list
+  - date-range filter moves to the correct range when the visit is not today
+- Fixed dashboard scroll behavior:
+  - global document scroll is restored
+  - Tiki Desk uses an internal vertical scroll container
+- Pivoted TikiPaste away from extension-first behavior into a web-only sidecar workspace.
+
+Current deployed expectation:
+
+- After Railway deploys the latest `main`, a staff user should be able to:
+  - log in with real Supabase Auth
+  - create a new patient + visit
+  - see the success screen with a My Tiki link
+  - open the generated `/t/:token` link
+  - scroll Tiki Desk at normal browser zoom
+  - find the new visit in the appropriate date filter
+
+Remaining validation needed:
+
+- Retest a newly generated My Tiki link after the latest deploy, not an old link captured before this patch.
+- Confirm the deployed DB `patient_links` rows include `token_hash`, `status`, and `expires_at` and that the Railway service role key points at the same Supabase project as the frontend.
+- Confirm staff dashboard scroll on:
+  - laptop Chrome
+  - mobile/tablet browser
+  - actual front-desk screen resolution
 
 ## Batch Summary
 
@@ -116,6 +191,22 @@ Batch 6D status:
   - audit dashboard
   - generic settings page
 
+Design-system / UX pass status:
+
+- Status: implemented and in active validation.
+- Implemented:
+  - landing-only Vercel-ready app structure
+  - warmer, brighter landing page using controlled mocha accents
+  - standardized staff/product tokens
+  - wider staff sidebar and top shell
+  - Tiki Desk command-board direction
+  - Protocol and Procedure Management practical UX reset
+  - My Tiki patient UI kit direction
+- Still needs:
+  - real manual QA across common staff screen sizes
+  - multilingual My Tiki patient device QA
+  - further copy cleanup only where real staff confusion remains
+
 ## Readiness Truth
 
 | Area | Classification | Truth |
@@ -126,6 +217,10 @@ Batch 6D status:
 | Tiki Room real clinic usability | pilot-ready | Current/load-next/clear live authenticated verification passed. Needs room-device acceptance in each real deployment. |
 | Tiki Desk operational visibility | stable / pilot-ready | Urgency, SLA, owner/latest actor, room traffic, scheduler health, and audit/history browse are visible. No notification center. |
 | QR generation / patient link flow | stable / pilot-ready | Staff-visible QR now renders internally via `/api/qr`; patient links continue to target app routes. |
+| TikiPaste web-sidecar | usable / pilot-ready | Practical paste/screenshot/reply workflow exists without extension dependency. It is not automatic DOM reading. |
+| Signup/login auth | stable after deploy | Real Supabase Auth flow is restored. Requires correct Railway `VITE_*` env values and rebuild. |
+| Quick Visit + My Tiki link generation | stable after latest hotfix | Patient, visit, and link creation now surface success and should route to a valid My Tiki page after deploy. |
+| Staff dashboard scroll | stable after latest hotfix | Tiki Desk and app document scrolling are restored; real device QA still required. |
 
 ## Remaining Blockers
 
@@ -134,6 +229,10 @@ Blocks confident daily clinic use:
 - Real clinic acceptance pass for aftercare plan editor with an admin/owner editing actual procedures and verifying generated future patient messaging.
 - Tiki Room device-level QA in the clinic rooms that will actually run it, especially microphone permission, browser speech recognition, TTS voice availability, and tablet session persistence.
 - Confirmation that deployed DB has the expected `audit_logs`, `patient_journey_events`, `clinics.settings`, room, escalation, and aftercare tables/columns.
+- Confirmation that latest deploy resolves:
+  - My Tiki link token verification
+  - staff dashboard scroll at normal zoom
+  - newly created visit visibility in Tiki Desk
 
 Blocks broader rollout:
 
@@ -143,6 +242,7 @@ Blocks broader rollout:
 - More polished staff/admin editing UX for non-technical operators.
 - Further staff dashboard UX refinement beyond Phase 1-4, especially My Tiki preview surfacing.
 - Multi-clinic operational configuration review beyond the current narrow knobs.
+- TikiPaste real-world desk workflow validation across KakaoTalk, WhatsApp, Instagram DM, and screenshot fallbacks.
 
 Later expansion only:
 
@@ -151,6 +251,9 @@ Later expansion only:
 - Assignment rules engine.
 - Analytics/reporting dashboards.
 - Dedicated incident management or job dashboard.
+- Chrome extension or native overlay re-entry, only if the web-sidecar workflow proves insufficient.
+- Backend STT/TTS pipeline.
+- Backend OCR platform.
 
 ## Guardrails For Next Agent
 
@@ -183,9 +286,13 @@ Do not revert or include unrelated changes unless explicitly instructed.
 
 ## Safest Next Step
 
-The single safest next step is a focused Tiki Desk visual QA pass in a logged-in browser session:
+The single safest next step is a logged-in deployed smoke test after the latest Railway deploy:
 
-- verify the command board and wider sidebar are readable on the actual staff dashboard viewport
-- verify booked / arrived / next-action columns reflect real clinic data correctly
-- verify the enlarged visit rows still fit common front-desk screens
-- then continue to My Tiki preview surfacing as the next focused follow-up phase
+- create one new patient + visit from Tiki Desk
+- confirm the success screen stays visible
+- open the generated My Tiki link in a new tab
+- confirm the patient page loads
+- return to Tiki Desk and confirm the visit appears in the expected date range
+- confirm Tiki Desk scrolls at normal zoom
+
+After that, continue to My Tiki preview surfacing and staff/admin polish only if the smoke test passes.
