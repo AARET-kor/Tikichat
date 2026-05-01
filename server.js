@@ -145,7 +145,7 @@ app.options("*", cors(corsOptions));
 // ⚠️  Meta Webhook은 raw body가 필요 (HMAC 검증) — express.json() 보다 먼저 등록
 app.use("/webhook/meta", express.raw({ type: "application/json" }), metaWebhookRouter);
 
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 app.use(express.static(join(__dirname, "public")));
 
 // ── GET /api/qr — internal QR SVG rendering for staff-visible patient links
@@ -183,6 +183,16 @@ function getSbAdmin() {
   if (!url) return (_supabaseAdmin = null);
   // 서비스 롤 클라이언트 — RLS bypass, 서버 사이드 CRUD 전용
   return (_supabaseAdmin = createClient(url, svcKey));
+}
+
+function buildClinicSlug(name, email) {
+  const base = String(name || email || "clinic")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 36);
+  return `${base || "clinic"}-${randomBytes(3).toString("hex")}`;
 }
 
 // ── supabaseAdmin 프록시 ───────────────────────────────────────────────────────
@@ -898,16 +908,31 @@ Output this exact JSON shape:
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// POST /api/tiki-paste  { message, clinicId?, clinicName? }
+// POST /api/tiki-paste  { message?, imageData?, imageMediaType?, clinicId?, clinicName? }
 // 15년 경력 수석 실장 페르소나 — 실제 시술 DB 100% 기반 답변
 // ════════════════════════════════════════════════════════════════════════════
 app.post("/api/tiki-paste", async (req, res) => {
-  const { message, clinicId, clinicName: bodyClinicName } = req.body;
-  if (!message?.trim())
-    return res.status(400).json({ error: "message required" });
+  const { message, imageData, imageMediaType, clinicId, clinicName: bodyClinicName } = req.body;
+  const messageText = message?.trim() || "";
+  const hasImage = Boolean(imageData && imageMediaType);
+  if (!messageText && !hasImage)
+    return res.status(400).json({ error: "message or image required" });
+  if (hasImage && !["image/png", "image/jpeg", "image/webp"].includes(imageMediaType)) {
+    return res.status(400).json({ error: "unsupported image type" });
+  }
+  if (hasImage && String(imageData).length > 4_500_000) {
+    return res.status(400).json({ error: "image too large" });
+  }
 
-  // v2: resolve to UUID — body clinicId overrides only if it's a valid UUID
-  const resolvedClinicId = clinicId ?? CLINIC_UUID;
+  let resolvedClinicId = clinicId ?? CLINIC_UUID;
+  try {
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      const staffContext = await resolveStaffAuthContext(req);
+      resolvedClinicId = staffContext.clinic_id;
+    }
+  } catch (err) {
+    return res.status(err.status || 401).json({ error: err.message });
+  }
 
   // ── 병원 정보 + 실제 시술 DB 병렬 조회 ──────────────────────────────────
   const [clinicInfoData, clinicProcs] = await Promise.all([
@@ -922,14 +947,16 @@ app.post("/api/tiki-paste", async (req, res) => {
 
   // ── RAG 지식 베이스 검색 (procedures_knowledge) ──────────────────────────
   let ragContext = "";
-  try {
-    const ragResult = await ragSearch(message.trim(), 5, resolvedClinicId);
-    if (ragResult?.context) {
-      ragContext = ragResult.context;
-      console.log(`[TikiPaste] RAG method=${ragResult.method} chunks=${ragResult.chunks}`);
+  if (messageText) {
+    try {
+      const ragResult = await ragSearch(messageText, 5, resolvedClinicId);
+      if (ragResult?.context) {
+        ragContext = ragResult.context;
+        console.log(`[TikiPaste] RAG method=${ragResult.method} chunks=${ragResult.chunks}`);
+      }
+    } catch (e) {
+      console.warn("[TikiPaste] RAG search failed:", e.message);
     }
-  } catch (e) {
-    console.warn("[TikiPaste] RAG search failed:", e.message);
   }
 
   // ── 실제 시술 목록 텍스트 빌드 ─────────────────────────────────────────
@@ -977,6 +1004,9 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
 {
   "detected_language": "<언어명 in Korean — 예: 중국어, 일본어, 영어>",
   "intent": "<환자 의도 in Korean — 예: 보톡스 가격 문의>",
+  "last_message_intent": "<환자의 마지막 메시지가 요구하는 다음 행동>",
+  "conversation_summary": "<대화 전체 한국어 요약 1~2문장 — 직원 참고용>",
+  "extracted_text": "<이미지 입력이면 스크린샷에서 읽은 핵심 채팅 텍스트. 텍스트 입력이면 원문 핵심 발췌>",
   "ko_summary": "<환자 메시지 한국어 요약 1~2문장 — 직원 참고용. 진단·처방 표현 금지>",
   "risk_level": "<none | low | medium | high — 의료 위험도: high=부작용·알레르기 우려, medium=민감 질문, low=일반 문의>",
   "procedure_interests": ["<언급된 시술명만, 예: 보톡스, 필러, 리프팅. 없으면 []>"],
@@ -988,14 +1018,38 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   }
 }
 
-각 reply: 2~4문장. "${resolvedClinicName}" 자연스럽게 1회 이상 포함. booking reply는 반드시 [예약: ${APP_BASE_URL}/book] 링크로 마무리.`;
+각 reply: 2~4문장. "${resolvedClinicName}" 자연스럽게 1회 이상 포함. booking reply는 반드시 [예약: ${APP_BASE_URL}/book] 링크로 마무리.
+
+이미지가 제공된 경우:
+- 화면 전체를 설명하지 말고 채팅 메시지 텍스트만 읽는다.
+- 읽기 어려운 부분은 추측하지 말고 extracted_text에 "[읽기 어려움]"으로 표시한다.
+- 자동 DOM/브라우저 화면 접근 없이 직원이 업로드한 이미지에 보이는 내용만 사용한다.`;
 
   try {
+    const userContent = hasImage
+      ? [
+          {
+            type: "text",
+            text: messageText
+              ? `Staff-provided context:\n${messageText}\n\nAnalyze the attached chat screenshot as the latest patient conversation.`
+              : "Analyze the attached chat screenshot as the latest patient conversation.",
+          },
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: imageMediaType,
+              data: imageData,
+            },
+          },
+        ]
+      : `Patient message:\n"${messageText}"`;
+
     const resp = await anthropic.messages.create({
       model:      MODEL_HAIKU,
       max_tokens: 1800,
       system:     SYSTEM_PROMPT,
-      messages:   [{ role: "user", content: `Patient message:\n"${message.trim()}"` }],
+      messages:   [{ role: "user", content: userContent }],
     });
 
     const raw = resp.content.find(b => b.type === "text")?.text ?? "";
@@ -1020,6 +1074,9 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
     // 필수 필드 보정 — 구버전 string 응답도 호환
     parsed.options   = parsed.options   ?? {};
     parsed.ko_summary         = parsed.ko_summary  || "";
+    parsed.conversation_summary = parsed.conversation_summary || parsed.ko_summary || "";
+    parsed.last_message_intent  = parsed.last_message_intent  || parsed.intent || "";
+    parsed.extracted_text       = parsed.extracted_text || messageText || "";
     parsed.risk_level         = ["none","low","medium","high"].includes(parsed.risk_level)
       ? parsed.risk_level : "low";
     parsed.procedure_interests = Array.isArray(parsed.procedure_interests) ? parsed.procedure_interests.filter(Boolean) : [];
@@ -1472,8 +1529,8 @@ app.use((err, req, res, _next) => {
 
 // ════════════════════════════════════════════════════════════════════════════
 // POST /api/auth/register  { clinic_name, email, password }
-// 새 병원 계정 생성 — clinic 레코드 + Supabase user 를 서버에서 원자적으로 생성
-// app_metadata.clinic_id / role 은 DB 트리거가 자동 주입
+// 새 병원 계정 생성 — clinic + auth user + clinic_users 를 같은 Auth 모델로 생성
+// app_metadata.clinic_id / role 은 서버에서 명시적으로 주입한다.
 // ════════════════════════════════════════════════════════════════════════════
 app.post("/api/auth/register", async (req, res) => {
   const { clinic_name, email, password } = req.body;
@@ -1484,18 +1541,48 @@ app.post("/api/auth/register", async (req, res) => {
   if (password.length < 8)
     return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다." });
 
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(503).json({
+      error: "회원가입에는 서버 SUPABASE_SERVICE_ROLE_KEY 설정이 필요합니다.",
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const trimmedClinicName = clinic_name.trim();
+  let createdClinicId = null;
+  let createdUserId = null;
+
   try {
-    // 1. Supabase Admin API로 유저 생성
-    //    user_metadata.clinic_name → DB 트리거가 읽어 clinic 레코드 + app_metadata 자동 세팅
     const _sbAdmin = getSbAdmin();
     if (!_sbAdmin) return res.status(503).json({ error: "Supabase가 설정되지 않았습니다." });
+
+    // 1. 앱 tenant anchor 생성
+    const { data: clinic, error: clinicErr } = await _sbAdmin
+      .from("clinics")
+      .insert({
+        slug:              buildClinicSlug(trimmedClinicName, normalizedEmail),
+        clinic_name:       trimmedClinicName,
+        clinic_short_name: trimmedClinicName,
+        settings:          {},
+      })
+      .select("id, slug")
+      .single();
+
+    if (clinicErr) throw clinicErr;
+    createdClinicId = clinic.id;
+
+    // 2. Supabase Auth 유저 생성 — 로그인에 필요한 실제 credentials
     const { data: userData, error: userErr } = await _sbAdmin.auth.admin.createUser({
-      email:          email.trim(),
+      email:          normalizedEmail,
       password:       password,
       email_confirm:  true,           // 이메일 인증 없이 즉시 활성화
+      app_metadata:   {
+        clinic_id: createdClinicId,
+        role:      "owner",
+      },
       user_metadata:  {
-        clinic_name:  clinic_name.trim(),
-        full_name:    clinic_name.trim(),
+        clinic_name:  trimmedClinicName,
+        full_name:    trimmedClinicName,
         role:         "owner",
       },
     });
@@ -1503,29 +1590,54 @@ app.post("/api/auth/register", async (req, res) => {
     if (userErr) {
       // 이미 가입된 이메일
       if (userErr.message?.includes("already")) {
+        await _sbAdmin.from("clinics").delete().eq("id", createdClinicId);
         return res.status(409).json({ error: "이미 가입된 이메일 주소입니다." });
       }
       throw userErr;
     }
 
-    const userId = userData.user.id;
+    createdUserId = userData.user.id;
 
-    // 2. DB 트리거가 clinic 생성 + app_metadata 주입까지 처리함
-    //    트리거가 완료될 때까지 짧게 대기 후 최종 user 조회
-    await new Promise(r => setTimeout(r, 300));
-    const { data: finalUser } = await _sbAdmin.auth.admin.getUserById(userId);
+    // 3. 운영 권한 테이블 생성 — 현재 owner membership
+    const { error: membershipErr } = await _sbAdmin
+      .from("clinic_users")
+      .insert({
+        clinic_id: createdClinicId,
+        user_id:   createdUserId,
+        email:     normalizedEmail,
+        role:      "owner",
+        is_active: true,
+      });
+
+    if (membershipErr) throw membershipErr;
+
+    // 4. 최종 Auth metadata 확인 — 로그인 JWT가 이 값을 싣는다.
+    const { data: finalUser, error: finalUserErr } = await _sbAdmin.auth.admin.getUserById(createdUserId);
+    if (finalUserErr) throw finalUserErr;
     const clinicId = finalUser?.user?.app_metadata?.clinic_id;
+    if (clinicId !== createdClinicId) {
+      throw new Error("Auth metadata clinic_id was not provisioned");
+    }
 
-    console.log(`[Register] 신규 병원 생성: "${clinic_name}" → clinic_id=${clinicId} user=${userId}`);
+    console.log(`[Register] 신규 병원 생성: "${trimmedClinicName}" → clinic_id=${clinicId} user=${createdUserId}`);
     res.status(201).json({
       success:   true,
       clinic_id: clinicId,
-      user_id:   userId,
-      message:   `${clinic_name} 계정이 생성되었습니다.`,
+      user_id:   createdUserId,
+      message:   `${trimmedClinicName} 계정이 생성되었습니다.`,
     });
 
   } catch (err) {
     console.error("[Register]", err.message);
+    const _sbAdmin = getSbAdmin();
+    if (_sbAdmin) {
+      if (createdUserId) {
+        await _sbAdmin.auth.admin.deleteUser(createdUserId).catch(() => {});
+      }
+      if (createdClinicId) {
+        await _sbAdmin.from("clinics").delete().eq("id", createdClinicId).catch(() => {});
+      }
+    }
     res.status(500).json({ error: err.message });
   }
 });

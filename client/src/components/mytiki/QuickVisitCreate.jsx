@@ -13,6 +13,7 @@
  *   clinicId   — from AuthContext
  *   darkMode   — bool
  *   onClose()  — dismiss (no creation)
+ *   initialText — optional text from TikiPaste handoff
  *   onCreated(normalizedVisit) — refresh parent after success
  */
 
@@ -55,7 +56,7 @@ function StepDots({ step }) {
 }
 
 // ── QuickVisitCreate ───────────────────────────────────────────────────────────
-export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreated }) {
+export default function QuickVisitCreate({ clinicId, darkMode, initialText = '', onClose, onCreated }) {
   const [step,      setStep]      = useState('parse');   // parse | creating | done | error
   const [errMsg,    setErrMsg]    = useState('');
   const [result,    setResult]    = useState(null);      // { patientName, url, visitId }
@@ -320,6 +321,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, onClose, onCreate
           {step === 'parse' && parserAuthReady && (
             <IntakeParser
               authHeaders={parserAuthHeaders}
+              initialText={initialText}
               procedureOptions={procedureOptions}
               selectedProcedureId={selectedProcedureId}
               onProcedureChange={setSelectedProcedureId}

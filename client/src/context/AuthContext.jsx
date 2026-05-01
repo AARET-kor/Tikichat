@@ -101,8 +101,21 @@ function hasSupabaseConfig() {
 
 function allowsMockAuth() {
   return import.meta.env.DEV ||
-    import.meta.env.VITE_ENABLE_MOCK_AUTH === 'true' ||
-    !hasSupabaseConfig();
+    import.meta.env.VITE_ENABLE_MOCK_AUTH === 'true';
+}
+
+function normalizeLoginError(error) {
+  const message = error?.message || String(error || "");
+  if (/failed to fetch|fetch failed|network/i.test(message)) {
+    return "Supabase Auth 연결에 실패했습니다. 배포 환경의 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY 설정과 Supabase Auth 도메인을 확인해 주세요.";
+  }
+  if (/invalid login credentials/i.test(message)) {
+    return "이메일 또는 비밀번호가 올바르지 않습니다.";
+  }
+  if (/email not confirmed/i.test(message)) {
+    return "이메일 확인이 아직 완료되지 않았습니다. Supabase Auth 설정 또는 확인 메일을 확인해 주세요.";
+  }
+  return message || "로그인에 실패했습니다.";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,7 +297,7 @@ export function AuthProvider({ children }) {
         }
         // 운영 환경에서는 mock 폴백을 허용하지 않는다.
         if (error && (!mockAuthAllowed || !MOCK_TENANTS[email.toLowerCase()])) {
-          setLoginError(error.message || '로그인에 실패했습니다.');
+          setLoginError(normalizeLoginError(error));
           setIsLoggingIn(false);
           return false;
         }
@@ -294,6 +307,11 @@ export function AuthProvider({ children }) {
         }
       } catch (err) {
         console.warn('[Auth] Supabase unavailable, falling back to mock:', err.message);
+        if (!mockAuthAllowed) {
+          setLoginError(normalizeLoginError(err));
+          setIsLoggingIn(false);
+          return false;
+        }
       }
     }
 

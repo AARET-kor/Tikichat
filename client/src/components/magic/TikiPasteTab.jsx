@@ -1,12 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Sparkles, Clipboard, Copy, Check, AlertCircle, Loader2,
-  RefreshCcw, Globe, Brain, Monitor, ScanLine,
-  ChevronRight, BookOpen, ShieldAlert, Zap, Heart,
+  RefreshCcw, Globe, Brain, Upload, Image as ImageIcon,
+  BookOpen, ShieldAlert, Zap, Heart, Send,
   TrendingUp, Save, Search, UserPlus, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import QuickVisitCreate from '../mytiki/QuickVisitCreate';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -32,6 +33,13 @@ const C = {
 };
 
 const SANS = "'Pretendard Variable', 'Inter', system-ui, -apple-system, sans-serif";
+
+async function getStaffAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers = { 'Content-Type': 'application/json' };
+  if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+  return headers;
+}
 
 // ── CSS keyframes ─────────────────────────────────────────────────────────────
 const GLOBAL_STYLE = `
@@ -135,38 +143,6 @@ function Toast({ message }) {
   );
 }
 
-// ── Input mode tabs ───────────────────────────────────────────────────────────
-const INPUT_MODES = [
-  { id: 'paste',  label: 'Paste',       icon: Clipboard,  desc: '텍스트 붙여넣기' },
-  { id: 'screen', label: 'Read Screen', icon: Monitor,    desc: '화면 스크린샷 읽기' },
-  { id: 'ocr',    label: 'OCR Capture', icon: ScanLine,   desc: '영역 캡처' },
-];
-
-function InputModeTabs({ mode, onSelect }) {
-  return (
-    <div style={{ display:'flex', gap:4, padding:'3px', background:C.bgSub, borderRadius:10, border:`1px solid ${C.border}` }}>
-      {INPUT_MODES.map(m => {
-        const active = mode === m.id;
-        const Icon = m.icon;
-        return (
-          <button key={m.id} className="mode-tab" onClick={() => onSelect(m.id)} style={{
-            display:'flex', alignItems:'center', gap:5,
-            padding:'5px 11px', borderRadius:7, border:'none',
-            background: active ? C.white : 'transparent',
-            color: active ? C.mocha : C.textMt,
-            fontSize:11, fontWeight: active ? 700 : 500,
-            boxShadow: active ? `0 1px 4px rgba(164,120,100,0.14)` : 'none',
-            letterSpacing:'-0.01em',
-          }}>
-            <Icon size={11} strokeWidth={active ? 2.2 : 1.8} />
-            {m.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Paste zone ────────────────────────────────────────────────────────────────
 function PasteZone({ value, onChange, onPaste, pasting }) {
   const [focused, setFocused] = useState(false);
@@ -226,155 +202,143 @@ function PasteZone({ value, onChange, onPaste, pasting }) {
   );
 }
 
-// ── Read screen zone ──────────────────────────────────────────────────────────
-function ReadScreenZone({ onTextReady }) {
-  const [status, setStatus] = useState('idle'); // idle | reading | done | error
-  const [preview, setPreview] = useState('');
+// ── Screenshot dropzone ───────────────────────────────────────────────────────
+function ScreenshotDropzone({ image, onImage, onImagePaste, onClear }) {
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef(null);
 
-  const handleReadClipboard = async () => {
-    setStatus('reading');
-    try {
-      const items = await navigator.clipboard.read();
-      for (const item of items) {
-        if (item.types.includes('text/plain')) {
-          const blob = await item.getType('text/plain');
-          const text = await blob.text();
-          if (text.trim()) {
-            setPreview(text);
-            setStatus('done');
-            onTextReady(text);
-            return;
-          }
-        }
-      }
-      // Fallback to text
-      const text = await navigator.clipboard.readText();
-      if (text.trim()) {
-        setPreview(text);
-        setStatus('done');
-        onTextReady(text);
-        return;
-      }
-      setStatus('error');
-    } catch {
-      // Try plain text fallback
-      try {
-        const text = await navigator.clipboard.readText();
-        if (text.trim()) {
-          setPreview(text);
-          setStatus('done');
-          onTextReady(text);
-          return;
-        }
-      } catch { /* ignore */ }
-      setStatus('error');
-    }
+  const acceptFile = (file) => {
+    if (!file?.type?.startsWith('image/')) return;
+    onImage(file);
   };
 
   return (
-    <div style={{ borderRadius:14, border:`1.5px solid ${C.border}`, background:C.white, overflow:'hidden' }}>
-      <div style={{ padding:'24px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:16, minHeight:120 }}>
-        {status === 'idle' && (
-          <>
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10, textAlign:'center' }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:C.mochaPale, border:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <Monitor size={20} color={C.mocha} strokeWidth={1.8} />
-              </div>
-              <div>
-                <p style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>화면 스크린샷에서 읽기</p>
-                <p style={{ fontSize:11, color:C.textMt, lineHeight:1.6 }}>채팅 화면을 캡처한 후 (Cmd+Ctrl+Shift+4)<br />클립보드 읽기 버튼을 누르세요</p>
-              </div>
-            </div>
-            <button className="action-btn" onClick={handleReadClipboard} style={{
-              display:'flex', alignItems:'center', gap:6,
-              padding:'9px 20px', borderRadius:9,
-              background:C.mocha, color:'#fff',
-              border:'none', fontSize:12, fontWeight:700,
-              boxShadow:`0 4px 14px rgba(164,120,100,0.4)`,
-              letterSpacing:'-0.01em',
-            }}>
-              <Clipboard size={13} /> 클립보드 읽기
-            </button>
-          </>
-        )}
-        {status === 'reading' && (
-          <div style={{ display:'flex', alignItems:'center', gap:10, color:C.textSub }}>
-            <Loader2 size={16} style={{ animation:'spin 1s linear infinite', color:C.mocha }} />
-            <span style={{ fontSize:12, fontWeight:600 }}>클립보드를 읽는 중...</span>
-          </div>
-        )}
-        {status === 'done' && (
-          <div style={{ width:'100%' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
-              <Check size={13} color={C.sage} />
-              <span style={{ fontSize:11, fontWeight:700, color:C.sage, letterSpacing:'0.04em' }}>텍스트 감지됨</span>
-              <button className="action-btn" onClick={() => { setStatus('idle'); setPreview(''); }} style={{ marginLeft:'auto', fontSize:10, color:C.textMt, background:'none', border:'none', padding:0 }}>다시 캡처</button>
-            </div>
-            <div style={{ padding:'10px 12px', background:C.bg, borderRadius:8, border:`1px solid ${C.border}` }}>
-              <p style={{ fontSize:12, color:C.textSub, lineHeight:1.65, whiteSpace:'pre-wrap' }}>{preview.slice(0, 200)}{preview.length > 200 ? '...' : ''}</p>
-            </div>
-          </div>
-        )}
-        {status === 'error' && (
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, textAlign:'center' }}>
-            <p style={{ fontSize:12, color:C.red, fontWeight:600 }}>클립보드 접근 권한이 없습니다</p>
-            <p style={{ fontSize:11, color:C.textMt }}>브라우저 설정에서 클립보드 권한을 허용하세요</p>
-            <button className="action-btn" onClick={() => setStatus('idle')} style={{ fontSize:11, color:C.textSub, background:'none', border:`1px solid ${C.border}`, padding:'5px 12px', borderRadius:7 }}>다시 시도</button>
-          </div>
-        )}
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        acceptFile(e.dataTransfer?.files?.[0]);
+      }}
+      style={{
+        borderRadius:14,
+        border:`1.5px dashed ${dragging ? C.mocha : C.borderMd}`,
+        background: dragging ? C.mochaPale : C.white,
+        padding:16,
+        display:'flex',
+        gap:14,
+        alignItems:'center',
+        transition:'background 0.15s, border-color 0.15s',
+      }}
+    >
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display:'none' }}
+        onChange={(e) => acceptFile(e.target.files?.[0])}
+      />
+      <div style={{ width:42, height:42, borderRadius:13, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        {image ? <ImageIcon size={18} color={C.mocha} /> : <Upload size={18} color={C.mocha} />}
       </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        <p style={{ fontSize:13, fontWeight:800, color:C.text, letterSpacing:'-0.02em' }}>
+          {image ? image.name : '스크린샷 드롭 / 업로드'}
+        </p>
+        <p style={{ fontSize:11, color:C.textMt, lineHeight:1.55, marginTop:3 }}>
+          채팅 내용을 복사하기 어려울 때만 사용하세요. 이미지에서 보이는 텍스트를 읽어 분석합니다.
+        </p>
+      </div>
+      {image ? (
+        <button className="action-btn" onClick={onClear} style={{ border:'none', background:C.bgSub, color:C.textMt, borderRadius:8, padding:'7px 10px', fontSize:11, fontWeight:700 }}>
+          제거
+        </button>
+      ) : (
+        <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+          <button className="action-btn" onClick={() => fileRef.current?.click()} style={{ border:`1px solid ${C.border}`, background:C.bgSub, color:C.textSub, borderRadius:8, padding:'7px 10px', fontSize:11, fontWeight:700 }}>
+            파일 선택
+          </button>
+          <button className="action-btn" onClick={onImagePaste} style={{ border:'none', background:C.mocha, color:'#fff', borderRadius:8, padding:'7px 10px', fontSize:11, fontWeight:800 }}>
+            이미지 붙여넣기
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── OCR capture zone ──────────────────────────────────────────────────────────
-function OCRCaptureZone({ onTextReady }) {
-  const [pastedText, setPastedText] = useState('');
-
-  const openOverlay = () => {
-    window.open('/overlay', '_blank', 'width=420,height=680,toolbar=no,menubar=no');
-  };
-
+function WorkspaceInput({
+  input,
+  image,
+  loading,
+  pasting,
+  onInputChange,
+  onTextPaste,
+  onClipboardText,
+  onImage,
+  onImagePaste,
+  onClearImage,
+  onGenerate,
+}) {
+  const canGenerate = input.trim() || image;
   return (
-    <div style={{ borderRadius:14, border:`1.5px solid ${C.border}`, background:C.white, overflow:'hidden' }}>
-      <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:16 }}>
-        <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
-          <div style={{ width:40, height:40, borderRadius:11, background:C.mochaPale, border:`1px solid ${C.border}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <ScanLine size={18} color={C.mocha} strokeWidth={1.8} />
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.45fr) minmax(300px, 0.85fr)', gap:16, alignItems:'stretch' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <PasteZone
+          value={input}
+          onChange={onInputChange}
+          onPaste={onTextPaste}
+          pasting={pasting}
+        />
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            {input.length > 0 && (
+              <span style={{ fontSize:10, color:C.textMt, fontWeight:600 }}>{input.length}자</span>
+            )}
+            <button className="action-btn" onClick={onClipboardText} style={{
+              display:'flex', alignItems:'center', gap:5,
+              padding:'7px 12px', borderRadius:8,
+              background:C.white, color:C.textSub,
+              border:`1px solid ${C.border}`,
+              fontSize:11, fontWeight:700,
+            }}>
+              <Clipboard size={11} /> 선택한 채팅 텍스트 붙여넣기
+            </button>
           </div>
-          <div>
-            <p style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:3 }}>화면 영역 OCR 캡처</p>
-            <p style={{ fontSize:11, color:C.textMt, lineHeight:1.6 }}>오버레이 창을 열어 화면에서 직접 영역을 캡처하거나, 캡처한 결과 텍스트를 아래에 붙여넣으세요.</p>
-          </div>
+          <button className="action-btn" onClick={onGenerate} disabled={!canGenerate || loading} style={{
+            display:'flex', alignItems:'center', gap:6,
+            padding:'9px 18px', borderRadius:10, border:'none',
+            background: canGenerate && !loading ? C.mocha : C.bgDeep,
+            color: canGenerate && !loading ? '#fff' : C.textMt,
+            fontSize:12, fontWeight:850, letterSpacing:'-0.01em',
+            cursor: canGenerate && !loading ? 'pointer' : 'not-allowed',
+            boxShadow: canGenerate && !loading ? `0 3px 14px rgba(164,120,100,0.34)` : 'none',
+          }}>
+            {loading
+              ? <><Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> 분석 중</>
+              : <><Sparkles size={12} /> 분석하고 답장 만들기</>
+            }
+          </button>
         </div>
+      </div>
 
-        <button className="action-btn" onClick={openOverlay} style={{
-          display:'flex', alignItems:'center', justifyContent:'center', gap:7,
-          padding:'10px', borderRadius:9,
-          background:C.bgSub, color:C.textSub,
-          border:`1.5px solid ${C.border}`,
-          fontSize:12, fontWeight:700, letterSpacing:'-0.01em',
-        }}
-          onMouseEnter={e => { e.currentTarget.style.background = C.mochaPale; e.currentTarget.style.borderColor = C.mochaLt; e.currentTarget.style.color = C.mocha; }}
-          onMouseLeave={e => { e.currentTarget.style.background = C.bgSub; e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSub; }}
-        >
-          <ScanLine size={13} /> 오버레이 창 열기 <ChevronRight size={11} style={{ opacity:0.5 }} />
-        </button>
-
-        <div>
-          <label style={{ fontSize:10, fontWeight:700, color:C.textMt, textTransform:'uppercase', letterSpacing:'0.08em', display:'block', marginBottom:6 }}>캡처 결과 텍스트</label>
-          <textarea
-            className="paste-textarea"
-            value={pastedText}
-            onChange={e => { setPastedText(e.target.value); if (e.target.value.trim()) onTextReady(e.target.value); }}
-            placeholder="오버레이에서 캡처한 텍스트를 여기에 붙여넣으세요"
-            rows={3}
-            style={{
-              width:'100%', padding:'10px 12px', fontSize:12, lineHeight:1.65,
-              color:C.text, background:C.bg, border:`1px solid ${C.border}`,
-              borderRadius:9, resize:'none', caretColor:C.mocha,
-            }}
-          />
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <ScreenshotDropzone
+          image={image}
+          onImage={onImage}
+          onImagePaste={onImagePaste}
+          onClear={onClearImage}
+        />
+        <div style={{ padding:'13px 14px', borderRadius:13, background:C.bgSub, border:`1px solid ${C.border}` }}>
+          <p style={{ fontSize:11, fontWeight:850, color:C.textSub, letterSpacing:'-0.01em', marginBottom:7 }}>운영 원칙</p>
+          {[
+            '자동 화면 읽기 없이 직원이 붙여넣은 내용만 분석합니다.',
+            '답변은 복사만 지원하고 자동 전송하지 않습니다.',
+            '위험 신호가 있으면 전송 전 직원 확인이 필요합니다.',
+          ].map((item) => (
+            <p key={item} style={{ fontSize:10.5, color:C.textMt, lineHeight:1.55, marginTop:4 }}>• {item}</p>
+          ))}
         </div>
       </div>
     </div>
@@ -385,11 +349,13 @@ function OCRCaptureZone({ onTextReady }) {
 function AnalysisStrip({ result }) {
   const risk = result?.risk_level || 'low';
   const isRisk = risk === 'high' || risk === 'medium';
+  const summary = result?.conversation_summary || result?.ko_summary;
+  const intent = result?.last_message_intent || result?.intent;
 
   return (
     <div style={{ animation:'analysisIn 0.35s ease-out' }}>
-      {/* Korean interpretation */}
-      {result?.ko_summary && (
+      {/* Conversation summary */}
+      {summary && (
         <div style={{
           padding:'12px 16px', marginBottom:12,
           background:C.bgSub,
@@ -397,9 +363,9 @@ function AnalysisStrip({ result }) {
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
             <BookOpen size={11} color={C.textMt} />
-            <span style={{ fontSize:10, fontWeight:700, color:C.textMt, textTransform:'uppercase', letterSpacing:'0.08em' }}>한국어 해석 · 직원 참고용</span>
+            <span style={{ fontSize:10, fontWeight:700, color:C.textMt, textTransform:'uppercase', letterSpacing:'0.08em' }}>대화 요약 · 직원 참고용</span>
           </div>
-          <p style={{ fontSize:13, color:C.textSub, lineHeight:1.65, letterSpacing:'-0.01em' }}>{result.ko_summary}</p>
+          <p style={{ fontSize:13, color:C.textSub, lineHeight:1.65, letterSpacing:'-0.01em' }}>{summary}</p>
         </div>
       )}
 
@@ -412,9 +378,9 @@ function AnalysisStrip({ result }) {
         </div>
 
         {/* Intent badge */}
-        {result?.intent && (
+        {intent && (
           <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:999, background:C.bgSub }}>
-            <span style={{ fontSize:11, fontWeight:600, color:C.textSub, letterSpacing:'-0.01em' }}>{result.intent}</span>
+            <span style={{ fontSize:11, fontWeight:600, color:C.textSub, letterSpacing:'-0.01em' }}>마지막 의도: {intent}</span>
           </div>
         )}
 
@@ -610,9 +576,8 @@ function SaveToMemoryBar({ result, input, clinicId }) {
   const doSave = async (patient) => {
     setPhase('saving');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
 
       const r = await fetch('/api/memory', {
         method:  'POST',
@@ -625,7 +590,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
           procedureInterests: result?.procedure_interests  || [],
           concerns:           result?.concerns             || [],
           riskFlags:          result?.risk_level === 'high'
-            ? [{ type: 'flagged', detail: result.intent, severity: 'high' }]
+            ? [{ type: 'flagged', detail: result.last_message_intent || result.intent, severity: 'high' }]
             : [],
         }),
       });
@@ -644,11 +609,12 @@ function SaveToMemoryBar({ result, input, clinicId }) {
     if (!query.trim()) return;
     setPhase('saving');
     try {
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
       const r = await fetch('/api/patients', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          clinicId: clinicId || undefined,
           patient: {
             name: query.trim(),
             lang: result?.detected_language
@@ -681,11 +647,11 @@ function SaveToMemoryBar({ result, input, clinicId }) {
       </div>
       <div style={{ flex:1 }}>
         <p style={{ fontSize:12, fontWeight:700, color:C.sage, letterSpacing:'-0.01em' }}>
-          {savedPatient.name}님 Tiki Memory에 저장되었습니다
+          {savedPatient.name}님 상담 컨텍스트가 Tiki Desk로 전달되었습니다
         </p>
         <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
           {sessionCount > 1 ? `총 ${sessionCount}회 상담 기록됨` : '첫 번째 상담 기록됨'}
-          {' · '}Insights에서 확인할 수 있습니다
+          {' · '}환자 기록과 운영 보드에서 이어서 확인할 수 있습니다
         </p>
       </div>
       <Check size={16} color={C.sage} />
@@ -710,7 +676,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
   if (phase === 'saving') return (
     <div style={{ ...baseStyle, background:C.bgSub, display:'flex', alignItems:'center', gap:12 }}>
       <Loader2 size={15} color={C.mocha} style={{ animation:'spin 0.8s linear infinite', flexShrink:0 }} />
-      <p style={{ fontSize:12, fontWeight:600, color:C.textSub }}>Tiki Memory에 저장 중...</p>
+      <p style={{ fontSize:12, fontWeight:600, color:C.textSub }}>Tiki Desk로 상담 컨텍스트를 보내는 중...</p>
     </div>
   );
 
@@ -795,7 +761,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
           이 상담을 환자 기록에 저장
         </p>
         <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
-          의도, 시술 관심사, 위험도가 Tiki Memory에 누적됩니다
+          의도, 시술 관심사, 위험도가 Tiki Desk 상담 컨텍스트에 남습니다
         </p>
       </div>
       <button onClick={() => setPhase('selecting')} style={{
@@ -807,7 +773,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
         cursor:'pointer', letterSpacing:'-0.01em', flexShrink:0,
       }}>
         <Save size={11} />
-        Memory 저장
+        Tiki Desk로 보내기
       </button>
     </div>
   );
@@ -863,14 +829,15 @@ export default function TikiPasteTab() {
   const { clinicId, session } = useAuth();
   const clinicName = session?.clinic?.name || '클리닉';
 
-  const [mode,       setMode]       = useState('paste'); // 'paste' | 'screen' | 'ocr'
   const [input,      setInput]      = useState('');
+  const [image,      setImage]      = useState(null);
   const [loading,    setLoading]    = useState(false);
   const [result,     setResult]     = useState(null);
   const [error,      setError]      = useState(null);
   const [toast,      setToast]      = useState('');
   const [pasting,    setPasting]    = useState(false);
   const [tikiActive, setTikiActive] = useState(false);
+  const [quickVisitOpen, setQuickVisitOpen] = useState(false);
   const tikiTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -885,18 +852,57 @@ export default function TikiPasteTab() {
     tikiTimer.current = setTimeout(() => setTikiActive(false), 1050);
   }, []);
 
-  const handleGenerate = useCallback(async (text) => {
+  const readImageFile = useCallback((file) => new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith('image/')) {
+      reject(new Error('이미지 파일만 업로드할 수 있습니다.'));
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      reject(new Error('스크린샷은 4MB 이하 이미지만 사용할 수 있습니다.'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      const data = value.includes(',') ? value.split(',').pop() : value;
+      resolve({ name: file.name || 'chat-screenshot', mediaType: file.type, data });
+    };
+    reader.onerror = () => reject(new Error('이미지를 읽지 못했습니다.'));
+    reader.readAsDataURL(file);
+  }), []);
+
+  const handleImageFile = useCallback(async (file) => {
+    try {
+      const payload = await readImageFile(file);
+      setImage(payload);
+      setResult(null);
+      setError(null);
+      showToast('스크린샷이 추가되었습니다');
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [readImageFile]);
+
+  const handleGenerate = useCallback(async (text, imageOverride) => {
     const msg = (text ?? input).trim();
-    if (!msg || loading) return;
+    const imagePayload = imageOverride ?? image;
+    if ((!msg && !imagePayload) || loading) return;
     setLoading(true);
     setError(null);
     setResult(null);
     triggerTiki();
     try {
+      const headers = await getStaffAuthHeaders();
       const res = await fetch('/api/tiki-paste', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: msg, clinicId: clinicId || undefined, clinicName }),
+        headers,
+        body:    JSON.stringify({
+          message: msg || undefined,
+          imageData: imagePayload?.data,
+          imageMediaType: imagePayload?.mediaType,
+          clinicId: clinicId || undefined,
+          clinicName,
+        }),
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
@@ -908,9 +914,15 @@ export default function TikiPasteTab() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, clinicId, clinicName, triggerTiki]);
+  }, [input, image, loading, clinicId, clinicName, triggerTiki]);
 
   const handleTextareaPaste = useCallback((e) => {
+    const imageFile = Array.from(e.clipboardData?.files || []).find((file) => file.type?.startsWith('image/'));
+    if (imageFile) {
+      e.preventDefault();
+      handleImageFile(imageFile);
+      return;
+    }
     const pastedText = e.clipboardData?.getData('text') || '';
     if (!pastedText.trim()) return;
     setInput(pastedText);
@@ -920,7 +932,7 @@ export default function TikiPasteTab() {
     triggerTiki();
     setTimeout(() => setPasting(false), 750);
     setTimeout(() => handleGenerate(pastedText), 0);
-  }, [handleGenerate, triggerTiki]);
+  }, [handleGenerate, handleImageFile, triggerTiki]);
 
   const handleClipboardBtn = useCallback(async () => {
     try {
@@ -937,25 +949,32 @@ export default function TikiPasteTab() {
     } catch { /* permission denied — user can paste manually */ }
   }, [handleGenerate, triggerTiki]);
 
-  const handleModeTextReady = useCallback((text) => {
-    setInput(text);
-    setResult(null);
-    setError(null);
-    handleGenerate(text);
-  }, [handleGenerate]);
+  const handleClipboardImage = useCallback(async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((type) => type.startsWith('image/'));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const file = new File([blob], 'clipboard-screenshot.png', { type: imageType });
+        await handleImageFile(file);
+        return;
+      }
+      showToast('클립보드에 이미지가 없습니다');
+    } catch {
+      setError('브라우저 클립보드 권한 때문에 이미지를 읽지 못했습니다. 파일을 드롭하거나 선택해 주세요.');
+    }
+  }, [handleImageFile]);
 
   const handleReset = () => {
-    setInput(''); setResult(null); setError(null);
-  };
-
-  const handleModeSwitch = (newMode) => {
-    setMode(newMode);
     setInput('');
+    setImage(null);
     setResult(null);
     setError(null);
   };
 
-  const hasContent = input.trim() || result || loading;
+  const handoffText = input || result?.extracted_text || result?.conversation_summary || result?.ko_summary || '';
+  const hasContent = input.trim() || image || result || loading;
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflowY:'auto', background:C.bg, fontFamily:SANS }}>
@@ -987,9 +1006,12 @@ export default function TikiPasteTab() {
           </div>
         </div>
 
-        {/* Mode selector — center */}
         <div style={{ flex:1, display:'flex', justifyContent:'center' }}>
-          <InputModeTabs mode={mode} onSelect={handleModeSwitch} />
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', background:C.white, border:`1px solid ${C.border}`, borderRadius:999 }}>
+            <span style={{ fontSize:11, fontWeight:800, color:C.textSub }}>웹 사이드카</span>
+            <span style={{ width:4, height:4, borderRadius:'50%', background:C.mochaLt }} />
+            <span style={{ fontSize:11, color:C.textMt }}>복사 · 붙여넣기 · 스크린샷 드롭</span>
+          </div>
         </div>
 
         {/* Reset */}
@@ -1010,60 +1032,22 @@ export default function TikiPasteTab() {
       </div>
 
       {/* ── Content ───────────────────────────────────────────────────────────── */}
-      <div style={{ flex:1, maxWidth:900, width:'100%', margin:'0 auto', padding:'24px 24px 40px', display:'flex', flexDirection:'column', gap:20 }}>
+      <div style={{ flex:1, maxWidth:1180, width:'100%', margin:'0 auto', padding:'24px 24px 40px', display:'flex', flexDirection:'column', gap:20 }}>
 
         {/* ── Input section ──────────────────────────────────────────────────── */}
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {mode === 'paste' && (
-            <PasteZone
-              value={input}
-              onChange={(v) => { setInput(v); setResult(null); setError(null); }}
-              onPaste={handleTextareaPaste}
-              pasting={pasting}
-            />
-          )}
-          {mode === 'screen' && <ReadScreenZone onTextReady={handleModeTextReady} />}
-          {mode === 'ocr'    && <OCRCaptureZone onTextReady={handleModeTextReady} />}
-
-          {/* Action row — paste mode only */}
-          {mode === 'paste' && (
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                {input.length > 0 && (
-                  <span style={{ fontSize:10, color:C.textMt, fontWeight:500 }}>{input.length}자</span>
-                )}
-                <button className="action-btn" onClick={handleClipboardBtn} style={{
-                  display:'flex', alignItems:'center', gap:5,
-                  padding:'6px 12px', borderRadius:8,
-                  background:'transparent', color:C.textMt,
-                  border:`1px solid ${C.border}`,
-                  fontSize:11, fontWeight:600,
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.mocha + '60'; e.currentTarget.style.color = C.mocha; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textMt; }}
-                >
-                  <Clipboard size={11} /> 클립보드에서 붙여넣기
-                </button>
-              </div>
-
-              <button className="action-btn" onClick={() => handleGenerate()} disabled={!input.trim() || loading} style={{
-                display:'flex', alignItems:'center', gap:6,
-                padding:'8px 18px', borderRadius:9, border:'none',
-                background: input.trim() && !loading ? C.mocha : C.bgDeep,
-                color: input.trim() && !loading ? '#fff' : C.textMt,
-                fontSize:12, fontWeight:700, letterSpacing:'-0.01em',
-                cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-                boxShadow: input.trim() && !loading ? `0 3px 14px rgba(164,120,100,0.40)` : 'none',
-                transition:'all 0.15s',
-              }}>
-                {loading
-                  ? <><Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> 분석 중...</>
-                  : <><Sparkles size={12} /> 답장 생성</>
-                }
-              </button>
-            </div>
-          )}
-        </div>
+        <WorkspaceInput
+          input={input}
+          image={image}
+          loading={loading}
+          pasting={pasting}
+          onInputChange={(v) => { setInput(v); setResult(null); setError(null); }}
+          onTextPaste={handleTextareaPaste}
+          onClipboardText={handleClipboardBtn}
+          onImage={handleImageFile}
+          onImagePaste={handleClipboardImage}
+          onClearImage={() => setImage(null)}
+          onGenerate={() => handleGenerate()}
+        />
 
         {/* ── Loading state ──────────────────────────────────────────────────── */}
         {loading && (
@@ -1122,12 +1106,46 @@ export default function TikiPasteTab() {
 
         {/* ── Save to memory ─────────────────────────────────────────────────── */}
         {result && !loading && (
-          <SaveToMemoryBar result={result} input={input} clinicId={clinicId} />
+          <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto', gap:12, alignItems:'stretch' }}>
+            <SaveToMemoryBar result={result} input={handoffText} clinicId={clinicId} />
+            <div style={{ display:'flex', gap:8, alignItems:'center', padding:'14px 16px', borderRadius:12, background:C.white, border:`1px solid ${C.border}` }}>
+              <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
+                display:'flex', alignItems:'center', gap:7,
+                padding:'9px 14px', borderRadius:9,
+                background:C.mocha, color:'#fff', border:'none',
+                fontSize:12, fontWeight:850,
+                boxShadow:`0 3px 12px rgba(164,120,100,0.26)`,
+              }}>
+                <UserPlus size={13} /> Quick Visit
+              </button>
+              <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
+                display:'flex', alignItems:'center', gap:7,
+                padding:'9px 14px', borderRadius:9,
+                background:C.mochaPale, color:C.mochaDk, border:`1px solid ${C.border}`,
+                fontSize:12, fontWeight:800,
+              }}>
+                <Send size={13} /> My Tiki 링크 준비
+              </button>
+            </div>
+          </div>
         )}
 
         {/* ── Empty state ────────────────────────────────────────────────────── */}
-        {!hasContent && !error && <EmptyState mode={mode} />}
+        {!hasContent && !error && <EmptyState />}
       </div>
+
+      {quickVisitOpen && (
+        <QuickVisitCreate
+          clinicId={clinicId}
+          darkMode={false}
+          initialText={handoffText}
+          onClose={() => setQuickVisitOpen(false)}
+          onCreated={() => {
+            setQuickVisitOpen(false);
+            showToast('Quick Visit과 My Tiki 링크가 준비되었습니다');
+          }}
+        />
+      )}
     </div>
   );
 }
