@@ -2395,9 +2395,9 @@ app.get("/api/staff/audit-history", requireStaffAuth, async (req, res) => {
 
 // ── POST /api/my-tiki/links
 // 새 My Tiki 매직 링크 발급 (예약 확정 후 스태프가 호출)
-// body: { visitId, patientLang?, sentVia?, customMessage? }
+// body: { visitId, patientLang?, sentVia? }
 app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
-  const { visitId, patientLang = "ko", sentVia, customMessage } = req.body;
+  const { visitId, patientLang = "ko", sentVia } = req.body;
   const clinic_id = req.clinic_id;
 
   if (!visitId) return res.status(400).json({ error: "visitId required" });
@@ -2439,7 +2439,6 @@ app.post("/api/my-tiki/links", requireStaffAuth, async (req, res) => {
         expires_at:     expiresAt,
         patient_lang:   patientLang,
         sent_via:       sentVia || null,
-        custom_message: customMessage || null,
         generated_by:   req.staff_user_id,  // v2: generated_by (was created_by)
       })
       .select("id, expires_at, status")

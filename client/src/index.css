@@ -43,6 +43,20 @@
   html, body, #root {
     height: 100%;
   }
+  html {
+    overflow: hidden;
+  }
+  body {
+    margin: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    touch-action: manipulation;
+  }
 }
 
 @layer components {

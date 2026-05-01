@@ -150,7 +150,7 @@ export default function Dashboard() {
   const bg = darkMode ? 'bg-zinc-950' : 'td-page';
 
   return (
-    <div className={`flex flex-col h-screen ${bg} overflow-hidden`}>
+    <div className={`flex flex-col ${bg} overflow-hidden`} style={{ height: '100dvh', minHeight: 0 }}>
       <TopBar
         session={session}
         onLogout={handleLogout}
@@ -162,7 +162,7 @@ export default function Dashboard() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} darkMode={darkMode} />
 
-        <main className="flex flex-1 min-w-0 overflow-hidden">
+        <main className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
 
           {/* ── 티키 Paste ── */}
           {activeTab === 'tiki_paste' && <TikiPasteTab darkMode={darkMode} />}

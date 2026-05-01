@@ -392,7 +392,7 @@ export default function IntakeParser({
 
   // ── Render ──────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: SANS, display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+    <div style={{ fontFamily: SANS, display: 'flex', flexDirection: 'column', gap: 0, height: '100%', minHeight: 0 }}>
 
       {/* Paste zone */}
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${border}`, background: bgSub, flexShrink: 0 }}>
@@ -441,7 +441,17 @@ export default function IntakeParser({
       </div>
 
       {/* Review fields — scrollable */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
+        padding: '18px 20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 18,
+      }}>
 
         {/* ── Patient section ─────────────────────────────── */}
         {mode !== 'visit-only' && (

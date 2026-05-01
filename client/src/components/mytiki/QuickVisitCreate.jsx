@@ -247,6 +247,8 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
         padding: 16, background: overlay,
         backdropFilter: 'blur(4px)',
         fontFamily: SANS,
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
@@ -260,6 +262,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
           boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
+          minHeight: 0,
         }}
       >
         {/* ── Header ── */}
@@ -293,12 +296,12 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
         </div>
 
         {/* ── Body ── */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
 
           {/* Step: parse */}
           {step === 'parse' && !parserAuthReady && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 14, padding: 36,
               textAlign: 'center',
             }}>
@@ -335,7 +338,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
           {/* Step: creating */}
           {step === 'creating' && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40,
             }}>
               <Loader2 size={36} color={TEAL} style={{ animation: 'spin 1s linear infinite' }} />
@@ -353,7 +356,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
           {/* Step: done */}
           {step === 'done' && result && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 20, padding: 32,
             }}>
               {/* Success icon */}
@@ -438,7 +441,7 @@ export default function QuickVisitCreate({ clinicId, darkMode, initialText = '',
           {/* Step: error */}
           {step === 'error' && (
             <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
+              flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 16, padding: 40,
             }}>
               <div style={{
