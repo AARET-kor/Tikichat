@@ -68,11 +68,14 @@ Implemented:
 - Staff-auth gated memory write route.
 - Clinic context is resolved from authenticated staff context.
 - Web-sidecar TikiPaste workspace for pasted conversations, selected chat text, screenshot fallback, summaries, intent, urgency/risk signal, recommended replies, copy actions, and handoff actions.
+- Conversation Intake Phase 2: TikiPaste can save analyzed pasted/screenshot conversation context as a pending intake candidate, scoped to the authenticated clinic.
+- Conversation Intake Phase 3: pending intake can be staff-confirmed into an existing patient or new patient, with visit creation and My Tiki link generation.
 
 Partial:
 
 - Knowledge hygiene and content review remain broader product concerns.
 - TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior.
+- Patient matching is still manual/search-based. No automatic CRM/EMR matching or inbox-style queue management exists.
 
 Deferred:
 
@@ -80,10 +83,12 @@ Deferred:
 - Chrome extension direction.
 - Desktop/native overlay.
 - Large OCR platform.
+- Full omnichannel inbox, channel sync, and automatic channel sending.
+- Channel-specific CRM/EMR API integrations.
 
 Patch before closure:
 
-- None for current security scope.
+- Validate the pending intake conversion flow against the deployed Supabase schema after migration `026` is applied.
 
 ### Phase 3 — My Tiki Portal
 

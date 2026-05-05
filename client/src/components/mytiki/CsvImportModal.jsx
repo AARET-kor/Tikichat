@@ -93,6 +93,12 @@ const ALIASES = {
   email:       ['이메일','email','e-mail'],
   note:        ['메모','note','notes','비고','내부메모','참고','노트'],
   nationality: ['국적','nationality','나라','국가'],
+  external_source: ['외부시스템','external_source','crm','emr','source','시스템'],
+  external_patient_id: ['외부환자ID','external_patient_id','crm_patient_id','고객번호','환자번호'],
+  external_chart_no: ['차트번호','chart_no','external_chart_no','chart_number'],
+  external_visit_id: ['외부예약ID','external_visit_id','crm_visit_id','예약번호','방문번호'],
+  external_profile_url: ['CRM링크','EMR링크','external_profile_url','profile_url','url','링크'],
+  external_memo: ['외부메모','external_memo','crm_memo','emr_memo'],
 };
 
 function detectColumns(headers) {
@@ -180,6 +186,12 @@ function validateRow(rawRow, colMap) {
       email:       rawRow[colMap.email]?.trim()       || null,
       nationality: rawRow[colMap.nationality]?.trim() || null,
       note:        rawRow[colMap.note]?.trim()        || null,
+      external_source:      rawRow[colMap.external_source]?.trim()      || null,
+      external_patient_id:  rawRow[colMap.external_patient_id]?.trim()  || null,
+      external_chart_no:    rawRow[colMap.external_chart_no]?.trim()    || null,
+      external_visit_id:    rawRow[colMap.external_visit_id]?.trim()    || null,
+      external_profile_url: rawRow[colMap.external_profile_url]?.trim() || null,
+      external_memo:        rawRow[colMap.external_memo]?.trim()        || null,
     },
   };
 }
@@ -435,7 +447,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                 </div>
                 <p style={{ fontSize:11, fontWeight:700, color:textS, marginBottom:6, letterSpacing:'0.04em', textTransform:'uppercase' }}>선택 열</p>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                  {['lang','시술 / procedure','전화 / phone','이메일 / email','국적 / nationality','메모 / note'].map(c => (
+                  {['lang','시술 / procedure','전화 / phone','이메일 / email','국적 / nationality','메모 / note','외부시스템 / CRM ID'].map(c => (
                     <span key={c} style={{ fontSize:10, padding:'2px 7px', borderRadius:6, background:darkMode?'#2D2D31':'#F3F4F6', color:textS }}>{c}</span>
                   ))}
                 </div>
@@ -511,7 +523,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
                     <thead>
                       <tr style={{ background: darkMode?'#2D2D31':'#F3F4F6' }}>
-                        {['#','이름','방문일','시술','언어','비고'].map(h => (
+                        {['#','이름','방문일','시술','언어','외부참조','비고'].map(h => (
                           <th key={h} style={{ padding:'6px 12px', textAlign:'left', fontWeight:700, color:textS, borderBottom:`1px solid ${tblBdr}` }}>{h}</th>
                         ))}
                       </tr>
@@ -524,6 +536,9 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                           <td style={{ padding:'5px 12px', color:textP }}>{row.visit_date}</td>
                           <td style={{ padding:'5px 12px', color:textS }}>{row.procedure || '—'}</td>
                           <td style={{ padding:'5px 12px', color:textS }}>{row.lang || '—'}</td>
+                          <td style={{ padding:'5px 12px', color:textS }}>
+                            {row.external_source || row.external_patient_id || row.external_chart_no || '—'}
+                          </td>
                           <td style={{ padding:'5px 12px', color:textS }}>{row.note ? row.note.slice(0,20)+'…' : '—'}</td>
                         </tr>
                       ))}

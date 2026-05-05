@@ -87,6 +87,15 @@ TikiPaste pivot:
   - generate summary, last-message intent, urgency/risk signal, recommended replies
   - copy replies
   - hand off to Quick Visit / My Tiki link / Tiki Desk
+- Conversation Intake Phase 2 is implemented:
+  - TikiPaste can save analyzed conversation context as a pending intake candidate
+  - pending intake is clinic-scoped and staff-auth gated
+  - this is a staging layer only, not an inbox or automatic CRM integration
+- Conversation Intake Phase 3 is implemented:
+  - staff can review pending intake in TikiPaste
+  - staff can connect it to an existing patient or create a new patient
+  - conversion creates a visit and generates a My Tiki link
+  - conversion is staff-confirmed only; no automatic patient matching or channel sync
 - Do not rebuild extension/overlay behavior unless explicitly approved.
 
 Runtime auth / Quick Visit fixes:
@@ -148,6 +157,8 @@ These work in code but need clinic-device/operator acceptance before being treat
 - Config editing is narrow allowed knobs, not a generic settings page.
 - Aftercare plan editor is narrow step editing, not a template/trigger CMS.
 - TikiPaste is not an automatic browser reader.
+- Conversation intake is not an omnichannel inbox and should not grow unread/thread/sending semantics without explicit product alignment.
+- Pending intake conversion is implemented, but broader matching remains manual and should not be widened into CRM replacement behavior without explicit approval.
 - My Tiki UI kit is not a full patient CMS.
 - Design-system standardization is not a product architecture refactor.
 

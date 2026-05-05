@@ -61,6 +61,8 @@ Stable:
   - the Chrome extension direction is paused
   - staff can paste conversation text or screenshot fallback into the web app
   - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
+  - Phase 2 conversation-intake staging is implemented: staff can save an analyzed conversation as a pending intake candidate before creating or linking a patient
+  - Phase 3 conversion is implemented: staff can review pending intake, connect it to an existing patient or create a new patient, create a visit, and generate a My Tiki link after confirmation
 - Staff dashboard scroll behavior:
   - app-level document scroll is no longer globally locked
   - Tiki Desk content has a touch-friendly vertical scroll container
@@ -71,6 +73,7 @@ Usable but not fully clinic-ready:
 - Tiki Room browser-native voice input and browser TTS fallback. They are useful optional aids, but quality depends on browser, device, microphone permission, room noise, and installed voices.
 - Tiki Room live communication loop. Current/load-next/clear manual verification passed, but clinic deployment still needs device/browser acceptance testing per room.
 - TikiPaste web-sidecar. It is now a realistic staff workspace without extension dependency, but it still depends on staff-pasted text/screenshot input and is not an automatic browser DOM reader.
+- Conversation-intake conversion. Pending intake records can now be converted after staff confirmation, but matching is still manual/search-based and not an automatic CRM/EMR sync.
 - Staff dashboard UX. It is much clearer than the earlier cramped dashboard, but real front-desk usage should still validate screen size, scroll behavior, and Korean copy under daily workload.
 
 Prototype-level or intentionally bounded:
@@ -79,6 +82,7 @@ Prototype-level or intentionally bounded:
 - Ask and room-ready config are narrow knobs layered over code-owned workflow logic.
 - Browser voice is not a backend STT/TTS pipeline and does not store transcripts.
 - Patient screenshot/OCR fallback in TikiPaste remains bounded. It is not a giant OCR platform or cross-browser overlay.
+- Conversation intake is not an omnichannel inbox. It has no unread state, channel sync, channel reply sending, or automated CRM/EMR integration.
 - My Tiki patient UI kit is improved and reusable, but not every multilingual patient route has been manually device-tested after the latest visual pass.
 
 Intentionally deferred:
@@ -92,6 +96,9 @@ Intentionally deferred:
 - Chrome extension / desktop overlay version of TikiPaste.
 - Automatic arbitrary browser DOM reading.
 - Backend OCR platform.
+- Full omnichannel inbox or message sync.
+- Automatic patient matching from pending conversation intake.
+- Channel-specific CRM/EMR API integrations.
 
 ## May 1, 2026 Runtime Fixes And Product Changes
 

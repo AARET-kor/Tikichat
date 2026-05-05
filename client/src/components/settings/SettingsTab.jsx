@@ -15,6 +15,7 @@ const MENU_ITEMS = [
   { id: 'general',   icon: Building2,   label: '일반' },
   { id: 'ai',        icon: Sparkles,    label: 'AI 튜닝' },
   { id: 'channels',  icon: Link2,       label: '채널 연동' },
+  { id: 'integrations', icon: AlignJustify, label: 'CRM/EMR' },
   { id: 'operations', icon: History,     label: '운영' },
 ];
 
@@ -448,6 +449,56 @@ function ChannelsSection({ darkMode }) {
   );
 }
 
+function IntegrationsSection({ darkMode }) {
+  const card = darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-slate-200';
+  const text = darkMode ? 'text-zinc-100' : 'text-slate-800';
+  const subText = darkMode ? 'text-zinc-500' : 'text-slate-500';
+  const pill = darkMode ? 'bg-zinc-700 text-zinc-300 border-zinc-600' : 'bg-[#EDF1F5] text-[#10367D] border-[#BBE1FA]';
+
+  return (
+    <div className="space-y-5">
+      <div className={`rounded-2xl border p-5 ${card}`}>
+        <h3 className={`text-sm font-semibold flex items-center gap-2 ${text}`}>
+          <AlignJustify size={15} /> 기존 CRM/EMR 연결 방식
+        </h3>
+        <p className={`text-[11px] mt-2 leading-relaxed ${subText}`}>
+          TikiDoc은 Vegas, AfterDoc, Dr.Palette 같은 기존 CRM/EMR을 대체하지 않습니다.
+          외국인 환자 여정에 필요한 참조값만 저장하고, My Tiki 링크와 요약을 다시 기존 시스템에 복사해 넣는 방식으로 시작합니다.
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {['Vegas', 'AfterDoc', 'Dr.Palette', '기타 CRM/EMR'].map((label) => (
+            <div key={label} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${pill}`}>
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`rounded-2xl border p-5 ${card}`}>
+        <h3 className={`text-sm font-semibold ${text}`}>Phase 1에서 저장하는 참조값</h3>
+        <div className="mt-3 space-y-2">
+          {[
+            ['source', '외부 시스템 이름'],
+            ['external_patient_id / chart_no', '외부 환자 ID 또는 차트번호'],
+            ['external_visit_id', '외부 예약/방문 ID'],
+            ['profile_url', '기존 CRM/EMR 환자 페이지 링크'],
+            ['memo', '외부 시스템에서 가져온 짧은 메모'],
+          ].map(([key, desc]) => (
+            <div key={key} className={`rounded-xl border px-3 py-2 ${darkMode ? 'border-zinc-700 bg-zinc-900' : 'border-slate-100 bg-slate-50'}`}>
+              <div className={`text-xs font-bold ${text}`}>{key}</div>
+              <div className={`text-[11px] mt-0.5 ${subText}`}>{desc}</div>
+            </div>
+          ))}
+        </div>
+        <p className={`text-[11px] mt-4 leading-relaxed ${subText}`}>
+          아직 API 키, webhook, 메시지 동기화, inbox는 만들지 않습니다. Quick Visit과 CSV import에서 참조값을 담는 것까지만 운영 기준으로 고정합니다.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function OperationsSection({ darkMode }) {
   const { role } = useAuth();
   const [historyItems, setHistoryItems] = useState([]);
@@ -841,6 +892,7 @@ export default function SettingsTab({ darkMode }) {
       case 'general':   return <GeneralSection   darkMode={darkMode} />;
       case 'ai':        return <AISection         darkMode={darkMode} />;
       case 'channels':  return <ChannelsSection   darkMode={darkMode} />;
+      case 'integrations': return <IntegrationsSection darkMode={darkMode} />;
       case 'operations': return <OperationsSection darkMode={darkMode} />;
       default:          return null;
     }

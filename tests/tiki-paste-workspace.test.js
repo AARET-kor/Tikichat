@@ -21,6 +21,8 @@ test("TikiPaste supports practical handoff actions", () => {
   assert.match(tikiPasteSource, /Quick Visit/);
   assert.match(tikiPasteSource, /My Tiki 링크 준비/);
   assert.match(tikiPasteSource, /Tiki Desk로 보내기/);
+  assert.match(tikiPasteSource, /상담 유입으로 보류 저장/);
+  assert.match(tikiPasteSource, /\/api\/conversation-intakes/);
 });
 
 test("/api/tiki-paste accepts either pasted text or uploaded screenshot data", () => {
@@ -30,4 +32,23 @@ test("/api/tiki-paste accepts either pasted text or uploaded screenshot data", (
   assert.match(serverSource, /extracted_text/);
   assert.match(serverSource, /conversation_summary/);
   assert.match(serverSource, /last_message_intent/);
+});
+
+test("/api/conversation-intakes is staff-gated and scoped to authenticated clinic", () => {
+  assert.match(serverSource, /app\.post\("\/api\/conversation-intakes", requireStaffAuth,/);
+  assert.match(serverSource, /app\.post\("\/api\/conversation-intakes\/:id\/convert", requireStaffAuth,/);
+  assert.match(serverSource, /app\.get\("\/api\/conversation-intakes", requireStaffAuth,/);
+  assert.match(serverSource, /clinic_id: req\.clinic_id/);
+  assert.match(serverSource, /\.eq\("clinic_id", req\.clinic_id\)/);
+  assert.doesNotMatch(serverSource, /conversation_intakes[\s\S]{0,600}req\.body\.clinicId/);
+});
+
+test("conversation intake conversion creates/link visits and My Tiki links only after staff action", () => {
+  assert.match(serverSource, /buildConversationIntakeConversionPlan/);
+  assert.match(serverSource, /\.from\("conversation_intakes"\)[\s\S]{0,400}\.eq\("clinic_id", req\.clinic_id\)/);
+  assert.match(serverSource, /\.update\(\{[\s\S]{0,160}status: "converted"/);
+  assert.match(serverSource, /generatePatientToken\(\)/);
+  assert.match(tikiPasteSource, /PendingIntakeQueue/);
+  assert.match(tikiPasteSource, /기존 환자 연결/);
+  assert.match(tikiPasteSource, /새 환자로 전환/);
 });

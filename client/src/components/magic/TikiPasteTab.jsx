@@ -34,6 +34,19 @@ const C = {
 
 const SANS = "'Pretendard Variable', 'Inter', system-ui, -apple-system, sans-serif";
 
+const SOURCE_OPTIONS = [
+  { value: 'manual', label: '수기 입력' },
+  { value: 'kakao', label: '카카오' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'line', label: 'LINE' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'wechat', label: 'WeChat' },
+  { value: 'phone', label: '전화' },
+  { value: 'crm', label: '기존 CRM' },
+  { value: 'emr', label: '기존 EMR' },
+  { value: 'other', label: '기타' },
+];
+
 async function getStaffAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   const headers = { 'Content-Type': 'application/json' };
@@ -271,9 +284,11 @@ function ScreenshotDropzone({ image, onImage, onImagePaste, onClear }) {
 function WorkspaceInput({
   input,
   image,
+  sourceCapture,
   loading,
   pasting,
   onInputChange,
+  onSourceCaptureChange,
   onTextPaste,
   onClipboardText,
   onImage,
@@ -291,6 +306,54 @@ function WorkspaceInput({
           onPaste={onTextPaste}
           pasting={pasting}
         />
+        <div style={{ display:'grid', gridTemplateColumns:'140px 1fr 1fr', gap:8 }}>
+          <select
+            value={sourceCapture.channel}
+            onChange={e => onSourceCaptureChange({ ...sourceCapture, channel: e.target.value })}
+            style={{
+              border:`1px solid ${C.border}`,
+              background:C.white,
+              color:C.textSub,
+              borderRadius:9,
+              padding:'8px 10px',
+              fontSize:11,
+              fontWeight:700,
+              outline:'none',
+            }}
+          >
+            {SOURCE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <input
+            value={sourceCapture.handle}
+            onChange={e => onSourceCaptureChange({ ...sourceCapture, handle: e.target.value })}
+            placeholder="상담 ID / 계정 / 고객번호"
+            style={{
+              border:`1px solid ${C.border}`,
+              background:C.white,
+              color:C.text,
+              borderRadius:9,
+              padding:'8px 10px',
+              fontSize:11,
+              outline:'none',
+            }}
+          />
+          <input
+            value={sourceCapture.phone}
+            onChange={e => onSourceCaptureChange({ ...sourceCapture, phone: e.target.value })}
+            placeholder="전화번호 / 연락처"
+            style={{
+              border:`1px solid ${C.border}`,
+              background:C.white,
+              color:C.text,
+              borderRadius:9,
+              padding:'8px 10px',
+              fontSize:11,
+              outline:'none',
+            }}
+          />
+        </div>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             {input.length > 0 && (
@@ -340,6 +403,23 @@ function WorkspaceInput({
             <p key={item} style={{ fontSize:10.5, color:C.textMt, lineHeight:1.55, marginTop:4 }}>• {item}</p>
           ))}
         </div>
+        <textarea
+          value={sourceCapture.memo}
+          onChange={e => onSourceCaptureChange({ ...sourceCapture, memo: e.target.value })}
+          placeholder="기존 CRM/EMR에 다시 붙여넣을 때 참고할 짧은 메모"
+          rows={3}
+          style={{
+            border:`1px solid ${C.border}`,
+            background:C.white,
+            color:C.text,
+            borderRadius:13,
+            padding:'11px 12px',
+            fontSize:11,
+            lineHeight:1.55,
+            resize:'none',
+            outline:'none',
+          }}
+        />
       </div>
     </div>
   );
@@ -779,6 +859,380 @@ function SaveToMemoryBar({ result, input, clinicId }) {
   );
 }
 
+function PendingIntakeBar({ result, input, sourceCapture, onSaved }) {
+  const [phase, setPhase] = useState('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [savedIntake, setSavedIntake] = useState(null);
+
+  useEffect(() => {
+    setPhase('idle');
+    setErrorMsg('');
+    setSavedIntake(null);
+  }, [result]);
+
+  async function savePending() {
+    if (!result || phase === 'saving') return;
+    setPhase('saving');
+    setErrorMsg('');
+    try {
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
+      const res = await fetch('/api/conversation-intakes', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          source: sourceCapture,
+          raw_text: input || result.extracted_text || '',
+          analysis: result,
+          visit_candidate: {
+            procedure_interests: result.procedure_interests || [],
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setSavedIntake(data.intake);
+      setPhase('saved');
+      onSaved?.(data.intake);
+    } catch (err) {
+      setErrorMsg(err.message || '상담 유입 저장 실패');
+      setPhase('error');
+    }
+  }
+
+  const baseStyle = {
+    padding:'14px 18px', borderRadius:12,
+    animation:'fadeSlideUp 0.3s ease-out',
+    transition:'background 0.25s',
+    border:`1px solid ${C.border}`,
+  };
+
+  if (phase === 'saved') {
+    return (
+      <div style={{ ...baseStyle, background:C.sagePale, display:'flex', alignItems:'center', gap:12 }}>
+        <Check size={15} color={C.sage} />
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:12, fontWeight:800, color:C.sage }}>상담 유입이 보류 intake로 저장되었습니다</p>
+          <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
+            {savedIntake?.source_channel || 'manual'} · {savedIntake?.next_suggested_action || 'create_or_link_patient'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <div style={{ ...baseStyle, background:C.redPale, display:'flex', alignItems:'center', gap:12 }}>
+        <AlertCircle size={15} color={C.red} />
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:12, fontWeight:800, color:C.red }}>상담 유입 저장 실패</p>
+          <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>{errorMsg}</p>
+        </div>
+        <button onClick={() => setPhase('idle')} style={{ border:'none', background:'none', cursor:'pointer', color:C.textMt }}>
+          <X size={13} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...baseStyle, background:C.white, display:'flex', alignItems:'center', gap:12 }}>
+      <div style={{ width:32, height:32, borderRadius:9, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <Clipboard size={14} color={C.mocha} />
+      </div>
+      <div style={{ flex:1 }}>
+        <p style={{ fontSize:12, fontWeight:800, color:C.textSub }}>상담 유입으로 보류 저장</p>
+        <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
+          환자 생성 전, TikiPaste 분석 결과를 pending intake로 남깁니다
+        </p>
+      </div>
+      <button onClick={savePending} disabled={phase === 'saving'} style={{
+        display:'flex', alignItems:'center', gap:6,
+        padding:'8px 14px', borderRadius:9,
+        background:C.mochaPale, color:C.mochaDk,
+        border:`1px solid ${C.border}`,
+        fontSize:11, fontWeight:850,
+        cursor: phase === 'saving' ? 'not-allowed' : 'pointer',
+        opacity: phase === 'saving' ? 0.65 : 1,
+      }}>
+        {phase === 'saving'
+          ? <><Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> 저장 중</>
+          : <><Save size={12} /> 보류 저장</>
+        }
+      </button>
+    </div>
+  );
+}
+
+function PendingIntakeCard({ intake, clinicId, onConverted }) {
+  const [patientName, setPatientName] = useState(intake.patient_candidate?.name || '');
+  const [visitDate, setVisitDate] = useState(intake.visit_candidate?.visit_date || '');
+  const [patientQuery, setPatientQuery] = useState('');
+  const [patientResults, setPatientResults] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [phase, setPhase] = useState('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [convertedLink, setConvertedLink] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    async function searchPatients() {
+      const q = patientQuery.trim();
+      if (q.length < 2) {
+        setPatientResults([]);
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ q, ...(clinicId ? { clinicId } : {}) });
+        const headers = await getStaffAuthHeaders();
+        const res = await fetch(`/api/patients/search?${params}`, { headers });
+        const data = await res.json().catch(() => ({}));
+        if (active) setPatientResults(data.patients || []);
+      } catch {
+        if (active) setPatientResults([]);
+      }
+    }
+    const timer = setTimeout(searchPatients, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [patientQuery, clinicId]);
+
+  async function convert(mode) {
+    if (phase === 'saving') return;
+    setPhase('saving');
+    setErrorMsg('');
+    setConvertedLink(null);
+    try {
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
+      const payload = mode === 'link_existing'
+        ? {
+            mode,
+            patientId: selectedPatient?.id,
+            visit: { visitDate },
+          }
+        : {
+            mode: 'create_patient',
+            patient: { name: patientName },
+            visit: { visitDate },
+          };
+      const res = await fetch(`/api/conversation-intakes/${intake.id}/convert`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setConvertedLink(data.link?.url || '');
+      setPhase('done');
+      onConverted?.(data);
+    } catch (err) {
+      setErrorMsg(err.message || '전환 실패');
+      setPhase('error');
+    }
+  }
+
+  return (
+    <div style={{ border:`1px solid ${C.border}`, background:C.white, borderRadius:14, padding:14, display:'grid', gap:12 }}>
+      <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+        <div style={{ width:34, height:34, borderRadius:10, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Clipboard size={14} color={C.mocha} />
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <p style={{ fontSize:12, fontWeight:850, color:C.text, letterSpacing:'-0.02em' }}>
+            {intake.source_channel || 'manual'} 상담 유입
+            {intake.source_handle ? ` · ${intake.source_handle}` : ''}
+          </p>
+          <p style={{ fontSize:11, color:C.textMt, marginTop:3, lineHeight:1.5 }}>
+            {intake.last_patient_intent || '의도 미확인'} · 위험도 {intake.risk_level || 'low'}
+          </p>
+        </div>
+        <span style={{ fontSize:10, fontWeight:800, color:C.mocha, background:C.mochaPale, padding:'4px 8px', borderRadius:999 }}>
+          pending
+        </span>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 160px', gap:8 }}>
+        <input
+          value={patientName}
+          onChange={e => setPatientName(e.target.value)}
+          placeholder="새 환자명 확인 입력"
+          style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none' }}
+        />
+        <input
+          value={visitDate}
+          onChange={e => setVisitDate(e.target.value)}
+          placeholder="방문일"
+          type="date"
+          style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none' }}
+        />
+      </div>
+
+      <div style={{ display:'grid', gap:7 }}>
+        <input
+          value={patientQuery}
+          onChange={e => { setPatientQuery(e.target.value); setSelectedPatient(null); }}
+          placeholder="기존 환자 검색"
+          style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none' }}
+        />
+        {patientResults.length > 0 && (
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {patientResults.slice(0, 4).map(patient => (
+              <button
+                key={patient.id}
+                type="button"
+                onClick={() => {
+                  setSelectedPatient(patient);
+                  setPatientQuery(patient.name);
+                  setPatientResults([]);
+                }}
+                style={{
+                  border:`1px solid ${selectedPatient?.id === patient.id ? C.mocha : C.border}`,
+                  background:selectedPatient?.id === patient.id ? C.mochaPale : C.bgSub,
+                  color:C.textSub,
+                  borderRadius:999,
+                  padding:'5px 9px',
+                  fontSize:11,
+                  fontWeight:800,
+                  cursor:'pointer',
+                }}
+              >
+                {patient.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {intake.parsed_procedure_interests?.length > 0 && (
+        <p style={{ fontSize:10.5, color:C.textMt }}>
+          관심 시술: {intake.parsed_procedure_interests.join(', ')}
+        </p>
+      )}
+
+      {phase === 'error' && (
+        <p style={{ fontSize:11, color:C.red, background:C.redPale, borderRadius:9, padding:'8px 10px' }}>{errorMsg}</p>
+      )}
+      {phase === 'done' && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:C.sagePale, borderRadius:9, padding:'8px 10px' }}>
+          <Check size={13} color={C.sage} />
+          <p style={{ flex:1, fontSize:11, color:C.sage, fontWeight:800 }}>전환 완료 · My Tiki 링크 발급됨</p>
+          {convertedLink && (
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(convertedLink)}
+              style={{ border:'none', background:C.white, color:C.sage, borderRadius:8, padding:'5px 8px', fontSize:10, fontWeight:800, cursor:'pointer' }}
+            >
+              링크 복사
+            </button>
+          )}
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', flexWrap:'wrap' }}>
+        <button
+          type="button"
+          onClick={() => convert('link_existing')}
+          disabled={!selectedPatient || phase === 'saving'}
+          style={{
+            border:`1px solid ${C.border}`,
+            background:selectedPatient && phase !== 'saving' ? C.mochaPale : C.bgDeep,
+            color:selectedPatient && phase !== 'saving' ? C.mochaDk : C.textMt,
+            borderRadius:9,
+            padding:'8px 11px',
+            fontSize:11,
+            fontWeight:850,
+            cursor:selectedPatient && phase !== 'saving' ? 'pointer' : 'not-allowed',
+          }}
+        >
+          기존 환자 연결
+        </button>
+        <button
+          type="button"
+          onClick={() => convert('create_patient')}
+          disabled={!patientName.trim() || phase === 'saving'}
+          style={{
+            border:'none',
+            background:patientName.trim() && phase !== 'saving' ? C.mocha : C.bgDeep,
+            color:patientName.trim() && phase !== 'saving' ? '#fff' : C.textMt,
+            borderRadius:9,
+            padding:'8px 12px',
+            fontSize:11,
+            fontWeight:850,
+            cursor:patientName.trim() && phase !== 'saving' ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {phase === 'saving' ? '전환 중…' : '새 환자로 전환'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PendingIntakeQueue({ clinicId, refreshKey, onConverted }) {
+  const [intakes, setIntakes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const loadIntakes = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
+      const res = await fetch('/api/conversation-intakes?status=pending&limit=6', { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setIntakes(data.intakes || []);
+    } catch (err) {
+      setErrorMsg(err.message || '보류 상담을 불러오지 못했습니다');
+      setIntakes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadIntakes();
+  }, [loadIntakes, refreshKey]);
+
+  if (!loading && !errorMsg && intakes.length === 0) return null;
+
+  return (
+    <section style={{ display:'grid', gap:12, padding:'16px', background:C.bgSub, border:`1px solid ${C.border}`, borderRadius:16 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:14, fontWeight:900, color:C.text, letterSpacing:'-0.03em' }}>보류 상담 intake</p>
+          <p style={{ fontSize:11, color:C.textMt, marginTop:3 }}>직원이 확인한 뒤 기존 환자에 연결하거나 새 환자+방문+My Tiki 링크로 전환합니다.</p>
+        </div>
+        <button
+          type="button"
+          onClick={loadIntakes}
+          style={{ border:`1px solid ${C.border}`, background:C.white, borderRadius:9, padding:'7px 10px', fontSize:11, fontWeight:800, color:C.textSub, cursor:'pointer' }}
+        >
+          새로고침
+        </button>
+      </div>
+      {loading && <p style={{ fontSize:12, color:C.textMt }}>불러오는 중…</p>}
+      {errorMsg && <p style={{ fontSize:12, color:C.red }}>{errorMsg}</p>}
+      {!loading && intakes.map(intake => (
+        <PendingIntakeCard
+          key={intake.id}
+          intake={intake}
+          clinicId={clinicId}
+          onConverted={(data) => {
+            setIntakes(current => current.filter(item => item.id !== intake.id));
+            onConverted?.(data);
+          }}
+        />
+      ))}
+    </section>
+  );
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 function EmptyState({ mode }) {
   const hints = {
@@ -831,6 +1285,12 @@ export default function TikiPasteTab() {
 
   const [input,      setInput]      = useState('');
   const [image,      setImage]      = useState(null);
+  const [sourceCapture, setSourceCapture] = useState({
+    channel: 'manual',
+    handle: '',
+    phone: '',
+    memo: '',
+  });
   const [loading,    setLoading]    = useState(false);
   const [result,     setResult]     = useState(null);
   const [error,      setError]      = useState(null);
@@ -838,6 +1298,7 @@ export default function TikiPasteTab() {
   const [pasting,    setPasting]    = useState(false);
   const [tikiActive, setTikiActive] = useState(false);
   const [quickVisitOpen, setQuickVisitOpen] = useState(false);
+  const [intakeRefreshKey, setIntakeRefreshKey] = useState(0);
   const tikiTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -969,6 +1430,7 @@ export default function TikiPasteTab() {
   const handleReset = () => {
     setInput('');
     setImage(null);
+    setSourceCapture({ channel: 'manual', handle: '', phone: '', memo: '' });
     setResult(null);
     setError(null);
   };
@@ -1038,9 +1500,11 @@ export default function TikiPasteTab() {
         <WorkspaceInput
           input={input}
           image={image}
+          sourceCapture={sourceCapture}
           loading={loading}
           pasting={pasting}
           onInputChange={(v) => { setInput(v); setResult(null); setError(null); }}
+          onSourceCaptureChange={setSourceCapture}
           onTextPaste={handleTextareaPaste}
           onClipboardText={handleClipboardBtn}
           onImage={handleImageFile}
@@ -1107,7 +1571,18 @@ export default function TikiPasteTab() {
         {/* ── Save to memory ─────────────────────────────────────────────────── */}
         {result && !loading && (
           <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto', gap:12, alignItems:'stretch' }}>
-            <SaveToMemoryBar result={result} input={handoffText} clinicId={clinicId} />
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <SaveToMemoryBar result={result} input={handoffText} clinicId={clinicId} />
+              <PendingIntakeBar
+                result={result}
+                input={handoffText}
+                sourceCapture={sourceCapture}
+                onSaved={() => {
+                  showToast('상담 유입이 보류 intake로 저장되었습니다');
+                  setIntakeRefreshKey((value) => value + 1);
+                }}
+              />
+            </div>
             <div style={{ display:'flex', gap:8, alignItems:'center', padding:'14px 16px', borderRadius:12, background:C.white, border:`1px solid ${C.border}` }}>
               <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
                 display:'flex', alignItems:'center', gap:7,
@@ -1129,6 +1604,12 @@ export default function TikiPasteTab() {
             </div>
           </div>
         )}
+
+        <PendingIntakeQueue
+          clinicId={clinicId}
+          refreshKey={intakeRefreshKey}
+          onConverted={() => showToast('보류 상담이 환자 방문으로 전환되었습니다')}
+        />
 
         {/* ── Empty state ────────────────────────────────────────────────────── */}
         {!hasContent && !error && <EmptyState />}

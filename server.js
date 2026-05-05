@@ -80,6 +80,7 @@ import {
 } from "./src/lib/aftercare-engine.js";
 import {
   resolveProcedureFromText,
+  resolveProcedureFromCandidates,
 } from "./src/lib/procedure-resolution.js";
 import {
   ensureAftercarePlan,
@@ -99,6 +100,8 @@ import {
 } from "./src/lib/clinic-rule-config.js";
 import { validateClinicRulePatch } from "./src/lib/clinic-rule-config-validate.js";
 import { buildAuditHistoryResponse, normalizeAuditHistoryLimit } from "./src/lib/audit-history.js";
+import { buildConversationIntakeConversionPlan, buildConversationIntakeInsert } from "./src/lib/conversation-intake.js";
+import { buildExternalRefsFromImportRow, hasExternalRefs, normalizeExternalRefs } from "./src/lib/external-refs.js";
 import {
   attachEscalationSla,
   buildEscalationUpdateForAction,
@@ -1099,6 +1102,240 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   }
 });
 
+// ── POST /api/conversation-intakes
+// TikiPaste manual capture → pending intake staging.
+// This is not an inbox: no thread sync, unread state, or channel sending.
+app.post("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const insert = buildConversationIntakeInsert({
+      clinic_id: req.clinic_id,
+      created_by: req.staff_user_id || null,
+      payload: req.body || {},
+    });
+
+    if (!insert.raw_text && !insert.analysis_payload?.extracted_text) {
+      return res.status(400).json({ error: "raw_text or analysis payload required" });
+    }
+
+    const { data, error } = await sb
+      .from("conversation_intakes")
+      .insert(insert)
+      .select(`
+        id, status, source_channel, source_handle, parsed_language,
+        parsed_procedure_interests, last_patient_intent, risk_level,
+        missing_fields, next_suggested_action, created_at
+      `)
+      .single();
+
+    if (error) throw error;
+
+    await writeAuditLog({
+      clinicId: req.clinic_id,
+      actorUserId: req.staff_user_id || null,
+      eventType: "conversation_intake_created",
+      status: "success",
+      payload: {
+        intake_id: data.id,
+        source_channel: data.source_channel,
+        risk_level: data.risk_level,
+      },
+    }).catch(() => {});
+
+    res.json({ ok: true, intake: data });
+  } catch (err) {
+    console.error("[conversation-intakes/post]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/conversation-intakes?status=pending
+// Lightweight list for later Tiki Desk intake queue.
+app.get("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const status = String(req.query.status || "pending");
+  const limit = Math.min(Number(req.query.limit || 50), 100);
+
+  try {
+    let q = sb
+      .from("conversation_intakes")
+      .select(`
+        id, status, source_channel, source_handle, source_phone, source_memo,
+        patient_candidate, visit_candidate, parsed_language,
+        parsed_procedure_interests, last_patient_intent, risk_level,
+        missing_fields, next_suggested_action, linked_patient_id,
+        linked_visit_id, converted_at, created_at, updated_at
+      `)
+      .eq("clinic_id", req.clinic_id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (status !== "all") q = q.eq("status", status);
+
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json({ intakes: data || [] });
+  } catch (err) {
+    console.error("[conversation-intakes/get]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/conversation-intakes/:id/convert
+// Staff-confirmed pending intake → patient + visit + My Tiki link.
+// This remains manual confirmation, not automatic matching or channel sync.
+app.post("/api/conversation-intakes/:id/convert", requireStaffAuth, async (req, res) => {
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const { id } = req.params;
+  const clinic_id = req.clinic_id;
+
+  try {
+    const { data: intake, error: intakeError } = await sb
+      .from("conversation_intakes")
+      .select("*")
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .maybeSingle();
+
+    if (intakeError) throw intakeError;
+    if (!intake) return res.status(404).json({ error: "Intake not found" });
+    if (intake.status !== "pending") {
+      return res.status(409).json({ error: "Intake already converted", status: intake.status });
+    }
+
+    const plan = buildConversationIntakeConversionPlan({ intake, payload: req.body || {} });
+    let patient = null;
+    let patientId = plan.patientId;
+
+    if (plan.mode === "link_existing") {
+      const { data: existingPatient, error: patientError } = await sb
+        .from("patients")
+        .select("id, name, lang, flag")
+        .eq("id", patientId)
+        .eq("clinic_id", clinic_id)
+        .maybeSingle();
+      if (patientError) throw patientError;
+      if (!existingPatient) return res.status(404).json({ error: "Patient not found" });
+      patient = existingPatient;
+    } else {
+      const { data: createdPatient, error: patientError } = await sb
+        .from("patients")
+        .insert({
+          clinic_id,
+          name: plan.patient.name,
+          birth_year: plan.patient.birth_year || null,
+          gender: plan.patient.gender || null,
+          nationality: plan.patient.nationality || null,
+          lang: plan.patient.lang || null,
+          channel_refs: plan.patient.channel_refs || {},
+          notes: plan.patient.notes || null,
+          tags: [],
+        })
+        .select("id, name, lang, flag")
+        .single();
+      if (patientError) throw patientError;
+      patient = createdPatient;
+      patientId = createdPatient.id;
+    }
+
+    let procedureId = plan.visit.procedureId || null;
+    let procedureResolution = { status: procedureId ? "staff_selected" : "unmatched" };
+    if (!procedureId && plan.visit.procedureInterests?.length) {
+      const { data: proceduresForClinic, error: proceduresError } = await sb
+        .from("procedures")
+        .select("id, name_ko, name_en")
+        .eq("clinic_id", clinic_id)
+        .eq("is_active", true);
+      if (proceduresError) throw proceduresError;
+      const resolved = resolveProcedureFromCandidates(plan.visit.procedureInterests, proceduresForClinic || []);
+      procedureResolution = { status: resolved.status };
+      if (resolved.status === "matched") procedureId = resolved.procedure.id;
+    }
+
+    const { data: visit, error: visitError } = await sb
+      .from("visits")
+      .insert({
+        clinic_id,
+        patient_id: patientId,
+        procedure_id: procedureId,
+        visit_date: plan.visit.visitDate || null,
+        notes: plan.visit.notes || null,
+        stage: "booked",
+      })
+      .select("id, patient_id, procedure_id, visit_date, notes, stage")
+      .single();
+    if (visitError) throw visitError;
+
+    const { token, tokenHash } = generatePatientToken();
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: link, error: linkError } = await sb
+      .from("patient_links")
+      .insert({
+        clinic_id,
+        patient_id: patientId,
+        visit_id: visit.id,
+        token_hash: tokenHash,
+        status: "active",
+        expires_at: expiresAt,
+      })
+      .select("id, expires_at, status")
+      .single();
+    if (linkError) throw linkError;
+
+    const { data: updatedIntake, error: updateError } = await sb
+      .from("conversation_intakes")
+      .update({
+        status: "converted",
+        linked_patient_id: patientId,
+        linked_visit_id: visit.id,
+        converted_at: new Date().toISOString(),
+        next_suggested_action: "converted_to_patient_visit",
+      })
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .eq("status", "pending")
+      .select("id, status, linked_patient_id, linked_visit_id, converted_at")
+      .maybeSingle();
+    if (updateError) throw updateError;
+    if (!updatedIntake) return res.status(409).json({ error: "Intake already converted" });
+
+    await writeAuditLog({
+      clinicId: clinic_id,
+      actorUserId: req.staff_user_id || null,
+      eventType: "conversation_intake_converted",
+      status: "success",
+      payload: {
+        intake_id: id,
+        patient_id: patientId,
+        visit_id: visit.id,
+      },
+    }).catch(() => {});
+
+    res.json({
+      ok: true,
+      intake: updatedIntake,
+      patient,
+      visit,
+      procedure_resolution: procedureResolution,
+      link: {
+        id: link.id,
+        status: link.status,
+        expires_at: link.expires_at,
+        url: `${APP_BASE_URL}/t/${encodeURIComponent(token)}`,
+      },
+    });
+  } catch (err) {
+    console.error("[conversation-intakes/convert]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 3. 한국어 답변 → 환자 언어 번역 (발송 직전)
 // POST /api/translate-reply  { text, targetLang }
 app.post("/api/translate-reply", async (req, res) => {
@@ -1826,7 +2063,7 @@ app.get("/api/patients", async (req, res) => {
   }
 });
 
-// POST /api/patients  { clinicId?, patient: { name, birth_year?, gender?, nationality?, lang?, tags?, flag?, notes?, channel_refs? } }
+// POST /api/patients  { clinicId?, patient: { name, birth_year?, gender?, nationality?, lang?, tags?, flag?, notes?, channel_refs?, external_refs? } }
 app.post("/api/patients", async (req, res) => {
   const { clinicId, patient } = req.body;
   let clinic_id = clinicId || CLINIC_UUID;
@@ -1838,20 +2075,24 @@ app.post("/api/patients", async (req, res) => {
     }
 
     const sb = getSbAdmin();
+    const externalRefs = normalizeExternalRefs(patient.external_refs);
+    const patientPayload = {
+      clinic_id,
+      name:         patient.name.trim(),
+      birth_year:   patient.birth_year   || null,
+      gender:       patient.gender       || null,
+      nationality:  patient.nationality  || null,
+      lang:         patient.lang         || null,
+      tags:         patient.tags         || [],
+      flag:         patient.flag         || null,
+      notes:        patient.notes        || null,
+      channel_refs: patient.channel_refs || {},
+      ...(hasExternalRefs(externalRefs) ? { external_refs: externalRefs } : {}),
+    };
+
     const { data, error } = await sb
       .from("patients")
-      .insert({
-        clinic_id,
-        name:         patient.name.trim(),
-        birth_year:   patient.birth_year   || null,
-        gender:       patient.gender       || null,
-        nationality:  patient.nationality  || null,
-        lang:         patient.lang         || null,
-        tags:         patient.tags         || [],
-        flag:         patient.flag         || null,
-        notes:        patient.notes        || null,
-        channel_refs: patient.channel_refs || {},
-      })
+      .insert(patientPayload)
       .select("id, name, lang, flag, tags")
       .single();
     if (error) throw error;
@@ -2541,7 +2782,7 @@ app.get("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
 app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
   const {
     patientId, procedureId,
-    visitDate, notes,
+    visitDate, notes, externalRefs,
   } = req.body;
   const clinic_id = req.clinic_id;
   if (!patientId) return res.status(400).json({ error: "patientId required" });
@@ -2562,16 +2803,20 @@ app.post("/api/my-tiki/visits", requireStaffAuth, async (req, res) => {
       if (!procedure) return res.status(400).json({ error: "Invalid procedureId for clinic" });
     }
 
+    const external_refs = normalizeExternalRefs(externalRefs);
+    const visitPayload = {
+      clinic_id,
+      patient_id:     patientId,
+      procedure_id:   procedureId || null,
+      visit_date:     visitDate || null,
+      notes:          notes || null,
+      ...(hasExternalRefs(external_refs) ? { external_refs } : {}),
+      stage:          "booked",
+    };
+
     const { data, error } = await sb
       .from("visits")
-      .insert({
-        clinic_id,
-        patient_id:     patientId,
-        procedure_id:   procedureId || null,
-        visit_date:     visitDate || null,
-        notes:          notes || null,
-        stage:          "booked",
-      })
+      .insert(visitPayload)
       .select("id, patient_id, procedure_id, visit_date, notes, stage")
       .single();
 
@@ -3028,7 +3273,8 @@ app.get("/api/staff/ops-board", requireStaffAuth, async (req, res) => {
 // ── POST /api/my-tiki/import  — CSV bulk import: create patients + visits + links
 //
 // Client parses CSV, normalises dates to YYYY-MM-DD, sends:
-//   { rows: [{ name, visit_date, lang?, procedure?, phone?, email?, nationality?, note? }, ...] }
+//   { rows: [{ name, visit_date, lang?, procedure?, phone?, email?, nationality?, note?,
+//              external_source?, external_patient_id?, external_visit_id?, external_profile_url?, external_memo? }, ...] }
 // Max 500 rows per request.
 //
 // Batch strategy (minimises round-trips):
@@ -3081,7 +3327,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
   // ── Phase 1: Validate all rows ────────────────────────────────────────────
   // Keep results as a sparse array indexed by input position.
   const results = new Array(inputRows.length).fill(null);
-  const validByIdx = []; // { _i, name, visit_date, lang, procedure, phone, email, nationality, note }
+  const validByIdx = []; // { _i, name, visit_date, lang, procedure, phone, email, nationality, note, external_* }
 
   for (let i = 0; i < inputRows.length; i++) {
     const raw = inputRows[i];
@@ -3106,6 +3352,14 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
       email:       String(raw.email       || '').trim() || null,
       nationality: String(raw.nationality || '').trim() || null,
       note:        String(raw.note        || '').trim() || null,
+      external_source:     String(raw.external_source     || '').trim() || null,
+      external_patient_id: String(raw.external_patient_id || '').trim() || null,
+      external_chart_no:   String(raw.external_chart_no   || '').trim() || null,
+      external_visit_id:   String(raw.external_visit_id   || '').trim() || null,
+      external_profile_url:String(raw.external_profile_url|| '').trim() || null,
+      external_memo:       String(raw.external_memo       || '').trim() || null,
+      source_channel:      String(raw.source_channel      || '').trim() || null,
+      source_handle:       String(raw.source_handle       || '').trim() || null,
     });
   }
 
@@ -3146,6 +3400,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
         const channelRefs = {};
         if (row.phone) channelRefs.phone = row.phone;
         if (row.email) channelRefs.email = row.email;
+        const externalRefs = buildExternalRefsFromImportRow(row);
         return {
           clinic_id,
           name,
@@ -3153,6 +3408,7 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
           nationality:  row.nationality || null,
           channel_refs: channelRefs,
           notes:        row.note        || null,
+          ...(hasExternalRefs(externalRefs) ? { external_refs: externalRefs } : {}),
           tags:         [],
           flag:         deriveFlag(row.lang, row.nationality),
         };
@@ -3229,15 +3485,19 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
 
     // ── Phase 5: Bulk insert new visits ───────────────────────────────────────
     if (newRows.length > 0) {
-      const visitPayload = newRows.map(row => ({
-        clinic_id,
-        patient_id:    row._patient.id,
-        procedure_id:  row._procedureMatch?.procedure?.id || null,
-        visit_date:    row.visit_date + 'T00:00:00.000Z',
-        notes:         row.note || null,
-        stage:         'booked',
-        internal_tags: row.procedure ? [`시술: ${row.procedure}`] : [],
-      }));
+      const visitPayload = newRows.map(row => {
+        const externalRefs = buildExternalRefsFromImportRow(row);
+        return {
+          clinic_id,
+          patient_id:    row._patient.id,
+          procedure_id:  row._procedureMatch?.procedure?.id || null,
+          visit_date:    row.visit_date + 'T00:00:00.000Z',
+          notes:         row.note || null,
+          ...(hasExternalRefs(externalRefs) ? { external_refs: externalRefs } : {}),
+          stage:         'booked',
+          internal_tags: row.procedure ? [`시술: ${row.procedure}`] : [],
+        };
+      });
 
       const { data: newVisits, error: vErr } = await sb
         .from("visits")

@@ -18,8 +18,8 @@
  *   />
  *
  * onConfirm receives:
- *   patient: { name, birth_year, gender, nationality, lang, channel_refs }
- *   visit:   { visit_date, procedure_interests, procedure_id, concerns, internal_notes }
+ *   patient: { name, birth_year, gender, nationality, lang, channel_refs, external_refs }
+ *   visit:   { visit_date, procedure_interests, procedure_id, concerns, internal_notes, external_refs }
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -48,6 +48,16 @@ const CHANNEL_LABELS = {
   email:     { icon: '✉️', label: '이메일' },
 };
 const ALL_CHANNELS = Object.keys(CHANNEL_LABELS);
+
+const EXTERNAL_SOURCE_OPTIONS = [
+  { value: '', label: '— 선택' },
+  { value: 'vegas', label: 'Vegas' },
+  { value: 'afterdoc', label: 'AfterDoc' },
+  { value: 'drpalette', label: 'Dr.Palette' },
+  { value: 'crm', label: '기타 CRM' },
+  { value: 'emr', label: '기타 EMR' },
+  { value: 'manual', label: '수기 등록' },
+];
 
 // ── Confidence badge ──────────────────────────────────────────
 function ConfBadge({ level, evidence }) {
@@ -196,6 +206,12 @@ export default function IntakeParser({
   const [channels,    setChannels]    = useState({});      // { wechat: '...', ... }
   const [newChanKey,  setNewChanKey]  = useState('');
   const [newChanVal,  setNewChanVal]  = useState('');
+  const [externalSource, setExternalSource] = useState('');
+  const [externalPatientId, setExternalPatientId] = useState('');
+  const [externalChartNo, setExternalChartNo] = useState('');
+  const [externalVisitId, setExternalVisitId] = useState('');
+  const [externalProfileUrl, setExternalProfileUrl] = useState('');
+  const [externalMemo, setExternalMemo] = useState('');
   const [visitDate,   setVisitDate]   = useState('');
   const [procedures,  setProcedures]  = useState([]);
   const [concerns,    setConcerns]    = useState([]);
@@ -353,6 +369,14 @@ export default function IntakeParser({
       setNameErr(true);
       return;
     }
+    const externalRefs = {
+      source: externalSource || null,
+      external_patient_id: externalPatientId || null,
+      chart_no: externalChartNo || null,
+      external_visit_id: externalVisitId || null,
+      profile_url: externalProfileUrl || null,
+      memo: externalMemo || null,
+    };
     const patient = {
       name:         name.trim(),
       birth_year:   birthYear ? parseInt(birthYear) : null,
@@ -360,6 +384,7 @@ export default function IntakeParser({
       nationality:  nationality || null,
       lang:         lang || null,
       channel_refs: channels,
+      external_refs: externalRefs,
     };
     const visit = {
       visit_date:          visitDate || null,
@@ -367,6 +392,7 @@ export default function IntakeParser({
       procedure_id:        selectedProcedureId || null,
       concerns,
       internal_notes:      notes || null,
+      external_refs:       externalRefs,
     };
     onConfirm(patient, visit);
   }
@@ -614,6 +640,83 @@ export default function IntakeParser({
                   </button>
                 </div>
               </div>
+            </Field>
+
+            <Field label="기존 CRM/EMR 참조">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={externalSource}
+                    onChange={e => setExternalSource(e.target.value)}
+                    style={{
+                      width: '100%', padding: '8px 26px 8px 10px', borderRadius: 8, appearance: 'none',
+                      border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                      background: darkMode ? '#3F3F46' : '#FFF',
+                      color: externalSource ? textP : textS, fontSize: 12, fontFamily: SANS, outline: 'none',
+                    }}
+                  >
+                    {EXTERNAL_SOURCE_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={11} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: textS, pointerEvents: 'none' }} />
+                </div>
+                <input
+                  value={externalPatientId}
+                  onChange={e => setExternalPatientId(e.target.value)}
+                  placeholder="외부 환자 ID / 고객번호"
+                  style={{
+                    padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                    border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                    background: darkMode ? '#3F3F46' : '#FFF', color: textP, fontFamily: SANS, outline: 'none',
+                  }}
+                />
+                <input
+                  value={externalChartNo}
+                  onChange={e => setExternalChartNo(e.target.value)}
+                  placeholder="차트번호"
+                  style={{
+                    padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                    border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                    background: darkMode ? '#3F3F46' : '#FFF', color: textP, fontFamily: SANS, outline: 'none',
+                  }}
+                />
+                <input
+                  value={externalVisitId}
+                  onChange={e => setExternalVisitId(e.target.value)}
+                  placeholder="외부 예약/방문 ID"
+                  style={{
+                    padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                    border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                    background: darkMode ? '#3F3F46' : '#FFF', color: textP, fontFamily: SANS, outline: 'none',
+                  }}
+                />
+                <input
+                  value={externalProfileUrl}
+                  onChange={e => setExternalProfileUrl(e.target.value)}
+                  placeholder="CRM/EMR 링크"
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                    border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                    background: darkMode ? '#3F3F46' : '#FFF', color: textP, fontFamily: SANS, outline: 'none',
+                  }}
+                />
+                <input
+                  value={externalMemo}
+                  onChange={e => setExternalMemo(e.target.value)}
+                  placeholder="외부 시스템 메모"
+                  style={{
+                    gridColumn: '1 / -1',
+                    padding: '8px 10px', borderRadius: 8, fontSize: 12,
+                    border: `1.5px solid ${darkMode ? '#52525B' : '#E5E7EB'}`,
+                    background: darkMode ? '#3F3F46' : '#FFF', color: textP, fontFamily: SANS, outline: 'none',
+                  }}
+                />
+              </div>
+              <p style={{ marginTop: 7, fontSize: 10.5, lineHeight: 1.45, color: textS }}>
+                기존 CRM/EMR의 환자·예약 레코드와 연결하기 위한 참조만 저장합니다. 메시지 동기화나 inbox 기능은 만들지 않습니다.
+              </p>
             </Field>
           </>
         )}

@@ -257,12 +257,18 @@ Not built yet:
 - backend OCR platform
 - broad patient task engine
 - full admin CMS for protocol/procedure/aftercare/settings
+- full omnichannel inbox or message sync
+- channel-specific CRM/EMR API integration before manual intake proves the workflow
+- automatic patient/visit creation from conversation intake without staff confirmation
+- automatic CRM/EMR patient matching beyond explicit staff-selected search results
 
 Why:
 
 - Hardening is stable and Batch 6 has delivered practical expansion slices.
 - Remaining work is mostly pilot validation, broader rollout support, and later expansion.
 - The system should not be widened into a generic admin platform before real clinic usage proves the need.
+- TikiDoc should remain a lightweight foreign-patient intake and journey layer that can sit beside existing CRM/EMR systems rather than replacing them.
+- Conversation intake conversion is allowed only as a staff-confirmed workflow action: pending intake can become a patient, visit, and My Tiki link, but TikiDoc must not silently auto-create clinical workflow objects from copied chat text.
 
 ## Current State Lock
 
