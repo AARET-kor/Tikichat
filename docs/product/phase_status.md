@@ -16,9 +16,9 @@ Status meanings:
 | Phase | Name | Status | Notes / Remaining gaps |
 |---|---|---|---|
 | 1 | v2 schema + core entities | operationally closed | Core clinic / patient / visit / link / form / journey structure is in place. |
-| 2 | Tiki Paste -> Tiki Memory write loop | implemented | Real write loop exists and staff auth is tightened. Broader knowledge hygiene remains later. |
+| 2 | Tiki Paste -> Tiki Memory write loop | implemented | Real write loop exists and staff auth is tightened. Tiki Memory now supports narrow owner/admin direct editing with actor/audit records. Broader knowledge hygiene remains later. |
 | 3 | My Tiki portal core | pilot-ready | Journey / forms / patient link / Today task layer exist. Latest hotfix reduces token-auth schema assumptions and encodes generated link URLs. Broader UX polish and multilingual device QA remain later. |
-| 4 | Activation wedge: intake parser + quick visit + link + Tiki Desk | operationally closed after latest deploy smoke test | Quick Visit and CSV procedure mapping are conservative. Ambiguous procedure values are not silently assigned. Quick Visit now preserves success/link display, avoids duplicate retry writes, and moves Tiki Desk to the right date range after creation. |
+| 4 | Activation wedge: intake parser + quick visit + link + Tiki Desk | operationally closed after latest deploy smoke test | Quick Visit and CSV procedure mapping are conservative. Ambiguous procedure values are not silently assigned. Quick Visit now preserves success/link display, avoids duplicate retry writes, and moves Tiki Desk to the right date range after creation. CSV import now has manual column mapping, a more operational preview with warnings, invalid rows, same-file duplicate exclusion, a CRM/EMR sample template, Vegas/의사랑/Dr.Palette export preset aliases, a copy-back panel for My Tiki links and summaries, and successful import-to-Memory seeding for external CRM/EMR context. Tiki Desk now surfaces a lightweight foreign-patient intake queue for pending TikiPaste intakes and recent CSV import outcomes. |
 | 5 | Arrival Mode | operationally closed | Self-arrival, staff check-in, Ops Board refresh, literal QR availability, and patient Today layer exist. |
 | 6 | My Tiki / Ask TikiBell | pilot-ready | Safe, source-limited Ask exists. Narrow config knobs exist. No prompt CMS or rules engine. |
 | 7 | Escalation | pilot-ready | Triage, assignment, actors, status, SLA-derived markers, and Tiki Desk visibility exist. External notifications remain deferred. |
@@ -35,7 +35,7 @@ Status meanings:
 | My Tiki link validity | stable after deploy smoke test | Generated links now use encoded tokens and patient-token auth requires only required `patient_links` fields. Must be retested with a newly generated link after deploy. |
 | Tiki Desk scroll | stable after deploy smoke test | Global document scroll and Tiki Desk internal scrolling are restored. Must be checked on actual staff screen sizes. |
 | New visit visibility | stable after deploy smoke test | New visits are inserted optimistically and date filters move to `today`, `tomorrow`, `week`, or `all` based on visit date. |
-| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. Chrome extension, DOM-reading behavior, and CRM/EMR bulk import ownership are paused/excluded. |
+| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. It now extracts patient/visit candidates, shows conservative existing-patient matches, and supports staff-confirmed existing/new patient conversion into patient + visit + My Tiki link + Memory. Chrome extension, DOM-reading behavior, silent auto-match, and CRM/EMR bulk import ownership are paused/excluded. |
 | Design-system pass | implemented / validating | Landing, staff shell, Tiki Desk, Protocol, Procedure Management, and My Tiki UI kit direction are standardized. More manual visual QA remains. |
 
 ## Batch Status
@@ -60,7 +60,7 @@ Status meanings:
 | Tiki Room real clinic usability | pilot-ready | Core room session flow verified. Real room devices still need acceptance testing. |
 | Tiki Desk operational visibility | stable / pilot-ready | Urgency, SLA, owner/latest actor, room traffic, scheduler health, and audit/history browse are surfaced. |
 | QR generation / patient link flow | stable / pilot-ready | Internal QR rendering via `/api/qr`; no external QR dependency remains. |
-| TikiPaste web-sidecar | usable / pilot-ready | Useful as a staff sidecar workspace. It is not an extension, overlay, automatic chat-reader, or CRM/EMR import manager. |
+| TikiPaste web-sidecar | usable / pilot-ready | Useful as a staff sidecar workspace with assisted matching and staff-confirmed conversion. It is not an extension, overlay, automatic chat-reader, silent auto-matcher, or CRM/EMR import manager. |
 | Signup/login | stable | Real Auth path is restored when deployed env/build values match Supabase. |
 | Quick Visit + patient link generation | stable after smoke test | Works in code and tests. Needs one deployed link-open smoke test after latest deploy. |
 

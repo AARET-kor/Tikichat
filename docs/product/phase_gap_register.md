@@ -69,16 +69,31 @@ Implemented:
 - Clinic context is resolved from authenticated staff context.
 - Web-sidecar TikiPaste workspace for pasted conversations, selected chat text, screenshot fallback, summaries, intent, urgency/risk signal, recommended replies, copy actions, and handoff actions.
 - Conversation Intake Phase 2: TikiPaste can save analyzed pasted/screenshot conversation context as a pending intake candidate, scoped to the authenticated clinic.
+- Conversation Intake Phase 2B: TikiPaste now extracts patient/visit candidates, missing fields, and next suggested action from pasted text or staff-provided screenshots.
+- Conversation Intake Phase 2B: TikiPaste now shows conservative existing-patient match candidates using authenticated, clinic-scoped patient data.
+- Conversation Intake Phase 2B: staff can explicitly choose existing patient or new patient; confirmed save creates/links patient, creates visit, generates My Tiki link, and writes patient-specific Memory.
 - Conversation Intake Phase 3: pending intake can be staff-confirmed into an existing patient or new patient, with visit creation and My Tiki link generation.
 - CRM/EMR import ownership clarified: bulk patient/visit import belongs to Tiki Desk CSV/manual import and settings guidance, while TikiPaste remains single-conversation capture.
 - CRM/EMR CSV import now provides a sample template for patient, visit, and external reference fields.
+- CRM/EMR CSV import now includes lightweight export presets for Vegas, 의사랑, and Dr.Palette column aliases.
+- CRM/EMR CSV import supports manual column mapping when automatic header detection cannot identify required fields.
+- CRM/EMR CSV import preview now identifies staff-review warnings, invalid rows, and same-file duplicates; backend import also excludes same-file duplicate visits defensively.
+- CRM/EMR CSV import completion now includes copy-back text for My Tiki links and summaries that staff can paste into the existing CRM/EMR.
+- CRM/EMR CSV import now seeds patient Memory for successful created/visit-created rows with source system, external identifiers, visit/procedure context, external memo, and generated My Tiki link.
+- Tiki Memory detail now supports direct owner/admin editing of patient operating context: summary, procedure interests, concerns, risk level/flags, staff precautions, and staff notes.
+- Direct Memory edits are clinic-scoped and actor/audit-backed through `last_edited_by`, `last_edited_at`, journey `note_added`, and audit log writes.
+- Tiki Desk now includes a lightweight `외국인 환자 유입 큐` combining pending TikiPaste intakes and recent CSV import batch outcomes.
+- CSV import results are persisted as compact batch/row outcome records for staff visibility.
 
 Partial:
 
 - Knowledge hygiene and content review remain broader product concerns.
 - TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior.
-- Patient matching is still manual/search-based. No automatic CRM/EMR matching or inbox-style queue management exists.
-- CRM/EMR import UI is still lightweight; it has a sample CSV template but no full mapping wizard or API connector exists.
+- Patient matching is now assisted by conservative candidate ranking, but still requires explicit staff confirmation. No automatic CRM/EMR matching or inbox-style queue management exists.
+- CRM/EMR import UI is stronger than the first lightweight pass, but still has no saved column-mapping preset or API connector.
+- CRM/EMR presets are static alias helpers and may still need field tuning from real exports.
+- The Tiki Desk intake queue is an operational visibility queue, not a full inbox. It does not sync channel messages, send replies, or perform automatic patient matching.
+- Tiki Memory editing is narrow field editing, not a full revision browser or CRM data editor.
 
 Deferred:
 

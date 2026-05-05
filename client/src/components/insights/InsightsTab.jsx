@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Search, X, Brain, Globe, Stethoscope, AlertTriangle,
   Clock, Calendar, ChevronDown, ChevronRight, Sparkles,
-  MessageCircle, Activity, User, MapPin, Shield
+  MessageCircle, Activity, User, MapPin, Shield, Edit3, Save
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 // ── CSS injection ─────────────────────────────────────────────────────────────
 const KEYFRAMES = `
@@ -330,6 +331,113 @@ const RISK_LEVEL_CONFIG = {
   high:   { label: '높음', color: C.risk,   bg: C.riskPale  },
 };
 
+function splitLines(value) {
+  return String(value || '')
+    .split('\n')
+    .map(v => v.trim())
+    .filter(Boolean);
+}
+
+function joinLines(value) {
+  return Array.isArray(value) ? value.join('\n') : '';
+}
+
+function riskFlagsToText(flags = []) {
+  return (Array.isArray(flags) ? flags : [])
+    .map((flag) => {
+      if (typeof flag === 'string') return flag;
+      const severity = flag.severity || flag.level || 'medium';
+      const type = flag.type || flag.cat || 'manual';
+      const detail = flag.detail || flag.description || flag.phrase || '';
+      return [severity, type, detail].filter(Boolean).join(' | ');
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function parseRiskFlags(text) {
+  return splitLines(text).map((line) => {
+    const parts = line.split('|').map(part => part.trim()).filter(Boolean);
+    if (parts.length >= 3) return { severity: parts[0], type: parts[1], detail: parts.slice(2).join(' | ') };
+    if (parts.length === 2) return { severity: 'medium', type: parts[0], detail: parts[1] };
+    return { severity: 'medium', type: 'manual', detail: parts[0] || line };
+  });
+}
+
+function langLabel(lang) {
+  return { ja: '일본어', zh: '중국어', en: '영어', vi: '베트남어', th: '태국어', ko: '한국어' }[lang] || '언어 미상';
+}
+
+function adaptMemoryItemToRecord(item) {
+  const patient = item.patient || {};
+  const procedureInterests = item.procedure_interests || [];
+  const concerns = item.concerns || [];
+  const staffPrecautions = item.staff_precautions || [];
+  const riskFlags = item.risk_flags || [];
+  const year = patient.birth_year ? new Date().getFullYear() - Number(patient.birth_year) : null;
+  return {
+    id: item.patient_id || item.id,
+    name: patient.name || '이름 없는 환자',
+    nameOrig: '',
+    lang: patient.lang || 'ko',
+    langLabel: langLabel(patient.lang),
+    flag: patient.flag || '📝',
+    country: patient.nationality || '국가 미상',
+    city: '',
+    age: Number.isFinite(year) ? year : null,
+    sessionCount: item.session_count || 0,
+    lastSessionAt: item.last_session_at ? item.last_session_at.slice(0, 10) : '기록 없음',
+    riskCount: riskFlags.length || (item.risk_level && item.risk_level !== 'none' ? 1 : 0),
+    context: {
+      procedureInterests: {
+        values: procedureInterests,
+        sessionRef: item.last_session_at ? `최근 세션 ${item.last_session_at.slice(0, 10)}` : '직원 편집',
+      },
+      painSensitivity: {
+        level: item.risk_level === 'high' ? 'high' : item.risk_level === 'medium' ? 'medium' : 'low',
+        note: concerns[0] || item.ai_summary || '아직 별도 위험 신호가 없습니다.',
+        sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
+      },
+      downtimeConcern: {
+        level: staffPrecautions.length ? 'medium' : 'low',
+        note: staffPrecautions.join(' / ') || '직원 주의사항이 아직 없습니다.',
+        sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
+      },
+      scheduleDuration: {
+        stay: '방문/체류 정보는 방문 기록에서 확인',
+        departure: '-',
+        constraint: '',
+        sessionRef: null,
+      },
+      complaintRisk: {
+        level: item.risk_level && item.risk_level !== 'none' ? item.risk_level : 'low',
+        note: riskFlags.map(flag => flag.detail || flag.description || flag.phrase).filter(Boolean).join(' / ') || '위험 신호 없음',
+        sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
+      },
+    },
+    sessions: [{
+      id: `${item.id || item.patient_id}-memory`,
+      date: item.updated_at ? item.updated_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      surface: 'memory',
+      duration: '-',
+      turns: item.session_count || 0,
+      summary: [
+        { cat: 'concern', text: item.ai_summary || '요약 없음' },
+        ...(staffPrecautions.length ? [{ cat: 'request', text: `직원 주의사항: ${staffPrecautions.join(', ')}` }] : []),
+        ...(item.staff_notes ? [{ cat: 'history', text: `운영 메모: ${item.staff_notes}` }] : []),
+      ],
+      riskFlags: riskFlags.map(flag => ({
+        level: (flag.severity || item.risk_level || 'medium').toUpperCase(),
+        cat: flag.type || 'manual',
+        phrase: flag.detail || flag.description || flag.phrase || String(flag),
+        dismissed: false,
+      })),
+    }],
+    followUps: staffPrecautions.map(text => ({ type: 'check', priority: 'medium', text })),
+    _memory: item,
+  };
+}
+
 function sHead(label) {
   return (
     <div style={{
@@ -640,7 +748,135 @@ function MemoryListItem({ record, isSelected, onClick }) {
 }
 
 // ── MemoryDetail ──────────────────────────────────────────────────────────────
-function MemoryDetail({ record }) {
+function MemoryEditPanel({ record, onCancel, onSaved }) {
+  const memory = record._memory || {};
+  const [summary, setSummary] = useState(memory.ai_summary || '');
+  const [interests, setInterests] = useState(joinLines(memory.procedure_interests));
+  const [concerns, setConcerns] = useState(joinLines(memory.concerns));
+  const [precautions, setPrecautions] = useState(joinLines(memory.staff_precautions));
+  const [notes, setNotes] = useState(memory.staff_notes || '');
+  const [riskLevel, setRiskLevel] = useState(memory.risk_level || 'none');
+  const [riskFlags, setRiskFlags] = useState(riskFlagsToText(memory.risk_flags));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('로그인 세션을 확인할 수 없습니다.');
+      const res = await fetch(`/api/staff/memory/${encodeURIComponent(record.patient_id || record.id)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ai_summary: summary,
+          procedure_interests: splitLines(interests),
+          concerns: splitLines(concerns),
+          staff_precautions: splitLines(precautions),
+          staff_notes: notes,
+          risk_level: riskLevel,
+          risk_flags: parseRiskFlags(riskFlags),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      onSaved?.(data.item);
+    } catch (err) {
+      setError(err.message || '저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    border: `1px solid ${C.border}`,
+    borderRadius: 10,
+    padding: '10px 12px',
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: C.text,
+    background: C.surface,
+    fontFamily: C.F,
+    outline: 'none',
+  };
+
+  return (
+    <div style={{
+      background: C.surface,
+      border: `1px solid ${C.borderMid}`,
+      borderRadius: 16,
+      padding: 18,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      boxShadow: '0 12px 30px rgba(1,69,242,0.08)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Edit3 size={16} color={C.mocha} />
+        <div>
+          <h3 style={{ fontSize: 15, fontWeight: 900, color: C.text, margin: 0 }}>운영 기억 편집</h3>
+          <p style={{ fontSize: 11, color: C.textLight, margin: '3px 0 0' }}>
+            환자별 운영 기억만 정리합니다. CRM 원본 덤프나 전체 대화 원문은 저장하지 않습니다.
+          </p>
+        </div>
+      </div>
+
+      <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>요약</label>
+      <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={4} style={inputStyle} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>관심 시술</label>
+          <textarea value={interests} onChange={e => setInterests(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} placeholder={'리프팅\n보톡스'} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>주의사항</label>
+          <textarea value={precautions} onChange={e => setPrecautions(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} placeholder={'통역 확인 필요\n통증 불안 높음'} />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>환자 우려/걱정</label>
+          <textarea value={concerns} onChange={e => setConcerns(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>위험 신호</label>
+          <select value={riskLevel} onChange={e => setRiskLevel(e.target.value)} style={{ ...inputStyle, marginTop: 6, height: 40 }}>
+            <option value="none">없음</option>
+            <option value="low">낮음</option>
+            <option value="medium">주의</option>
+            <option value="high">높음</option>
+          </select>
+          <textarea value={riskFlags} onChange={e => setRiskFlags(e.target.value)} rows={3} style={{ ...inputStyle, marginTop: 8 }} placeholder={'high | allergy | 라텍스 알레르기 우려'} />
+        </div>
+      </div>
+
+      <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>직원 메모</label>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={inputStyle} />
+
+      {error && <div style={{ fontSize: 12, color: C.risk, fontWeight: 700 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button onClick={onCancel} disabled={saving} style={{ border: `1px solid ${C.border}`, borderRadius: 10, background: C.surface, color: C.textMid, fontWeight: 800, padding: '9px 14px', cursor: 'pointer' }}>
+          취소
+        </button>
+        <button onClick={save} disabled={saving} style={{ border: 'none', borderRadius: 10, background: C.mocha, color: '#fff', fontWeight: 900, padding: '9px 15px', cursor: saving ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Save size={13} /> {saving ? '저장 중' : '저장'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MemoryDetail({ record, onMemorySaved }) {
+  const [editing, setEditing] = useState(false);
   const allRisks = record.sessions.flatMap(s =>
     (s.riskFlags || []).map(r => ({ ...r, sessionDate: s.date, sessionSurface: s.surface }))
   );
@@ -717,6 +953,27 @@ function MemoryDetail({ record }) {
           </div>
         </div>
 
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+          <button
+            onClick={() => setEditing(v => !v)}
+            style={{
+              border: `1px solid ${C.borderMid}`,
+              borderRadius: 10,
+              background: editing ? C.mochaPale : C.surface,
+              color: C.mochaDark,
+              fontSize: 12,
+              fontWeight: 900,
+              padding: '8px 12px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Edit3 size={13} /> {editing ? '편집 닫기' : '운영 기억 편집'}
+          </button>
+        </div>
+
         {/* Stay info strip */}
         <div style={{
           background: C.bg, borderRadius: 10,
@@ -746,6 +1003,17 @@ function MemoryDetail({ record }) {
           )}
         </div>
       </div>
+
+      {editing && (
+        <MemoryEditPanel
+          record={record}
+          onCancel={() => setEditing(false)}
+          onSaved={(item) => {
+            setEditing(false);
+            onMemorySaved?.(item);
+          }}
+        />
+      )}
 
       {/* ── Context cards grid ── */}
       <div>
@@ -970,16 +1238,49 @@ export default function InsightsTab({ darkMode }) {
   const [query,    setQuery]    = useState('');
   const [selected, setSelected] = useState(null);
   const [langFilter, setLangFilter] = useState('all');
+  const [memoryItems, setMemoryItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    async function loadMemory() {
+      setLoading(true);
+      setLoadError('');
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        if (!token) throw new Error('로그인 세션을 확인할 수 없습니다.');
+        const res = await fetch('/api/staff/memory', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (!active) return;
+        setMemoryItems((data.items || []).map(adaptMemoryItemToRecord));
+      } catch (err) {
+        if (!active) return;
+        setLoadError(err.message || 'Memory를 불러오지 못했습니다.');
+        setMemoryItems([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    loadMemory();
+    return () => { active = false; };
+  }, []);
+
+  const records = memoryItems.length > 0 ? memoryItems : MEMORY_RECORDS;
 
   const langs = useMemo(() => {
     const seen = new Set();
-    MEMORY_RECORDS.forEach(r => seen.add(r.lang));
+    records.forEach(r => seen.add(r.lang));
     return Array.from(seen);
-  }, []);
+  }, [records]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return MEMORY_RECORDS.filter(r => {
+    return records.filter(r => {
       if (langFilter !== 'all' && r.lang !== langFilter) return false;
       if (!q) return true;
       return (
@@ -989,7 +1290,19 @@ export default function InsightsTab({ darkMode }) {
         r.context.procedureInterests.values.some(v => v.includes(q))
       );
     });
-  }, [query, langFilter]);
+  }, [query, langFilter, records]);
+
+  function handleMemorySaved(item) {
+    if (!item) return;
+    const updated = adaptMemoryItemToRecord(item);
+    setMemoryItems(prev => {
+      const next = prev.some(record => record.id === updated.id)
+        ? prev.map(record => record.id === updated.id ? updated : record)
+        : [updated, ...prev];
+      return next;
+    });
+    setSelected(updated);
+  }
 
   return (
     <div style={{
@@ -1025,10 +1338,24 @@ export default function InsightsTab({ darkMode }) {
                 Tiki Memory
               </h2>
               <p style={{ fontSize: 10, color: C.textLight, margin: 0 }}>
-                {filtered.length}개 기억
+                {loading ? '불러오는 중' : `${filtered.length}개 기억`}
               </p>
             </div>
           </div>
+
+          {loadError && (
+            <div style={{
+              marginBottom: 10,
+              padding: '8px 10px',
+              borderRadius: 9,
+              background: C.warnPale,
+              color: C.warn,
+              fontSize: 11,
+              fontWeight: 700,
+            }}>
+              실제 Memory를 불러오지 못해 예시 기록을 표시합니다: {loadError}
+            </div>
+          )}
 
           {/* Search */}
           <div style={{
@@ -1119,7 +1446,7 @@ export default function InsightsTab({ darkMode }) {
         background: C.bg,
       }}>
         {selected
-          ? <MemoryDetail key={selected.id} record={selected} />
+          ? <MemoryDetail key={selected.id} record={selected} onMemorySaved={handleMemorySaved} />
           : <EmptyDetail />
         }
       </div>

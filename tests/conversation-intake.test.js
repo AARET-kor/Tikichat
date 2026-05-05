@@ -114,6 +114,33 @@ test("builds a create-patient conversion plan without guessing missing patient n
   });
 });
 
+test("preserves extracted patient contact signals as channel refs when staff source fields are blank", () => {
+  const plan = buildConversationIntakeConversionPlan({
+    intake: {
+      raw_text: "Wang Fang / wangfang2024 / +82-10-0000-0000 리프팅 문의",
+      source_channel: "kakao",
+      source_handle: "",
+      source_phone: "",
+      parsed_language: "중국어",
+      parsed_procedure_interests: ["리프팅"],
+      patient_candidate: {
+        name: "Wang Fang",
+        source_handle: "wangfang2024",
+        phone: "+82-10-0000-0000",
+      },
+      visit_candidate: { visit_date: "2026-05-03" },
+    },
+    payload: { mode: "create_patient", patient: { name: "Wang Fang" } },
+  });
+
+  assert.deepEqual(plan.patient.channel_refs, {
+    kakao: {
+      handle: "wangfang2024",
+      phone: "+82-10-0000-0000",
+    },
+  });
+});
+
 test("builds an existing-patient conversion plan only with an explicit patient id", () => {
   const plan = buildConversationIntakeConversionPlan({
     intake: {

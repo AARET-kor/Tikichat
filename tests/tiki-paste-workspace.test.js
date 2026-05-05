@@ -22,6 +22,9 @@ test("TikiPaste supports practical handoff actions", () => {
   assert.match(tikiPasteSource, /My Tiki 링크 준비/);
   assert.match(tikiPasteSource, /Tiki Desk로 보내기/);
   assert.match(tikiPasteSource, /상담 유입으로 보류 저장/);
+  assert.match(tikiPasteSource, /환자 후보 매칭/);
+  assert.match(tikiPasteSource, /기존 환자로 저장/);
+  assert.match(tikiPasteSource, /새 환자로 저장/);
   assert.match(tikiPasteSource, /\/api\/conversation-intakes/);
 });
 
@@ -38,6 +41,17 @@ test("/api/tiki-paste accepts either pasted text or uploaded screenshot data", (
   assert.match(serverSource, /extracted_text/);
   assert.match(serverSource, /conversation_summary/);
   assert.match(serverSource, /last_message_intent/);
+  assert.match(serverSource, /patient_candidate/);
+  assert.match(serverSource, /visit_candidate/);
+  assert.match(serverSource, /missing_fields/);
+});
+
+test("TikiPaste patient matching is staff-gated and clinic-scoped", () => {
+  assert.match(serverSource, /app\.post\("\/api\/patients\/match-candidates", requireStaffAuth,/);
+  assert.match(serverSource, /buildPatientMatchSignals/);
+  assert.match(serverSource, /rankPatientMatches/);
+  assert.match(serverSource, /\.eq\("clinic_id", req\.clinic_id\)/);
+  assert.match(tikiPasteSource, /\/api\/patients\/match-candidates/);
 });
 
 test("/api/conversation-intakes is staff-gated and scoped to authenticated clinic", () => {

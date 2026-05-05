@@ -79,9 +79,10 @@ export function buildConversationIntakeInsert({ clinic_id, created_by, payload }
 }
 
 function buildChannelRefs(intake = {}) {
+  const patientCandidate = cleanObject(intake.patient_candidate);
   const channel = cleanString(intake.source_channel || "manual", 80) || "manual";
-  const handle = cleanString(intake.source_handle, 160);
-  const phone = cleanString(intake.source_phone, 80);
+  const handle = cleanString(intake.source_handle || patientCandidate.source_handle || patientCandidate.handle, 160);
+  const phone = cleanString(intake.source_phone || patientCandidate.phone, 80);
   const memo = cleanString(intake.source_memo, 500);
   if (!handle && !phone && !memo) return {};
   return {

@@ -1,6 +1,6 @@
 # Current Engineering State
 
-Last updated: 2026-05-01
+Last updated: 2026-05-05
 
 This document is the short engineering truth snapshot for TikiDoc after hardening, Batch 6A / 6B / 6C / 6D, the design-system pass, TikiPaste web-sidecar pivot, auth fixes, and Quick Visit / My Tiki link stabilization.
 
@@ -61,13 +61,29 @@ Stable:
   - the Chrome extension direction is paused
   - staff can paste conversation text or screenshot fallback into the web app
   - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
+  - TikiPaste now extracts conservative patient/visit candidates from pasted text or staff-provided screenshots
+  - TikiPaste now shows existing-patient match candidates from authenticated clinic data and lets staff explicitly choose existing patient vs new patient
+  - Staff-confirmed TikiPaste save can create/link patient, create visit, generate a My Tiki link, and write the conversation summary into patient Memory
   - Phase 2 conversation-intake staging is implemented: staff can save an analyzed conversation as a pending intake candidate before creating or linking a patient
   - Phase 3 conversion is implemented: staff can review pending intake, connect it to an existing patient or create a new patient, create a visit, and generate a My Tiki link after confirmation
 - CRM/EMR import separation:
   - TikiPaste no longer presents CRM/EMR as a source option; it stays focused on current conversation capture
   - existing CRM/EMR patient and visit records belong in Tiki Desk CSV/manual import and settings guidance
   - CSV import now exposes a sample CRM/EMR template for supported patient, visit, and external reference columns
+  - CSV import now includes lightweight export presets for Vegas, 의사랑, and Dr.Palette so common column names are recognized more reliably
+  - CSV import supports manual column mapping when a CRM/EMR export uses unrecognized headers
+  - CSV import preview now separates rows that will be imported, rows needing staff review, invalid rows, and same-file duplicates
+  - backend import defensively excludes same-CSV duplicate visits for the same resolved patient and visit date before inserting visits
+  - CSV import completion now shows a copy-back panel with My Tiki links and short summaries for pasting into the existing CRM/EMR
+  - successful CSV-created patients/visits now seed patient Memory with CRM/EMR source, external identifiers, procedure interest, external memo, visit context, and generated My Tiki link
+  - Tiki Desk now has an `외국인 환자 유입 큐` that combines pending TikiPaste conversation intakes and recent CSV import batches
+  - CSV import batches/rows are persisted as compact operational summaries, not raw CRM file storage
   - Memory remains patient-specific context storage after identification, not raw CRM/EMR file management
+- Tiki Memory direct editing:
+  - owner/admin staff can open a patient Memory detail and edit summary, procedure interests, patient concerns, risk level/flags, staff precautions, and staff notes
+  - Memory direct edits are clinic-scoped and staff-authenticated
+  - edits stamp `last_edited_by` / `last_edited_at`, write a `note_added` patient journey event with actor, and emit a non-blocking audit log
+  - this is still patient operating context only; it is not raw CRM/EMR file storage or full transcript storage
 - Staff dashboard scroll behavior:
   - app-level document scroll is no longer globally locked
   - Tiki Desk content has a touch-friendly vertical scroll container
@@ -78,7 +94,7 @@ Usable but not fully clinic-ready:
 - Tiki Room browser-native voice input and browser TTS fallback. They are useful optional aids, but quality depends on browser, device, microphone permission, room noise, and installed voices.
 - Tiki Room live communication loop. Current/load-next/clear manual verification passed, but clinic deployment still needs device/browser acceptance testing per room.
 - TikiPaste web-sidecar. It is now a realistic staff workspace without extension dependency, but it still depends on staff-pasted text/screenshot input and is not an automatic browser DOM reader.
-- Conversation-intake conversion. Pending intake records can now be converted after staff confirmation, but matching is still manual/search-based and not an automatic CRM/EMR sync.
+- Conversation-intake conversion. Pending intake records can now be converted after staff confirmation and are visible in Tiki Desk intake queue. TikiPaste has conservative match suggestions, but this is still staff-confirmed and not an automatic CRM/EMR sync.
 - Staff dashboard UX. It is much clearer than the earlier cramped dashboard, but real front-desk usage should still validate screen size, scroll behavior, and Korean copy under daily workload.
 
 Prototype-level or intentionally bounded:
@@ -88,6 +104,7 @@ Prototype-level or intentionally bounded:
 - Browser voice is not a backend STT/TTS pipeline and does not store transcripts.
 - Patient screenshot/OCR fallback in TikiPaste remains bounded. It is not a giant OCR platform or cross-browser overlay.
 - Conversation intake is not an omnichannel inbox. It has no unread state, channel sync, channel reply sending, or automated CRM/EMR integration.
+- CRM/EMR presets are practical alias helpers, not certified vendor integrations.
 - My Tiki patient UI kit is improved and reusable, but not every multilingual patient route has been manually device-tested after the latest visual pass.
 
 Intentionally deferred:
@@ -102,7 +119,7 @@ Intentionally deferred:
 - Automatic arbitrary browser DOM reading.
 - Backend OCR platform.
 - Full omnichannel inbox or message sync.
-- Automatic patient matching from pending conversation intake.
+- Fully automatic patient matching from pending conversation intake without staff confirmation.
 - Channel-specific CRM/EMR API integrations.
 
 ## May 1, 2026 Runtime Fixes And Product Changes

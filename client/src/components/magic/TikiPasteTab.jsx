@@ -641,8 +641,9 @@ function SaveToMemoryBar({ result, input, clinicId }) {
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const params = new URLSearchParams({ q: query.trim(), ...(clinicId ? { clinicId } : {}) });
-        const r = await fetch(`/api/patients/search?${params}`);
+        const params = new URLSearchParams({ q: query.trim() });
+        const headers = await getStaffAuthHeaders();
+        const r = await fetch(`/api/patients/search?${params}`, { headers });
         const d = await r.json();
         setSearchRes(d.patients || []);
       } catch {
@@ -884,9 +885,13 @@ function PendingIntakeBar({ result, input, sourceCapture, onSaved }) {
           source: sourceCapture,
           raw_text: input || result.extracted_text || '',
           analysis: result,
+          patient_candidate: result.patient_candidate || {},
           visit_candidate: {
+            ...(result.visit_candidate || {}),
             procedure_interests: result.procedure_interests || [],
           },
+          missing_fields: result.missing_fields || [],
+          next_suggested_action: result.next_suggested_action,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -962,6 +967,255 @@ function PendingIntakeBar({ result, input, sourceCapture, onSaved }) {
         }
       </button>
     </div>
+  );
+}
+
+function PatientMatchPanel({ result, input, sourceCapture, matchState, onCompleted }) {
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [patientName, setPatientName] = useState('');
+  const [visitDate, setVisitDate] = useState('');
+  const [phase, setPhase] = useState('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+
+  const candidate = result?.patient_candidate || {};
+  const visitCandidate = result?.visit_candidate || {};
+  const matches = matchState?.candidates || [];
+
+  useEffect(() => {
+    setSelectedPatient(matches[0]?.confidence === 'high' ? matches[0].patient : null);
+    setPatientName(candidate.name || '');
+    setVisitDate(visitCandidate.visit_date || '');
+    setPhase('idle');
+    setErrorMsg('');
+    setLinkUrl('');
+  }, [result, matches[0]?.patient?.id]);
+
+  async function saveDecision(mode) {
+    if (!result || phase === 'saving') return;
+    if (mode === 'link_existing' && !selectedPatient?.id) return;
+    if (mode === 'create_patient' && !patientName.trim()) {
+      setErrorMsg('새 환자로 저장하려면 환자 이름이 필요합니다.');
+      setPhase('error');
+      return;
+    }
+
+    setPhase('saving');
+    setErrorMsg('');
+    setLinkUrl('');
+
+    try {
+      const headers = await getStaffAuthHeaders();
+      if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
+
+      const intakeRes = await fetch('/api/conversation-intakes', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          source: sourceCapture,
+          raw_text: input || result.extracted_text || '',
+          analysis: {
+            ...result,
+            match_context: {
+              selected_mode: mode,
+              selected_patient_id: selectedPatient?.id || null,
+              match_candidates: matches.slice(0, 3),
+            },
+          },
+          patient_candidate: {
+            ...candidate,
+            name: patientName.trim() || candidate.name || null,
+          },
+          visit_candidate: {
+            ...visitCandidate,
+            visit_date: visitDate || visitCandidate.visit_date || null,
+            procedure_interests: result.procedure_interests || visitCandidate.procedure_interests || [],
+          },
+          missing_fields: result.missing_fields || [],
+          next_suggested_action: mode === 'link_existing' ? 'link_existing_patient' : 'create_new_patient',
+        }),
+      });
+      const intakeData = await intakeRes.json().catch(() => ({}));
+      if (!intakeRes.ok) throw new Error(intakeData.error || `HTTP ${intakeRes.status}`);
+
+      const convertPayload = mode === 'link_existing'
+        ? {
+            mode,
+            patientId: selectedPatient.id,
+            visit: { visitDate },
+          }
+        : {
+            mode: 'create_patient',
+            patient: {
+              name: patientName.trim(),
+              nationality: candidate.nationality || null,
+              lang: candidate.lang || null,
+            },
+            visit: { visitDate },
+          };
+
+      const convertRes = await fetch(`/api/conversation-intakes/${intakeData.intake.id}/convert`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(convertPayload),
+      });
+      const converted = await convertRes.json().catch(() => ({}));
+      if (!convertRes.ok) throw new Error(converted.error || `HTTP ${convertRes.status}`);
+
+      const patientId = converted.patient?.id || selectedPatient?.id;
+      if (patientId) {
+        await fetch('/api/memory', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            patientId,
+            koSummary: result.ko_summary || result.conversation_summary || null,
+            riskLevel: result.risk_level || 'none',
+            procedureInterests: result.procedure_interests || [],
+            concerns: result.concerns || [],
+            riskFlags: result.risk_level === 'high'
+              ? [{ type: 'tikipaste_intake', detail: result.last_message_intent || result.intent, severity: 'high' }]
+              : [],
+          }),
+        }).catch(() => {});
+      }
+
+      setLinkUrl(converted.link?.url || '');
+      setPhase('done');
+      onCompleted?.(converted);
+    } catch (err) {
+      setErrorMsg(err.message || '저장 실패');
+      setPhase('error');
+    }
+  }
+
+  return (
+    <section style={{ display:'grid', gap:12, padding:16, background:C.white, border:`1px solid ${C.border}`, borderRadius:16, boxShadow:'0 8px 28px rgba(1,69,242,0.06)' }}>
+      <div style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
+        <div style={{ width:36, height:36, borderRadius:11, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Search size={15} color={C.mocha} />
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <p style={{ fontSize:14, fontWeight:950, color:C.text, letterSpacing:'-0.03em' }}>환자 후보 매칭</p>
+          <p style={{ fontSize:11, color:C.textMt, marginTop:3, lineHeight:1.55 }}>
+            복붙/스크린샷에서 읽은 환자 정보를 기존 환자 후보와 비교합니다. 자동 확정하지 않고 직원이 직접 선택합니다.
+          </p>
+        </div>
+        {matchState?.loading && <Loader2 size={15} color={C.mocha} style={{ animation:'spin 1s linear infinite' }} />}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1.1fr 0.9fr', gap:12 }}>
+        <div style={{ display:'grid', gap:8, padding:12, borderRadius:12, background:C.bgSub, border:`1px solid ${C.border}` }}>
+          <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>분석된 환자/방문 후보</p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 150px', gap:8 }}>
+            <input
+              value={patientName}
+              onChange={(e) => setPatientName(e.target.value)}
+              placeholder="환자 이름 확인"
+              style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none', background:C.white }}
+            />
+            <input
+              value={visitDate}
+              onChange={(e) => setVisitDate(e.target.value)}
+              type="date"
+              style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none', background:C.white }}
+            />
+          </div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            {(result.procedure_interests || []).slice(0, 5).map((item) => (
+              <span key={item} style={{ fontSize:10.5, fontWeight:850, color:C.mochaDk, background:C.mochaPale, borderRadius:999, padding:'4px 8px' }}>{item}</span>
+            ))}
+            {(result.missing_fields || []).map((field) => (
+              <span key={field} style={{ fontSize:10.5, fontWeight:850, color:C.red, background:C.redPale, borderRadius:999, padding:'4px 8px' }}>확인 필요: {field}</span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gap:8, padding:12, borderRadius:12, background:C.bgSub, border:`1px solid ${C.border}` }}>
+          <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>기존 환자 후보</p>
+          {matchState?.error && <p style={{ fontSize:11, color:C.red }}>{matchState.error}</p>}
+          {!matchState?.loading && matches.length === 0 && (
+            <p style={{ fontSize:11, color:C.textMt, lineHeight:1.5 }}>확실한 기존 환자 후보가 없습니다. 새 환자로 저장하거나 보류 intake에 남겨 확인하세요.</p>
+          )}
+          {matches.slice(0, 3).map((match) => (
+            <button
+              key={match.patient.id}
+              type="button"
+              onClick={() => setSelectedPatient(match.patient)}
+              style={{
+                display:'grid',
+                gap:3,
+                textAlign:'left',
+                border:`1px solid ${selectedPatient?.id === match.patient.id ? C.mocha : C.border}`,
+                background:selectedPatient?.id === match.patient.id ? C.mochaPale : C.white,
+                borderRadius:10,
+                padding:'9px 10px',
+                cursor:'pointer',
+              }}
+            >
+              <span style={{ fontSize:12, fontWeight:900, color:C.text }}>{match.patient.name}</span>
+              <span style={{ fontSize:10.5, color:C.textMt }}>
+                {match.confidence === 'high' ? '높은 확률' : match.confidence === 'medium' ? '확인 필요' : '낮은 확률'}
+                {' · '}{match.reasons.join(', ') || '부분 일치'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {phase === 'error' && (
+        <p style={{ fontSize:11, color:C.red, background:C.redPale, borderRadius:10, padding:'9px 11px' }}>{errorMsg}</p>
+      )}
+      {phase === 'done' && (
+        <div style={{ display:'flex', alignItems:'center', gap:10, background:C.sagePale, borderRadius:10, padding:'10px 12px' }}>
+          <Check size={14} color={C.sage} />
+          <p style={{ flex:1, fontSize:12, color:C.sage, fontWeight:900 }}>환자/방문/My Tiki 링크와 상담 메모리 저장이 완료되었습니다</p>
+          {linkUrl && (
+            <button type="button" onClick={() => navigator.clipboard.writeText(linkUrl)} style={{ border:'none', background:C.white, color:C.sage, borderRadius:8, padding:'6px 9px', fontSize:10.5, fontWeight:900, cursor:'pointer' }}>
+              링크 복사
+            </button>
+          )}
+        </div>
+      )}
+
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:8, flexWrap:'wrap' }}>
+        <button
+          type="button"
+          disabled={!selectedPatient || phase === 'saving'}
+          onClick={() => saveDecision('link_existing')}
+          style={{
+            border:`1px solid ${C.border}`,
+            background:selectedPatient && phase !== 'saving' ? C.mochaPale : C.bgDeep,
+            color:selectedPatient && phase !== 'saving' ? C.mochaDk : C.textMt,
+            borderRadius:10,
+            padding:'9px 13px',
+            fontSize:12,
+            fontWeight:900,
+            cursor:selectedPatient && phase !== 'saving' ? 'pointer' : 'not-allowed',
+          }}
+        >
+          기존 환자로 저장
+        </button>
+        <button
+          type="button"
+          disabled={!patientName.trim() || phase === 'saving'}
+          onClick={() => saveDecision('create_patient')}
+          style={{
+            border:'none',
+            background:patientName.trim() && phase !== 'saving' ? C.mocha : C.bgDeep,
+            color:patientName.trim() && phase !== 'saving' ? '#fff' : C.textMt,
+            borderRadius:10,
+            padding:'9px 14px',
+            fontSize:12,
+            fontWeight:950,
+            boxShadow:patientName.trim() && phase !== 'saving' ? '0 4px 16px rgba(1,69,242,0.24)' : 'none',
+            cursor:patientName.trim() && phase !== 'saving' ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {phase === 'saving' ? '저장 중…' : '새 환자로 저장'}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1299,6 +1553,7 @@ export default function TikiPasteTab() {
   const [tikiActive, setTikiActive] = useState(false);
   const [quickVisitOpen, setQuickVisitOpen] = useState(false);
   const [intakeRefreshKey, setIntakeRefreshKey] = useState(0);
+  const [matchState, setMatchState] = useState({ loading:false, candidates:[], signals:null, recommended_mode:'create_or_review', error:'' });
   const tikiTimer = useRef(null);
 
   const showToast = (msg) => {
@@ -1438,6 +1693,53 @@ export default function TikiPasteTab() {
   const handoffText = input || result?.extracted_text || result?.conversation_summary || result?.ko_summary || '';
   const hasContent = input.trim() || image || result || loading;
 
+  useEffect(() => {
+    let active = true;
+    async function loadMatches() {
+      if (!result) {
+        setMatchState({ loading:false, candidates:[], signals:null, recommended_mode:'create_or_review', error:'' });
+        return;
+      }
+      setMatchState(prev => ({ ...prev, loading:true, error:'' }));
+      try {
+        const headers = await getStaffAuthHeaders();
+        if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
+        const res = await fetch('/api/patients/match-candidates', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            analysis: result,
+            source: sourceCapture,
+            raw_text: handoffText,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (active) {
+          setMatchState({
+            loading:false,
+            candidates:data.candidates || [],
+            signals:data.signals || null,
+            recommended_mode:data.recommended_mode || 'create_or_review',
+            error:'',
+          });
+        }
+      } catch (err) {
+        if (active) {
+          setMatchState({
+            loading:false,
+            candidates:[],
+            signals:null,
+            recommended_mode:'create_or_review',
+            error:err.message || '기존 환자 후보를 찾지 못했습니다',
+          });
+        }
+      }
+    }
+    loadMatches();
+    return () => { active = false; };
+  }, [result, sourceCapture.channel, sourceCapture.handle, sourceCapture.phone, handoffText]);
+
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', overflowY:'auto', background:C.bg, fontFamily:SANS }}>
       <TikiFlash active={tikiActive} />
@@ -1570,7 +1872,18 @@ export default function TikiPasteTab() {
 
         {/* ── Save to memory ─────────────────────────────────────────────────── */}
         {result && !loading && (
-          <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto', gap:12, alignItems:'stretch' }}>
+          <div style={{ display:'grid', gap:12 }}>
+            <PatientMatchPanel
+              result={result}
+              input={handoffText}
+              sourceCapture={sourceCapture}
+              matchState={matchState}
+              onCompleted={() => {
+                showToast('상담이 환자 여정으로 저장되었습니다');
+                setIntakeRefreshKey((value) => value + 1);
+              }}
+            />
+            <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto', gap:12, alignItems:'stretch' }}>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <SaveToMemoryBar result={result} input={handoffText} clinicId={clinicId} />
               <PendingIntakeBar
@@ -1601,6 +1914,7 @@ export default function TikiPasteTab() {
               }}>
                 <Send size={13} /> My Tiki 링크 준비
               </button>
+            </div>
             </div>
           </div>
         )}

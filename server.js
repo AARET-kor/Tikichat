@@ -101,7 +101,11 @@ import {
 import { validateClinicRulePatch } from "./src/lib/clinic-rule-config-validate.js";
 import { buildAuditHistoryResponse, normalizeAuditHistoryLimit } from "./src/lib/audit-history.js";
 import { buildConversationIntakeConversionPlan, buildConversationIntakeInsert } from "./src/lib/conversation-intake.js";
+import { buildCsvImportMemoryUpserts, partitionDuplicateImportVisits } from "./src/lib/csv-import.js";
 import { buildExternalRefsFromImportRow, hasExternalRefs, normalizeExternalRefs } from "./src/lib/external-refs.js";
+import { buildImportBatchInsert, buildImportRowInserts, buildIntakeQueueResponse } from "./src/lib/intake-queue.js";
+import { buildMemoryPatchUpdate, mapMemoryRowsForStaff } from "./src/lib/memory-editor.js";
+import { buildPatientMatchSignals, rankPatientMatches } from "./src/lib/patient-matching.js";
 import {
   attachEscalationSla,
   buildEscalationUpdateForAction,
@@ -1014,6 +1018,19 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   "risk_level": "<none | low | medium | high — 의료 위험도: high=부작용·알레르기 우려, medium=민감 질문, low=일반 문의>",
   "procedure_interests": ["<언급된 시술명만, 예: 보톡스, 필러, 리프팅. 없으면 []>"],
   "concerns": ["<환자가 표현한 우려·걱정 키워드, 예: 붓기, 통증, 자연스러움. 없으면 []>"],
+  "patient_candidate": {
+    "name": "<명확히 보이는 환자 이름. 불명확하면 null>",
+    "nationality": "<명확히 언급된 국적. 불명확하면 null>",
+    "lang": "<ko|en|ja|zh|vi|th|ar|ru 중 명확할 때만. 불명확하면 null>",
+    "phone": "<명확히 보이는 전화번호. 없으면 null>",
+    "source_handle": "<명확히 보이는 카카오/라인/위챗/인스타 ID 또는 핸들. 없으면 null>"
+  },
+  "visit_candidate": {
+    "visit_date": "<명확한 방문 예정일만 YYYY-MM-DD. 불명확하면 null>",
+    "procedure_interests": ["<procedure_interests와 동일한 기준>"]
+  },
+  "missing_fields": ["<patient_name | visit_date | contact_channel 등 직원 확인이 필요한 항목만>"],
+  "next_suggested_action": "<link_existing_patient | create_new_patient | ask_missing_info | staff_review_before_reply 중 하나>",
   "options": {
     "kind":    { "reply": "<환자 언어로 — 공감·상세·CTA 포함>", "ko_translation": "<자연스러운 한국어 번역>" },
     "firm":    { "reply": "<환자 언어로 — 규정 기반·단호하지만 친절>", "ko_translation": "<자연스러운 한국어 번역>" },
@@ -1084,6 +1101,16 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
       ? parsed.risk_level : "low";
     parsed.procedure_interests = Array.isArray(parsed.procedure_interests) ? parsed.procedure_interests.filter(Boolean) : [];
     parsed.concerns            = Array.isArray(parsed.concerns)            ? parsed.concerns.filter(Boolean)            : [];
+    parsed.patient_candidate   = parsed.patient_candidate && typeof parsed.patient_candidate === "object" ? parsed.patient_candidate : {};
+    parsed.visit_candidate     = parsed.visit_candidate && typeof parsed.visit_candidate === "object" ? parsed.visit_candidate : {};
+    if (!Array.isArray(parsed.visit_candidate.procedure_interests)) {
+      parsed.visit_candidate.procedure_interests = parsed.procedure_interests;
+    }
+    parsed.missing_fields      = Array.isArray(parsed.missing_fields) ? parsed.missing_fields.filter(Boolean) : [];
+    if (!parsed.patient_candidate.name && !parsed.missing_fields.includes("patient_name")) parsed.missing_fields.push("patient_name");
+    if (!parsed.visit_candidate.visit_date && !parsed.missing_fields.includes("visit_date")) parsed.missing_fields.push("visit_date");
+    parsed.next_suggested_action = parsed.next_suggested_action
+      || (parsed.risk_level === "high" ? "staff_review_before_reply" : "create_new_patient");
     const normalize = (opt, fallback = "") => {
       if (!opt) return { reply: fallback, ko_translation: "" };
       if (typeof opt === "string") return { reply: opt, ko_translation: "" };
@@ -1182,6 +1209,50 @@ app.get("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
   } catch (err) {
     console.error("[conversation-intakes/get]", err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/staff/intake-queue", requireStaffAuth, async (req, res) => {
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const limit = Math.min(Math.max(Number(req.query.limit || 8), 1), 20);
+
+  try {
+    const [{ data: conversationIntakes, error: intakeError }, { data: importBatches, error: importError }] = await Promise.all([
+      sb
+        .from("conversation_intakes")
+        .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_patient_intent, risk_level, missing_fields")
+        .eq("clinic_id", req.clinic_id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      sb
+        .from("csv_import_batches")
+        .select(`
+          id, created_at, filename, source, status, total_rows, importable_rows, warning_rows,
+          same_file_duplicate_rows, invalid_rows, created_count, visit_created_count,
+          duplicate_count, failed_count,
+          csv_import_rows (
+            id, row_num, patient_id, visit_id, patient_name, visit_date, status,
+            warning_messages, error_message, portal_url, procedure_match_status, procedure_match_name
+          )
+        `)
+        .eq("clinic_id", req.clinic_id)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    ]);
+
+    if (intakeError && intakeError.code !== "42P01") throw intakeError;
+    if (importError && importError.code !== "42P01") throw importError;
+
+    return res.json(buildIntakeQueueResponse({
+      conversation_intakes: intakeError?.code === "42P01" ? [] : (conversationIntakes || []),
+      import_batches: importError?.code === "42P01" ? [] : (importBatches || []),
+    }));
+  } catch (err) {
+    console.error("[intake-queue/get]", err.message);
+    return res.status(500).json({ error: err.message || "Failed to load intake queue" });
   }
 });
 
@@ -2129,10 +2200,81 @@ app.patch("/api/patients/:id", async (req, res) => {
   }
 });
 
-// ── GET /api/patients/search?q=검색어&clinicId=X  (clinicId optional, falls back to CLINIC_UUID)
-// name 부분 매칭 (ILIKE), 최대 15건
-app.get("/api/patients/search", async (req, res) => {
-  const clinic_id = req.query.clinicId || CLINIC_UUID;
+// ── POST /api/patients/match-candidates
+// TikiPaste 분석 결과 + 직원이 입력한 출처 정보 → 기존 환자 후보.
+// 채널 API 동기화가 아니라, 직원 확인을 돕는 conservative matcher다.
+app.post("/api/patients/match-candidates", requireStaffAuth, async (req, res) => {
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  const signals = buildPatientMatchSignals({
+    analysis: req.body?.analysis || {},
+    source: req.body?.source || {},
+    raw_text: req.body?.raw_text || req.body?.rawText || "",
+  });
+
+  if (!signals.search_terms.length) {
+    return res.json({ signals, candidates: [], recommended_mode: "create_or_review" });
+  }
+
+  try {
+    const name = signals.name.replace(/[%_]/g, "\\$&");
+    const fetchRows = async ({ nameFilter = "", limit = 80 } = {}) => {
+      let query = sb
+        .from("patients")
+        .select("id, name, lang, flag, tags, birth_year, nationality, channel_refs, external_refs, updated_at")
+        .eq("clinic_id", req.clinic_id)
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+      if (nameFilter && nameFilter.length >= 2) query = query.ilike("name", `%${nameFilter}%`);
+
+      let { data, error } = await query;
+      if (error?.code === "42703") {
+        let fallbackQuery = sb
+          .from("patients")
+          .select("id, name, lang, flag, tags, birth_year, nationality, channel_refs, updated_at")
+          .eq("clinic_id", req.clinic_id)
+          .order("updated_at", { ascending: false })
+          .limit(limit);
+        if (nameFilter && nameFilter.length >= 2) fallbackQuery = fallbackQuery.ilike("name", `%${nameFilter}%`);
+        const fallback = await fallbackQuery;
+        data = fallback.data;
+        error = fallback.error;
+      }
+      return { data, error };
+    };
+
+    const batches = [];
+    if (name && name.length >= 2) batches.push(await fetchRows({ nameFilter: name, limit: 40 }));
+    if (!name || signals.handle || signals.phone) batches.push(await fetchRows({ limit: 80 }));
+
+    const firstError = batches.find((batch) => batch.error)?.error;
+    if (firstError) {
+      if (firstError.code === "42P01") return res.json({ signals, candidates: [], recommended_mode: "create_or_review" });
+      throw firstError;
+    }
+
+    const byId = new Map();
+    for (const row of batches.flatMap((batch) => batch.data || [])) {
+      if (row?.id && !byId.has(row.id)) byId.set(row.id, row);
+    }
+
+    const candidates = rankPatientMatches({ signals, candidates: [...byId.values()] }).slice(0, 5);
+    res.json({
+      signals,
+      candidates,
+      recommended_mode: candidates[0]?.confidence === "high" ? "link_existing" : "create_or_review",
+    });
+  } catch (err) {
+    console.error("[Patients/MatchCandidates]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/patients/search?q=검색어
+// Authenticated staff search, scoped only to staff clinic.
+app.get("/api/patients/search", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
   const q = req.query.q;
   if (!q?.trim()) return res.status(400).json({ error: "q required" });
   if (!clinic_id) return res.status(400).json({ error: "clinicId required" });
@@ -2141,7 +2283,7 @@ app.get("/api/patients/search", async (req, res) => {
     const safe = q.trim().replace(/[%_]/g, "\\$&");
     const { data, error } = await sb
       .from("patients")
-      .select("id, name, lang, flag, tags, birth_year, nationality")
+      .select("id, name, lang, flag, tags, birth_year, nationality, channel_refs")
       .eq("clinic_id", clinic_id)
       .ilike("name", `%${safe}%`)
       .order("updated_at", { ascending: false })
@@ -3291,7 +3433,7 @@ app.get("/api/staff/ops-board", requireStaffAuth, async (req, res) => {
 // can zip them with the original CSV for the download.
 
 app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
-  const { rows: inputRows } = req.body;
+  const { rows: inputRows, filename, preview_stats } = req.body;
   const clinic_id = req.clinic_id;
 
   if (!Array.isArray(inputRows) || inputRows.length === 0)
@@ -3469,16 +3611,21 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
       existVisitMap[`${v.patient_id}_${dk}`] = v.id;
     }
 
-    const dupeRows = rowsWithPatient.filter(r => existVisitMap[`${r._patient.id}_${r.visit_date}`]);
-    const newRows  = rowsWithPatient.filter(r => !existVisitMap[`${r._patient.id}_${r.visit_date}`]);
+    const rowsNotExisting = rowsWithPatient.filter(r => !existVisitMap[`${r._patient.id}_${r.visit_date}`]);
+    const { uniqueRows: newRows, duplicateRows: csvDupeRows } = partitionDuplicateImportVisits(rowsNotExisting);
+    const dupeRows = [
+      ...rowsWithPatient.filter(r => existVisitMap[`${r._patient.id}_${r.visit_date}`]),
+      ...csvDupeRows,
+    ];
 
     for (const row of dupeRows) {
+      const existingVisitId = existVisitMap[`${row._patient.id}_${row.visit_date}`] || '';
       results[row._i] = {
         patient_id:    row._patient.id,
-        visit_id:      existVisitMap[`${row._patient.id}_${row.visit_date}`],
+        visit_id:      existingVisitId,
         portal_url:    '',    // existing link not re-exposed
         status:        'duplicate',
-        error_message: '',
+        error_message: row._duplicate_reason || '',
         ...buildProcedureResolutionMeta(row._procedureMatch),
       };
     }
@@ -3590,8 +3737,200 @@ app.post("/api/my-tiki/import", requireStaffAuth, async (req, res) => {
     failed:        results.filter(r => r.status === 'failed').length,
   };
 
+  try {
+    const memoryPatientIds = [
+      ...new Set(
+        results
+          .filter(r => ["created", "visit_created"].includes(r.status) && r.patient_id)
+          .map(r => r.patient_id),
+      ),
+    ];
+
+    if (memoryPatientIds.length > 0) {
+      const { data: existingMemory, error: memoryReadError } = await sb
+        .from("patient_interactions")
+        .select("patient_id, procedure_interests, concerns, risk_flags, risk_level, ai_summary, session_count")
+        .eq("clinic_id", clinic_id)
+        .in("patient_id", memoryPatientIds);
+
+      if (memoryReadError) {
+        if (!["42P01", "42703"].includes(memoryReadError.code)) {
+          console.warn("[Import/memory/read]", memoryReadError.message);
+        }
+      } else {
+        const existingByPatientId = Object.fromEntries(
+          (existingMemory || []).map(row => [row.patient_id, row]),
+        );
+        const memoryUpserts = buildCsvImportMemoryUpserts({
+          clinic_id,
+          rows: inputRows,
+          results,
+          existingByPatientId,
+        });
+
+        if (memoryUpserts.length > 0) {
+          const { error: memoryWriteError } = await sb
+            .from("patient_interactions")
+            .upsert(memoryUpserts, { onConflict: "clinic_id,patient_id" });
+          if (memoryWriteError && !["42P01", "42703"].includes(memoryWriteError.code)) {
+            console.warn("[Import/memory/write]", memoryWriteError.message);
+          }
+        }
+      }
+    }
+  } catch (memoryErr) {
+    console.warn("[Import/memory]", memoryErr.message);
+  }
+
+  try {
+    const { data: batch, error: batchError } = await sb
+      .from("csv_import_batches")
+      .insert(buildImportBatchInsert({
+        clinic_id,
+        created_by: req.staff_user_id,
+        filename,
+        preview_stats,
+        summary,
+      }))
+      .select("id")
+      .single();
+
+    if (batchError) {
+      if (batchError.code !== "42P01") console.warn("[Import/batch]", batchError.message);
+    } else if (batch?.id) {
+      const rowPayload = buildImportRowInserts({
+        clinic_id,
+        batch_id: batch.id,
+        input_rows: inputRows,
+        results,
+      });
+      if (rowPayload.length > 0) {
+        const { error: rowError } = await sb.from("csv_import_rows").insert(rowPayload);
+        if (rowError && rowError.code !== "42P01") console.warn("[Import/rows]", rowError.message);
+      }
+    }
+  } catch (recordErr) {
+    console.warn("[Import/record]", recordErr.message);
+  }
+
   console.log(`[Import] clinic=${clinic_id} total=${inputRows.length} created=${summary.created} visit_created=${summary.visit_created} dupes=${summary.duplicates} failed=${summary.failed}`);
   res.json({ results, summary });
+});
+
+app.get("/api/staff/memory", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    let { data: memoryRows, error: memoryError } = await sb
+      .from("patient_interactions")
+      .select("*")
+      .eq("clinic_id", clinic_id)
+      .order("updated_at", { ascending: false })
+      .limit(Math.min(Math.max(Number(req.query.limit || 200), 1), 500));
+
+    if (memoryError?.code === "42703") {
+      const fallback = await sb
+        .from("patient_interactions")
+        .select("*")
+        .eq("clinic_id", clinic_id)
+        .limit(Math.min(Math.max(Number(req.query.limit || 200), 1), 500));
+      memoryRows = fallback.data;
+      memoryError = fallback.error;
+    }
+
+    if (memoryError) {
+      if (memoryError.code === "42P01") return res.json({ items: [] });
+      throw memoryError;
+    }
+
+    const patientIds = [...new Set((memoryRows || []).map(row => row.patient_id).filter(Boolean))];
+    let patients = [];
+    if (patientIds.length > 0) {
+      const { data: patientRows, error: patientError } = await sb
+        .from("patients")
+        .select("id, name, lang, flag, nationality, birth_year")
+        .eq("clinic_id", clinic_id)
+        .in("id", patientIds);
+      if (patientError && patientError.code !== "42P01") throw patientError;
+      patients = patientRows || [];
+    }
+
+    res.json({ items: mapMemoryRowsForStaff({ memoryRows, patients }) });
+  } catch (err) {
+    console.error("[Staff/memory/get]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/staff/memory/:patientId", requireStaffAuth, requireRole("owner", "admin"), async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const { patientId } = req.params;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { data: patient, error: patientError } = await sb
+      .from("patients")
+      .select("id, name")
+      .eq("clinic_id", clinic_id)
+      .eq("id", patientId)
+      .maybeSingle();
+    if (patientError) throw patientError;
+    if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+    const { update, changedFields } = buildMemoryPatchUpdate({
+      patch: req.body || {},
+      actorId: req.staff_user_id,
+    });
+    if (changedFields.length === 0) {
+      return res.status(400).json({ error: "No editable Memory fields provided" });
+    }
+
+    const { data: memory, error: memoryError } = await sb
+      .from("patient_interactions")
+      .upsert({
+        clinic_id,
+        patient_id: patientId,
+        ...update,
+      }, { onConflict: "clinic_id,patient_id" })
+      .select("*")
+      .single();
+    if (memoryError) throw memoryError;
+
+    try {
+      await writeJourneyEvents(sb, [buildJourneyEventInsert({
+        clinic_id,
+        patient_id: patientId,
+        event_type: "note_added",
+        actor_type: "staff",
+        actor_id: req.staff_user_id,
+        payload: {
+          action: "memory_updated",
+          changed_fields: changedFields,
+          patient_name: patient.name,
+        },
+      })]);
+    } catch (journeyErr) {
+      console.warn("[Staff/memory/journey]", journeyErr.message);
+    }
+
+    await writeAuditLog({
+      eventType: "memory_updated",
+      clinicId: clinic_id,
+      patientId,
+      channel: "dashboard",
+      direction: "outbound",
+      intent: changedFields.join(","),
+      status: "success",
+    });
+
+    res.json({ ok: true, item: mapMemoryRowsForStaff({ memoryRows: [memory], patients: [patient] })[0] });
+  } catch (err) {
+    console.error("[Staff/memory/patch]", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/memory  — Tiki Paste 결과 → patient_interactions UPSERT

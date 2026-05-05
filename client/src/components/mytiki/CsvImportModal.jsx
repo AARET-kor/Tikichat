@@ -28,6 +28,7 @@ import { useState, useRef, useCallback } from 'react';
 import {
   X, Upload, FileText, CheckCircle2, AlertTriangle,
   Download, Loader2, ChevronRight, SkipForward, ArrowLeft,
+  Copy, Clipboard,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -101,10 +102,92 @@ const ALIASES = {
   external_memo: ['외부메모','external_memo','crm_memo','emr_memo'],
 };
 
-function detectColumns(headers) {
+const CRM_EXPORT_PRESETS = {
+  generic: {
+    label: '자동 감지',
+    description: '일반 CSV / 직접 매핑',
+    aliases: {},
+  },
+  vegas: {
+    label: 'Vegas',
+    description: '상담/예약 export에서 자주 보이는 고객·차트 컬럼',
+    aliases: {
+      name: ['고객명', '고객 이름', '이름', '성명', '환자명'],
+      visit_date: ['예약일', '예약일자', '예약일시', '내원예정일', '방문예정일'],
+      phone: ['휴대폰', '휴대전화', '핸드폰', '전화번호', '연락처'],
+      procedure: ['상담항목', '관심시술', '시술명', '예약항목', '진료항목'],
+      note: ['상담메모', '예약메모', '고객메모', '비고'],
+      external_patient_id: ['고객번호', '고객ID', '회원번호'],
+      external_chart_no: ['차트번호', '차트 No', '차트NO'],
+      external_visit_id: ['예약번호', '예약ID'],
+      external_profile_url: ['고객링크', 'CRM링크'],
+    },
+  },
+  uisarang: {
+    label: '의사랑',
+    description: '원무/EMR export의 환자번호·내원일 중심 컬럼',
+    aliases: {
+      name: ['환자명', '성명', '수진자명', '이름'],
+      visit_date: ['내원일', '내원일자', '진료일', '진료일자', '예약일자'],
+      phone: ['휴대폰', '휴대전화', '연락처', '전화번호', '핸드폰'],
+      procedure: ['진료과목', '진료명', '처치명', '시술명'],
+      note: ['비고', '메모', '진료메모', '환자메모'],
+      external_patient_id: ['환자번호', '등록번호', '수진자번호'],
+      external_chart_no: ['차트번호', '챠트번호', '진료카드번호'],
+      external_visit_id: ['접수번호', '내원번호', '진료번호'],
+    },
+  },
+  drpalette: {
+    label: 'Dr.Palette',
+    description: '예약/차트 export의 예약번호·등록번호 중심 컬럼',
+    aliases: {
+      name: ['환자명', '고객명', 'name', 'patientName'],
+      visit_date: ['예약일시', '예약일', '방문일', '진료일시', 'appointmentDate'],
+      phone: ['휴대폰번호', '휴대폰', '전화번호', 'mobile', 'phoneNumber'],
+      procedure: ['시술명', '진료명', '예약내용', 'treatmentName'],
+      note: ['차트메모', '상담메모', '메모', 'memo'],
+      external_patient_id: ['등록번호', '환자ID', 'patientId'],
+      external_chart_no: ['차트번호', 'chartNo'],
+      external_visit_id: ['예약번호', 'appointmentId', 'visitId'],
+      external_profile_url: ['환자링크', 'profileUrl'],
+    },
+  },
+};
+
+function getAliasesForPreset(presetKey = 'generic') {
+  const presetAliases = CRM_EXPORT_PRESETS[presetKey]?.aliases || {};
+  return Object.fromEntries(
+    Object.entries(ALIASES).map(([field, aliases]) => [
+      field,
+      [...new Set([...(presetAliases[field] || []), ...aliases])],
+    ]),
+  );
+}
+
+const REQUIRED_FIELDS = ['name', 'visit_date'];
+const OPTIONAL_FIELDS = ['lang', 'procedure', 'phone', 'email', 'nationality', 'note', 'external_source', 'external_patient_id', 'external_chart_no', 'external_visit_id', 'external_profile_url', 'external_memo'];
+const FIELD_LABELS = {
+  name: '이름',
+  visit_date: '방문일',
+  lang: '언어',
+  procedure: '시술/관심 항목',
+  phone: '전화번호',
+  email: '이메일',
+  nationality: '국적',
+  note: '메모',
+  external_source: 'CRM/EMR 이름',
+  external_patient_id: '외부 환자 ID',
+  external_chart_no: '차트번호',
+  external_visit_id: '외부 예약/방문 ID',
+  external_profile_url: 'CRM/EMR 링크',
+  external_memo: '외부 메모',
+};
+
+function detectColumns(headers, presetKey = 'generic') {
   const map = {};
   const used = new Set();
-  for (const [field, aliases] of Object.entries(ALIASES)) {
+  const aliasesByField = getAliasesForPreset(presetKey);
+  for (const [field, aliases] of Object.entries(aliasesByField)) {
     for (const alias of aliases) {
       const found = headers.find(h => h.toLowerCase() === alias.toLowerCase());
       if (found && !used.has(found)) {
@@ -194,6 +277,58 @@ function validateRow(rawRow, colMap) {
       external_memo:        rawRow[colMap.external_memo]?.trim()        || null,
     },
   };
+}
+
+function buildCsvRowKey(row = {}) {
+  const name = String(row.name || '').trim().toLowerCase();
+  const visitDate = String(row.visit_date || '').trim();
+  if (!name || !visitDate) return '';
+  return `${name}_${visitDate}`;
+}
+
+function analyzeValidRowsForPreview(rows = []) {
+  const seen = new Map();
+  const importRows = [];
+  const duplicateRows = [];
+  const warningRows = [];
+
+  for (const row of rows) {
+    const key = buildCsvRowKey(row);
+    if (key && seen.has(key)) {
+      duplicateRows.push({
+        ...row,
+        _warnings: ['CSV 내부 중복'],
+        _duplicateOf: seen.get(key),
+      });
+      continue;
+    }
+    if (key) seen.set(key, row._rowNum);
+
+    const warnings = [];
+    if (!row.phone && !row.email && !row.external_patient_id && !row.external_chart_no) {
+      warnings.push('연락처/외부 ID 없음');
+    }
+    if (row.procedure && row.procedure.includes(',')) {
+      warnings.push('시술값 다중 입력 — 서버가 확실한 경우만 매칭');
+    }
+
+    const normalizedRow = warnings.length ? { ...row, _warnings: warnings } : row;
+    if (warnings.length) warningRows.push(normalizedRow);
+    importRows.push(normalizedRow);
+  }
+
+  return { importRows, duplicateRows, warningRows };
+}
+
+function buildPreviewFromColumnMap(rows, map) {
+  const valid = [];
+  const invalid = [];
+  for (const row of rows) {
+    const v = validateRow(row, map);
+    if (v.valid) valid.push({ ...v.data, _rowNum: row._rowNum });
+    else invalid.push({ ...row, _errors: v.errors });
+  }
+  return { valid, invalid, ...analyzeValidRowsForPreview(valid) };
 }
 
 // ── Result CSV download ───────────────────────────────────────────────────────
@@ -301,6 +436,78 @@ function downloadTemplateCSV() {
   URL.revokeObjectURL(url);
 }
 
+function buildCopyBackText(validRows = [], results = []) {
+  const lines = [];
+  validRows.forEach((row, index) => {
+    const result = results[index] || {};
+    if (!result.portal_url || result.status === 'failed') return;
+    lines.push([
+      `[TikiDoc] ${row.name || '환자'} 외국인 환자 안내 링크`,
+      row.visit_date ? `방문일: ${row.visit_date}` : '',
+      row.procedure ? `관심 시술: ${row.procedure}` : '',
+      `My Tiki 링크: ${result.portal_url}`,
+      '환자에게 링크를 공유하면 문진/동의/방문 안내를 이어서 확인할 수 있습니다.',
+    ].filter(Boolean).join('\n'));
+  });
+  return lines.join('\n\n---\n\n');
+}
+
+function CopyBackPanel({ validRows, results, darkMode, border, textP, textS }) {
+  const [copied, setCopied] = useState(false);
+  const copyBackText = buildCopyBackText(validRows, results);
+  const copyableCount = results.filter(result => result?.portal_url && result.status !== 'failed').length;
+
+  if (!copyableCount) return null;
+
+  async function copyText() {
+    await navigator.clipboard.writeText(copyBackText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <div style={{ padding:'14px 20px', borderBottom:`1px solid ${border}`, background:darkMode?'#1C1C1F':'#F8FAFC', display:'grid', gap:10 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ width:30, height:30, borderRadius:9, background:`${TEAL}14`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Clipboard size={13} color={TEAL} />
+        </div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:12, fontWeight:850, color:textP }}>CRM/EMR에 붙여넣기</p>
+          <p style={{ fontSize:10.5, color:textS, marginTop:2 }}>
+            생성된 My Tiki 링크와 짧은 안내 문구를 기존 CRM/EMR 메모에 복사해 남깁니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={copyText}
+          style={{
+            display:'flex', alignItems:'center', gap:6,
+            padding:'7px 11px', borderRadius:9,
+            border:`1px solid ${TEAL}45`, background:copied ? '#ECFFD1' : '#FFFFFF',
+            color:copied ? SAGE : TEAL,
+            fontSize:11, fontWeight:850, cursor:'pointer', fontFamily:SANS,
+          }}
+        >
+          {copied ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+          {copied ? '복사됨' : `${copyableCount}건 복사`}
+        </button>
+      </div>
+      <textarea
+        readOnly
+        value={copyBackText}
+        rows={Math.min(7, Math.max(3, copyableCount * 4))}
+        style={{
+          width:'100%', resize:'vertical',
+          border:`1px solid ${border}`, borderRadius:10,
+          background:darkMode?'#111113':'#FFFFFF',
+          color:textP, fontSize:11, lineHeight:1.55,
+          padding:'10px 12px', fontFamily:SANS,
+        }}
+      />
+    </div>
+  );
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 function StatusChip({ status }) {
   const cfg = {
@@ -326,7 +533,9 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
   const [phase,        setPhase]        = useState('upload');
   const [dragOver,     setDragOver]     = useState(false);
   const [parseError,   setParseError]   = useState('');
+  const [mappingError, setMappingError] = useState('');
   const [fileName,     setFileName]     = useState('');
+  const [selectedPreset, setSelectedPreset] = useState('generic');
 
   // Parsed data
   const [rawHeaders,   setRawHeaders]   = useState([]);
@@ -334,6 +543,8 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
   const [colMap,       setColMap]       = useState({});
   const [validRows,    setValidRows]    = useState([]);
   const [invalidRows,  setInvalidRows]  = useState([]);
+  const [duplicateRows,setDuplicateRows]= useState([]);
+  const [warningRows,  setWarningRows]  = useState([]);
 
   // Import results
   const [results,      setResults]      = useState([]);
@@ -360,6 +571,9 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
       return;
     }
     setParseError('');
+    setDuplicateRows([]);
+    setWarningRows([]);
+    setInvalidRows([]);
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = e => {
@@ -369,23 +583,23 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
         if (rows.length === 0)    { setParseError('데이터 행이 없습니다 (헤더만 있음).'); return; }
         if (rows.length > MAX_ROWS) { setParseError(`최대 ${MAX_ROWS}행까지 가져올 수 있습니다 (현재 ${rows.length}행).`); return; }
 
-        const map = detectColumns(headers);
-        if (!map.name)       { setParseError('이름 열을 찾을 수 없습니다. 헤더에 "이름" 또는 "name"이 있어야 합니다.'); return; }
-        if (!map.visit_date) { setParseError('방문일 열을 찾을 수 없습니다. 헤더에 "방문일" 또는 "visit_date"가 있어야 합니다.'); return; }
-
-        const valid = [], invalid = [];
-        for (const row of rows) {
-          const v = validateRow(row, map);
-          if (v.valid) valid.push({ ...v.data, _rowNum: row._rowNum });
-          else         invalid.push({ ...row, _errors: v.errors });
-        }
+        const map = detectColumns(headers, selectedPreset);
 
         setRawHeaders(headers);
         setRawRows(rows);
         setColMap(map);
-        setValidRows(valid);
-        setInvalidRows(invalid);
-        setPhase('preview');
+        setMappingError('');
+
+        if (!map.name || !map.visit_date) {
+          setValidRows([]);
+          setInvalidRows([]);
+          setDuplicateRows([]);
+          setWarningRows([]);
+          setPhase('mapping');
+          return;
+        }
+
+        applyColumnMap(map, rows);
       } catch (err) {
         setParseError(`파싱 오류: ${err.message}`);
       }
@@ -399,6 +613,42 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
     processFile(e.dataTransfer.files[0]);
   }
 
+  function applyColumnMap(nextMap = colMap, sourceRows = rawRows) {
+    if (!nextMap.name || !nextMap.visit_date) {
+      setMappingError('이름 열과 방문일 열은 반드시 지정해야 합니다.');
+      return;
+    }
+    const preview = buildPreviewFromColumnMap(sourceRows, nextMap);
+    setColMap(nextMap);
+    setValidRows(preview.importRows);
+    setInvalidRows(preview.invalid);
+    setDuplicateRows(preview.duplicateRows);
+    setWarningRows(preview.warningRows);
+    setMappingError('');
+    setPhase('preview');
+  }
+
+  function applyManualMapping() {
+    applyColumnMap(colMap, rawRows);
+  }
+
+  function applyPreset(presetKey) {
+    setSelectedPreset(presetKey);
+    if (!rawHeaders.length) return;
+    const map = detectColumns(rawHeaders, presetKey);
+    setColMap(map);
+    setMappingError('');
+    if (!map.name || !map.visit_date) {
+      setValidRows([]);
+      setInvalidRows([]);
+      setDuplicateRows([]);
+      setWarningRows([]);
+      setPhase('mapping');
+      return;
+    }
+    applyColumnMap(map, rawRows);
+  }
+
   // ── Import ─────────────────────────────────────────────────────────────────
   async function runImport() {
     setPhase('importing');
@@ -408,7 +658,17 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
       const res = await fetch('/api/my-tiki/import', {
         method:  'POST',
         headers,
-        body:    JSON.stringify({ rows: validRows }),
+        body:    JSON.stringify({
+          filename: fileName,
+          rows: validRows,
+          preview_stats: {
+            total: rawRows.length,
+            importable: validRows.length,
+            warnings: warningRows.length,
+            duplicateRows: duplicateRows.length,
+            invalid: invalidRows.length,
+          },
+        }),
         signal:  AbortSignal.timeout(120_000), // 2-minute timeout for 500 rows
       });
       const data = await res.json();
@@ -459,10 +719,10 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {/* Phase indicator */}
             <div style={{ display: 'flex', gap: 4 }}>
-              {['upload','preview','importing','done'].map((p, i) => (
+              {['upload','mapping','preview','importing','done'].map((p, i) => (
                 <div key={p} style={{
                   width: p === phase ? 16 : 6, height: 6, borderRadius: 3,
-                  background: ['upload','preview','importing','done'].indexOf(phase) >= i ? TEAL : '#D1D5DB',
+                  background: ['upload','mapping','preview','importing','done'].indexOf(phase) >= i ? TEAL : '#D1D5DB',
                   transition: 'all 0.2s',
                 }} />
               ))}
@@ -518,6 +778,37 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                 <Download size={13} /> CRM/EMR 샘플 CSV
               </button>
 
+              <div style={{ width:'100%', padding:'14px 16px', borderRadius:12, border:`1px solid ${border}`, background: darkMode?'#1C1C1F':'#FFFFFF' }}>
+                <p style={{ fontSize:11, fontWeight:800, color:textS, marginBottom:8, letterSpacing:'0.04em', textTransform:'uppercase' }}>
+                  Export preset
+                </p>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, minmax(0, 1fr))', gap:8 }}>
+                  {Object.entries(CRM_EXPORT_PRESETS).map(([key, preset]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => applyPreset(key)}
+                      style={{
+                        textAlign:'left',
+                        padding:'9px 10px',
+                        borderRadius:10,
+                        border:`1px solid ${selectedPreset === key ? TEAL : border}`,
+                        background:selectedPreset === key ? `${TEAL}12` : (darkMode?'#27272A':'#F9FAFB'),
+                        color:selectedPreset === key ? TEAL : textP,
+                        cursor:'pointer',
+                        fontFamily:SANS,
+                      }}
+                    >
+                      <div style={{ fontSize:11, fontWeight:850 }}>{preset.label}</div>
+                      <div style={{ fontSize:9.5, color:textS, marginTop:3, lineHeight:1.35 }}>{preset.description}</div>
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize:10, color:textS, marginTop:8, lineHeight:1.5 }}>
+                  Vegas / 의사랑 / Dr.Palette export에서 자주 보이는 컬럼명을 우선 인식합니다. 맞지 않으면 다음 단계에서 직접 매핑하세요.
+                </p>
+              </div>
+
               {parseError && (
                 <div style={{ width:'100%', padding:'10px 14px', borderRadius:10, background:'#FEF2F2', color:'#991B1B', fontSize:12, display:'flex', gap:8, alignItems:'flex-start' }}>
                   <AlertTriangle size={14} style={{ flexShrink:0, marginTop:1 }} />
@@ -549,12 +840,119 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
             </div>
           )}
 
+          {/* ══ PHASE: mapping ══ */}
+          {phase === 'mapping' && (
+            <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+              <div style={{ padding:'18px 20px', borderBottom:`1px solid ${border}`, background:headerBg, flexShrink:0 }}>
+                <p style={{ fontSize:14, fontWeight:800, color:textP, marginBottom:6 }}>열 직접 매핑</p>
+                <p style={{ fontSize:11, color:textS, lineHeight:1.6 }}>
+                  CRM/EMR export의 헤더명이 자동 인식되지 않았습니다. 실제 파일의 열을 TikiDoc 필드에 연결한 뒤 미리보기를 확인하세요.
+                </p>
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
+                  {Object.entries(CRM_EXPORT_PRESETS).map(([key, preset]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => applyPreset(key)}
+                      style={{
+                        border:`1px solid ${selectedPreset === key ? TEAL : border}`,
+                        background:selectedPreset === key ? `${TEAL}12` : panelBg,
+                        color:selectedPreset === key ? TEAL : textS,
+                        borderRadius:999,
+                        padding:'5px 9px',
+                        fontSize:10.5,
+                        fontWeight:800,
+                        cursor:'pointer',
+                        fontFamily:SANS,
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ flex:1, overflowY:'auto', padding:'16px 20px', display:'grid', gap:14 }}>
+                <div style={{ padding:'12px 14px', borderRadius:12, background:darkMode?'#1C1C1F':'#F9FAFB', border:`1px solid ${border}` }}>
+                  <p style={{ fontSize:11, fontWeight:800, color:textS, marginBottom:10 }}>필수 열</p>
+                  <div style={{ display:'grid', gap:10 }}>
+                    {REQUIRED_FIELDS.map(field => (
+                      <label key={field} style={{ display:'grid', gap:5 }}>
+                        <span style={{ fontSize:11, fontWeight:700, color:textP }}>{FIELD_LABELS[field]}</span>
+                        <select
+                          value={colMap[field] || ''}
+                          onChange={e => setColMap(prev => ({ ...prev, [field]: e.target.value || undefined }))}
+                          style={{ height:38, borderRadius:10, border:`1px solid ${border}`, background:panelBg, color:textP, padding:'0 10px', fontFamily:SANS, fontSize:12 }}
+                        >
+                          <option value="">— 파일 열 선택</option>
+                          {rawHeaders.map(header => <option key={header} value={header}>{header}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ padding:'12px 14px', borderRadius:12, background:darkMode?'#1C1C1F':'#FFFFFF', border:`1px solid ${border}` }}>
+                  <p style={{ fontSize:11, fontWeight:800, color:textS, marginBottom:10 }}>선택 열</p>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0, 1fr))', gap:10 }}>
+                    {OPTIONAL_FIELDS.map(field => (
+                      <label key={field} style={{ display:'grid', gap:5 }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:textS }}>{FIELD_LABELS[field]}</span>
+                        <select
+                          value={colMap[field] || ''}
+                          onChange={e => setColMap(prev => ({ ...prev, [field]: e.target.value || undefined }))}
+                          style={{ height:34, borderRadius:9, border:`1px solid ${border}`, background:panelBg, color:textP, padding:'0 8px', fontFamily:SANS, fontSize:11 }}
+                        >
+                          <option value="">— 없음</option>
+                          {rawHeaders.map(header => <option key={header} value={header}>{header}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ padding:'12px 14px', borderRadius:12, background:darkMode?'#27272A':'#FFFBEB', border:'1px solid #FCD34D' }}>
+                  <p style={{ fontSize:11, fontWeight:800, color:'#92400E', marginBottom:5 }}>가져오기 전 확인</p>
+                  <p style={{ fontSize:10, color:'#92400E', lineHeight:1.6 }}>
+                    이름과 방문일만 있으면 가져올 수 있습니다. 다만 전화번호, 외부 환자 ID, 차트번호 중 하나라도 있으면 기존 CRM/EMR과 나중에 대조하기 훨씬 쉽습니다.
+                  </p>
+                </div>
+              </div>
+
+              {mappingError && (
+                <div style={{ padding:'10px 20px', background:'#FEF2F2', borderTop:`1px solid #FCA5A5`, fontSize:12, color:'#991B1B', flexShrink:0 }}>
+                  ⚠ {mappingError}
+                </div>
+              )}
+
+              <div style={{ padding:'14px 20px', borderTop:`1px solid ${border}`, background:headerBg, display:'flex', gap:10, justifyContent:'space-between', flexShrink:0 }}>
+                <button
+                  onClick={() => { setPhase('upload'); setParseError(''); setMappingError(''); }}
+                  style={{ padding:'8px 16px', borderRadius:9, border:`1px solid ${border}`, background:'transparent', color:textS, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:SANS }}
+                >
+                  다시 선택
+                </button>
+                <button
+                  onClick={applyManualMapping}
+                  style={{ padding:'8px 22px', borderRadius:9, border:'none', background:TEAL, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:SANS, boxShadow:`0 2px 8px ${TEAL}40` }}
+                >
+                  매핑 적용 후 미리보기 →
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ══ PHASE: preview ══ */}
           {phase === 'preview' && (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Column map summary */}
               <div style={{ padding: '14px 20px', borderBottom: `1px solid ${border}`, background: headerBg, flexShrink: 0 }}>
-                <p style={{ fontSize:11, fontWeight:700, color:textS, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.04em' }}>감지된 열 매핑</p>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:8 }}>
+                  <p style={{ fontSize:11, fontWeight:700, color:textS, textTransform:'uppercase', letterSpacing:'0.04em' }}>감지된 열 매핑</p>
+                  <span style={{ fontSize:10, fontWeight:800, color:TEAL, background:`${TEAL}12`, padding:'3px 8px', borderRadius:999 }}>
+                    {CRM_EXPORT_PRESETS[selectedPreset]?.label || '자동 감지'}
+                  </span>
+                </div>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                   {Object.entries(ALIASES).map(([field]) => {
                     const found = colMap[field];
@@ -576,13 +974,15 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
               {/* Validation summary */}
               <div style={{ display:'flex', gap:0, borderBottom:`1px solid ${border}`, flexShrink:0 }}>
                 {[
-                  { label:'전체', value: rawRows.length,       color: textS },
-                  { label:'유효', value: validRows.length,     color: SAGE },
-                  { label:'오류', value: invalidRows.length,   color: invalidRows.length ? '#DC2626' : textS },
+                  { label:'전체', value: rawRows.length,        color: textS },
+                  { label:'가져오기', value: validRows.length,  color: SAGE },
+                  { label:'가져오기 전 확인', value: warningRows.length, color: warningRows.length ? '#B45309' : textS },
+                  { label:'CSV 내부 중복', value: duplicateRows.length, color: duplicateRows.length ? '#92400E' : textS },
+                  { label:'오류', value: invalidRows.length,    color: invalidRows.length ? '#DC2626' : textS },
                 ].map(({ label, value, color }, i) => (
                   <div key={label} style={{
                     flex:1, padding:'10px 0', textAlign:'center',
-                    borderRight: i < 2 ? `1px solid ${border}` : 'none',
+                    borderRight: i < 4 ? `1px solid ${border}` : 'none',
                     background: panelBg,
                   }}>
                     <div style={{ fontSize:20, fontWeight:700, color }}>{value}</div>
@@ -593,6 +993,39 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
 
               {/* Scrollable preview area */}
               <div style={{ flex:1, overflowY:'auto' }}>
+                {/* Warning rows */}
+                {warningRows.length > 0 && (
+                  <div style={{ padding:'12px 20px', background: darkMode?'#292524':'#FFFBEB', borderBottom:`1px solid ${border}` }}>
+                    <p style={{ fontSize:11, fontWeight:800, color:'#B45309', marginBottom:8 }}>가져오기 전 확인</p>
+                    {warningRows.slice(0, 8).map((row, i) => (
+                      <div key={i} style={{ fontSize:11, color:'#92400E', marginBottom:4 }}>
+                        행 {row._rowNum}: {row.name} · {row._warnings?.join(' / ')}
+                      </div>
+                    ))}
+                    {warningRows.length > 8 && (
+                      <p style={{ fontSize:10, color:textS, marginTop:4 }}>… 외 {warningRows.length - 8}건</p>
+                    )}
+                    <p style={{ fontSize:10, color:textS, marginTop:8, lineHeight:1.5 }}>
+                      주의 행은 가져오기를 막지는 않습니다. 다만 기존 CRM/EMR 식별값이나 연락처가 없으면 나중에 같은 환자 매칭이 어려울 수 있습니다.
+                    </p>
+                  </div>
+                )}
+
+                {/* Duplicate rows */}
+                {duplicateRows.length > 0 && (
+                  <div style={{ padding:'12px 20px', background: darkMode?'#27272A':'#FEF3C7', borderBottom:`1px solid ${border}` }}>
+                    <p style={{ fontSize:11, fontWeight:800, color:'#92400E', marginBottom:8 }}>CSV 내부 중복 · 가져오기 제외</p>
+                    {duplicateRows.slice(0, 8).map((row, i) => (
+                      <div key={i} style={{ fontSize:11, color:'#92400E', marginBottom:4 }}>
+                        행 {row._rowNum}: {row.name} · {row.visit_date} · 첫 행 {row._duplicateOf} 기준으로 제외
+                      </div>
+                    ))}
+                    {duplicateRows.length > 8 && (
+                      <p style={{ fontSize:10, color:textS, marginTop:4 }}>… 외 {duplicateRows.length - 8}건</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Invalid rows */}
                 {invalidRows.length > 0 && (
                   <div style={{ padding:'12px 20px', background: darkMode?'#27272A':'#FEF2F2', borderBottom:`1px solid ${border}` }}>
@@ -614,7 +1047,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                   <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
                     <thead>
                       <tr style={{ background: darkMode?'#2D2D31':'#F3F4F6' }}>
-                        {['#','이름','방문일','시술','언어','외부참조','비고'].map(h => (
+                        {['#','이름','방문일','시술','언어','외부참조','확인'].map(h => (
                           <th key={h} style={{ padding:'6px 12px', textAlign:'left', fontWeight:700, color:textS, borderBottom:`1px solid ${tblBdr}` }}>{h}</th>
                         ))}
                       </tr>
@@ -630,7 +1063,9 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                           <td style={{ padding:'5px 12px', color:textS }}>
                             {row.external_source || row.external_patient_id || row.external_chart_no || '—'}
                           </td>
-                          <td style={{ padding:'5px 12px', color:textS }}>{row.note ? row.note.slice(0,20)+'…' : '—'}</td>
+                          <td style={{ padding:'5px 12px', color:row._warnings?.length ? '#B45309' : textS }}>
+                            {row._warnings?.length ? row._warnings.join(' / ') : '—'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -667,7 +1102,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                     fontFamily:SANS, boxShadow: validRows.length ? `0 2px 8px ${TEAL}40` : 'none',
                   }}
                 >
-                  {validRows.length}개 행 가져오기 →
+                  {validRows.length}개 행 가져오기{duplicateRows.length ? ` · 중복 ${duplicateRows.length}건 제외` : ''} →
                 </button>
               </div>
             </div>
@@ -702,6 +1137,15 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                   </div>
                 ))}
               </div>
+
+              <CopyBackPanel
+                validRows={validRows}
+                results={results}
+                darkMode={darkMode}
+                border={border}
+                textP={textP}
+                textS={textS}
+              />
 
               {/* Results table */}
               <div style={{ flex:1, overflowY:'auto', background:tblBg }}>

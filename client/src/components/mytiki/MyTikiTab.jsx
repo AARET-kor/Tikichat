@@ -1341,6 +1341,95 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
   );
 }
 
+function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpenCsvImport }) {
+  const items = queue?.items || [];
+  const summary = queue?.summary || {};
+  const border = darkMode ? '#27272A' : '#D6E1EA';
+  const cardBg = darkMode ? '#111827' : '#FFFFFF';
+  const textP = darkMode ? 'text-zinc-100' : 'text-[#1B262C]';
+  const textS = darkMode ? 'text-zinc-400' : 'text-[#40515D]';
+
+  return (
+    <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: border, background: cardBg }}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Users size={15} style={{ color: TEAL }} />
+            <h2 className={`text-sm font-black ${textP}`}>외국인 환자 유입 큐</h2>
+          </div>
+          <p className={`text-[11px] mt-1 ${textS}`}>TikiPaste 상담 유입과 CRM/EMR CSV 가져오기 결과를 한곳에서 봅니다.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onOpenCsvImport}
+            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
+          >
+            CRM/EMR 가져오기
+          </button>
+          <button onClick={onRefresh} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="유입 큐 새로고침">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mt-4">
+        <EscalationMiniCard label="상담 유입" value={loading ? '…' : (summary.pending_intakes || 0)} sub="TikiPaste 보류" color={TEAL} darkMode={darkMode} />
+        <EscalationMiniCard label="CSV 배치" value={loading ? '…' : (summary.recent_import_batches || 0)} sub="최근 가져오기" color="#0F4C75" darkMode={darkMode} />
+        <EscalationMiniCard label="확인 필요" value={loading ? '…' : (summary.review_needed || 0)} sub="누락/주의/오류" color="#B45309" darkMode={darkMode} />
+        <EscalationMiniCard label="오류" value={loading ? '…' : (summary.import_errors || 0)} sub="가져오기 실패 행" color="#DC2626" darkMode={darkMode} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {loading ? (
+          <div className={`col-span-2 text-xs ${textS}`}>유입 큐 불러오는 중…</div>
+        ) : items.length === 0 ? (
+          <div className={`col-span-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs ${textS}`} style={{ borderColor: border }}>
+            아직 확인할 상담 유입이나 CSV 가져오기 결과가 없습니다.
+          </div>
+        ) : (
+          items.slice(0, 6).map((item) => {
+            const isPaste = item.kind === 'tikipaste_intake';
+            const title = isPaste
+              ? (item.patient_candidate?.name || item.source_handle || '상담 유입')
+              : (item.filename || 'CSV 가져오기');
+            const sub = isPaste
+              ? `${item.source_channel || 'manual'} · ${item.last_patient_intent || '의도 확인 필요'}`
+              : `총 ${item.total_rows || 0}행 · 생성 ${item.created_count || 0} · 방문 ${item.visit_created_count || 0} · 실패 ${item.failed_count || 0}`;
+            const tone = isPaste && item.risk_level === 'high'
+              ? '#DC2626'
+              : item.failed_count > 0 || item.missing_fields?.length
+                ? '#B45309'
+                : TEAL;
+
+            return (
+              <div key={`${item.kind}-${item.id}`} className="rounded-2xl border p-3" style={{ borderColor: `${tone}35`, background: darkMode ? '#0F172A' : '#F8FBFF' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className={`text-[12px] font-black truncate ${textP}`}>{title}</p>
+                    <p className={`text-[11px] mt-1 leading-relaxed ${textS}`}>{sub}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black" style={{ background: `${tone}16`, color: tone }}>
+                    {isPaste ? 'TikiPaste' : 'CSV'}
+                  </span>
+                </div>
+                {isPaste ? (
+                  <div className={`mt-2 text-[10px] ${textS}`}>
+                    누락: {(item.missing_fields || []).length ? item.missing_fields.join(', ') : '없음'} · 위험도 {item.risk_level || 'low'}
+                  </div>
+                ) : (
+                  <div className={`mt-2 text-[10px] ${textS}`}>
+                    확인 필요 {item.warning_rows || 0} · 중복 제외 {item.same_file_duplicate_rows || 0} · 기존 중복 {item.duplicate_count || 0}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── MyTikiTab — Ops Board ────────────────────────────────────────────────────
 export default function MyTikiTab({ darkMode }) {
   const { clinicId, role } = useAuth();
@@ -1355,11 +1444,13 @@ export default function MyTikiTab({ darkMode }) {
   const [aftercareItems,  setAftercareItems]  = useState([]);
   const [aftercareSummary, setAftercareSummary] = useState({ due: 0, responded: 0, concern: 0, urgent: 0, safe_for_return: 0 });
   const [aftercareScheduler, setAftercareScheduler] = useState(null);
+  const [intakeQueue, setIntakeQueue] = useState({ summary: {}, items: [] });
   const [aftercarePlanProcedures, setAftercarePlanProcedures] = useState([]);
   const [aftercarePlans, setAftercarePlans] = useState([]);
   const [staffUsers,      setStaffUsers]      = useState([]);
   const [loadingEscalations, setLoadingEscalations] = useState(true);
   const [loadingAftercare, setLoadingAftercare] = useState(true);
+  const [loadingIntakeQueue, setLoadingIntakeQueue] = useState(true);
   const [loadingAftercarePlans, setLoadingAftercarePlans] = useState(true);
   const [loading,         setLoading]         = useState(true);
   const [fetchError,      setFetchError]      = useState(null);
@@ -1499,6 +1590,28 @@ export default function MyTikiTab({ darkMode }) {
   }, [clinicId, aftercareFilter]);
 
   useEffect(() => { fetchAftercare(); }, [fetchAftercare]);
+
+  const fetchIntakeQueue = useCallback(async () => {
+    if (!clinicId) return;
+    setLoadingIntakeQueue(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/staff/intake-queue?limit=8', { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setIntakeQueue({ summary: data.summary || {}, items: data.items || [] });
+    } catch (err) {
+      console.error('[intake-queue]', err.message);
+      setIntakeQueue({ summary: {}, items: [] });
+    } finally {
+      setLoadingIntakeQueue(false);
+    }
+  }, [clinicId]);
+
+  useEffect(() => { fetchIntakeQueue(); }, [fetchIntakeQueue]);
 
   const fetchAftercarePlans = useCallback(async () => {
     if (!clinicId) return;
@@ -1929,6 +2042,14 @@ export default function MyTikiTab({ darkMode }) {
             darkMode={darkMode}
           />
         </div>
+
+        <ForeignPatientIntakeQueue
+          queue={intakeQueue}
+          loading={loadingIntakeQueue}
+          darkMode={darkMode}
+          onRefresh={fetchIntakeQueue}
+          onOpenCsvImport={() => setShowCsvImport(true)}
+        />
 
         {attentionItems.length > 0 && (
           <div className={`mt-4 rounded-xl border px-4 py-3 text-[13px] font-bold ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
@@ -2445,7 +2566,7 @@ export default function MyTikiTab({ darkMode }) {
           clinicId={clinicId}
           darkMode={darkMode}
           onClose={() => setShowCsvImport(false)}
-          onImported={() => { fetchVisits(); setShowCsvImport(false); }}
+          onImported={() => { fetchVisits(); fetchIntakeQueue(); setShowCsvImport(false); }}
         />
       )}
       {selectedEscalation && (

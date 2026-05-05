@@ -1,6 +1,6 @@
 # TikiDoc Product Decisions
 
-Last updated: 2026-05-01
+Last updated: 2026-05-05
 
 ## Product Surface Naming
 
@@ -40,20 +40,40 @@ Display copy should use these names. Internal routes, schema fields, metadata va
   - recommended replies
   - copy actions
   - Quick Visit / My Tiki link / Tiki Desk handoff actions
+- Tiki Paste may produce conservative patient and visit candidates from pasted text or staff-provided screenshots.
+- Existing-patient matching must be clinic-scoped and staff-authenticated.
+- Matching suggestions are allowed, but staff must explicitly choose:
+  - existing patient
+  - new patient
+  - or pending intake review
+- After staff confirmation, Tiki Paste may create/link patient, create visit, generate My Tiki link, and write patient-specific Memory.
 - Memory writes are staff-auth gated and must resolve clinic context from authenticated staff context, not caller-provided clinic input.
 - Existing CRM/EMR patient and visit data should be handled through Tiki Desk import/settings surfaces, not inside Tiki Paste.
 - Tiki Memory is for patient-specific remembered context after a patient is identified, not for CSV/import management.
 - Do not broaden Tiki Paste into a generic document CMS without a separate decision.
 - Do not build extension-only behavior, desktop overlays, automatic arbitrary browser DOM reading, or a large OCR platform without a separate decision.
+- Do not silently auto-match or auto-create patients from copied conversation text without staff confirmation.
 
 ### CRM/EMR Import vs Tiki Paste vs Memory
 
 - CRM/EMR import belongs in Tiki Desk operations/settings and CSV/manual import flows.
 - CRM/EMR CSV import should expose a small downloadable sample template so clinics can map exports without guessing supported columns.
+- CRM/EMR CSV import may provide lightweight export presets for common systems such as Vegas, 의사랑, and Dr.Palette, but these are column-alias helpers only.
+- CRM/EMR CSV import should allow staff to manually map required columns when automatic header detection fails.
+- CRM/EMR CSV import should never silently create duplicate visits from duplicate rows in the same file; preview should show review warnings before staff imports.
+- After import, TikiDoc should provide copy-back text containing My Tiki links and concise summaries so staff can paste results into the existing CRM/EMR.
+- Tiki Desk should own the lightweight foreign-patient intake queue, combining pending TikiPaste conversation intakes and recent CRM/EMR CSV import outcomes.
+- CSV import result persistence should store operational summaries and row outcomes only; do not store raw CRM/EMR files as Memory.
+- Successful CSV-created patients/visits may seed patient Memory with compact context: source CRM/EMR, external reference values, procedure interest, external memo, visit context, and generated My Tiki link.
 - Tiki Paste handles a single current consultation conversation and can stage it as a pending intake.
 - Tiki Memory stores patient-specific context after identification, such as summaries, risks, interests, and notes.
+- Tiki Memory may be directly edited by owner/admin staff for patient operating context only: summary, procedure interests, patient concerns, risk flags, precautions, and staff notes.
+- Direct Memory edits must be authenticated, clinic-scoped, actor-stamped, and audit-backed.
 - Do not make Tiki Paste the owner of bulk CRM/EMR files.
 - Do not make Memory the owner of raw CRM/EMR import files.
+- Do not use Memory as raw CRM/EMR file storage or full conversation transcript storage.
+- Do not turn TikiPaste matching into a CRM replacement, inbox, or automatic channel sync.
+- Do not treat CSV presets as full vendor integrations, message sync, or write-back APIs.
 
 ### My Tiki
 
