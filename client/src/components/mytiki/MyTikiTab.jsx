@@ -1900,9 +1900,9 @@ export default function MyTikiTab({ darkMode }) {
             <button
               onClick={() => setShowCsvImport(true)}
               className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[14px] font-bold border transition-colors ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
-              title="CSV 일괄 가져오기"
+              title="CRM/EMR 환자·방문 가져오기"
             >
-              CSV 가져오기
+              CRM/EMR 가져오기
             </button>
             <button
               onClick={() => setShowQuickCreate(true)}

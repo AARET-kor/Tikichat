@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildExternalRefsFromImportRow,
   normalizeExternalRefs,
 } from "../src/lib/external-refs.js";
+
+const csvImportSource = readFileSync(
+  new URL("../client/src/components/mytiki/CsvImportModal.jsx", import.meta.url),
+  "utf8",
+);
 
 test("normalizeExternalRefs keeps only lightweight CRM/EMR reference fields", () => {
   assert.deepEqual(normalizeExternalRefs({
@@ -42,4 +48,13 @@ test("buildExternalRefsFromImportRow maps CSV import fields conservatively", () 
     source_phone: "010-0000-0000",
     memo: "copied manually",
   });
+});
+
+test("CRM/EMR import UI exposes a template and keeps ownership out of TikiPaste", () => {
+  assert.match(csvImportSource, /downloadTemplateCSV/);
+  assert.match(csvImportSource, /CRM\/EMR 샘플 CSV/);
+  assert.match(csvImportSource, /external_patient_id/);
+  assert.match(csvImportSource, /external_chart_no/);
+  assert.match(csvImportSource, /external_visit_id/);
+  assert.match(csvImportSource, /TikiPaste는 상담 1건 캡처용입니다/);
 });

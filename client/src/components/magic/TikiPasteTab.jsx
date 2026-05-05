@@ -42,8 +42,8 @@ const SOURCE_OPTIONS = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'wechat', label: 'WeChat' },
   { value: 'phone', label: '전화' },
-  { value: 'crm', label: '기존 CRM' },
-  { value: 'emr', label: '기존 EMR' },
+  { value: 'website', label: '웹문의' },
+  { value: 'walkin', label: '현장 상담' },
   { value: 'other', label: '기타' },
 ];
 
@@ -406,7 +406,7 @@ function WorkspaceInput({
         <textarea
           value={sourceCapture.memo}
           onChange={e => onSourceCaptureChange({ ...sourceCapture, memo: e.target.value })}
-          placeholder="기존 CRM/EMR에 다시 붙여넣을 때 참고할 짧은 메모"
+          placeholder="상담 출처 메모: 어느 채팅/상담에서 가져온 내용인지 직원이 알아볼 만큼만 적어주세요"
           rows={3}
           style={{
             border:`1px solid ${C.border}`,

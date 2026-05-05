@@ -25,6 +25,12 @@ test("TikiPaste supports practical handoff actions", () => {
   assert.match(tikiPasteSource, /\/api\/conversation-intakes/);
 });
 
+test("TikiPaste stays focused on manual conversation capture, not CRM/EMR import", () => {
+  assert.doesNotMatch(tikiPasteSource, /value: 'crm'|value: 'emr'/);
+  assert.doesNotMatch(tikiPasteSource, /기존 CRM|기존 EMR|CRM\/EMR에 다시 붙여넣/);
+  assert.match(tikiPasteSource, /상담 출처 메모/);
+});
+
 test("/api/tiki-paste accepts either pasted text or uploaded screenshot data", () => {
   assert.match(serverSource, /const \{ message, imageData, imageMediaType, clinicId, clinicName: bodyClinicName \} = req\.body;/);
   assert.match(serverSource, /if \(!messageText && !hasImage\)\s*return res\.status\(400\)\.json\(\{ error: "message or image required" \}\);/);

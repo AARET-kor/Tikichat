@@ -6,7 +6,7 @@ This document is the short engineering truth snapshot for TikiDoc after hardenin
 
 ## Product Surface Model
 
-- `Tiki Paste`: staff paste / extraction / memory-write surface.
+- `Tiki Paste`: staff sidecar for one-off consultation capture, reply drafting, and staff-confirmed workflow handoff.
 - `My Tiki`: patient portal and patient link entry point.
 - `TikiBell`: patient-facing guide/helper persona inside `My Tiki`, especially Ask and reassurance copy.
 - `Tiki Desk`: staff / clinic operations surface.
@@ -63,6 +63,11 @@ Stable:
   - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
   - Phase 2 conversation-intake staging is implemented: staff can save an analyzed conversation as a pending intake candidate before creating or linking a patient
   - Phase 3 conversion is implemented: staff can review pending intake, connect it to an existing patient or create a new patient, create a visit, and generate a My Tiki link after confirmation
+- CRM/EMR import separation:
+  - TikiPaste no longer presents CRM/EMR as a source option; it stays focused on current conversation capture
+  - existing CRM/EMR patient and visit records belong in Tiki Desk CSV/manual import and settings guidance
+  - CSV import now exposes a sample CRM/EMR template for supported patient, visit, and external reference columns
+  - Memory remains patient-specific context storage after identification, not raw CRM/EMR file management
 - Staff dashboard scroll behavior:
   - app-level document scroll is no longer globally locked
   - Tiki Desk content has a touch-friendly vertical scroll container

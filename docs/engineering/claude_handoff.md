@@ -26,7 +26,7 @@ Do not revert it unless explicitly asked.
 
 ## Product Surface Model
 
-- `Tiki Paste`: staff paste / extraction / memory-write surface.
+- `Tiki Paste`: staff sidecar for one-off consultation capture, reply drafting, and staff-confirmed workflow handoff.
 - `My Tiki`: patient portal / patient link entry.
 - `TikiBell`: patient-facing guide/helper inside `My Tiki`.
 - `Tiki Desk`: staff / clinic operations surface.
@@ -96,6 +96,11 @@ TikiPaste pivot:
   - staff can connect it to an existing patient or create a new patient
   - conversion creates a visit and generates a My Tiki link
   - conversion is staff-confirmed only; no automatic patient matching or channel sync
+- CRM/EMR import separation is now explicit:
+  - TikiPaste is not the owner of CRM/EMR bulk import
+  - CSV/manual CRM/EMR patient and visit import belongs in Tiki Desk operations/settings
+  - CSV import includes a downloadable sample template for patient, visit, and external CRM/EMR reference columns
+  - Memory is patient-specific context after identification, not raw file import management
 - Do not rebuild extension/overlay behavior unless explicitly approved.
 
 Runtime auth / Quick Visit fixes:

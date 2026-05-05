@@ -70,12 +70,15 @@ Implemented:
 - Web-sidecar TikiPaste workspace for pasted conversations, selected chat text, screenshot fallback, summaries, intent, urgency/risk signal, recommended replies, copy actions, and handoff actions.
 - Conversation Intake Phase 2: TikiPaste can save analyzed pasted/screenshot conversation context as a pending intake candidate, scoped to the authenticated clinic.
 - Conversation Intake Phase 3: pending intake can be staff-confirmed into an existing patient or new patient, with visit creation and My Tiki link generation.
+- CRM/EMR import ownership clarified: bulk patient/visit import belongs to Tiki Desk CSV/manual import and settings guidance, while TikiPaste remains single-conversation capture.
+- CRM/EMR CSV import now provides a sample template for patient, visit, and external reference fields.
 
 Partial:
 
 - Knowledge hygiene and content review remain broader product concerns.
 - TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior.
 - Patient matching is still manual/search-based. No automatic CRM/EMR matching or inbox-style queue management exists.
+- CRM/EMR import UI is still lightweight; it has a sample CSV template but no full mapping wizard or API connector exists.
 
 Deferred:
 

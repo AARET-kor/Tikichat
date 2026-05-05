@@ -1,7 +1,7 @@
 /**
  * client/src/components/mytiki/CsvImportModal.jsx
  * ─────────────────────────────────────────────────────────────
- * Bulk CSV import — zero-integration clinic onboarding.
+ * CRM/EMR patient + visit CSV import — zero-integration clinic onboarding.
  *
  * Phases:
  *   upload   → drag-drop / file picker
@@ -220,7 +220,81 @@ function downloadResultCSV(originalHeaders, originalRows, results) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `mytiki_import_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `crm_emr_patient_visit_import_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadTemplateCSV() {
+  const headers = [
+    'name',
+    'visit_date',
+    'lang',
+    'procedure',
+    'phone',
+    'email',
+    'nationality',
+    'note',
+    'external_source',
+    'external_patient_id',
+    'external_chart_no',
+    'external_visit_id',
+    'external_profile_url',
+    'external_memo',
+  ];
+  const rows = [
+    {
+      name: 'Wang Fang',
+      visit_date: '2026-05-03',
+      lang: 'zh',
+      procedure: '리프팅',
+      phone: '+82-10-0000-0000',
+      email: '',
+      nationality: '중국',
+      note: '상담 후 방문 예정',
+      external_source: 'AfterDoc',
+      external_patient_id: 'P-001',
+      external_chart_no: 'C-001',
+      external_visit_id: 'V-001',
+      external_profile_url: 'https://example-crm.local/p/P-001',
+      external_memo: '기존 CRM에서 내보낸 샘플',
+    },
+    {
+      name: 'Maria Garcia',
+      visit_date: '2026-05-04',
+      lang: 'es',
+      procedure: '보톡스',
+      phone: '+82-10-1111-1111',
+      email: 'maria@example.com',
+      nationality: '멕시코',
+      note: '재방문 상담',
+      external_source: 'Vegas',
+      external_patient_id: 'P-002',
+      external_chart_no: 'C-002',
+      external_visit_id: 'V-002',
+      external_profile_url: '',
+      external_memo: '차트번호 기준으로 기존 고객 확인',
+    },
+  ];
+
+  function esc(v) {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  const lines = [
+    headers.map(esc).join(','),
+    ...rows.map(row => headers.map(h => esc(row[h])).join(',')),
+  ];
+  const csv = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'crm_emr_import_template.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -377,7 +451,7 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <FileText size={14} color={TEAL} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: textP }}>CSV 일괄 가져오기</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: textP }}>CRM/EMR 환자·방문 가져오기</span>
             {phase !== 'upload' && (
               <span style={{ fontSize: 11, color: textS }}>— {fileName}</span>
             )}
@@ -423,12 +497,26 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                 <Upload size={36} color={dragOver ? TEAL : textS} strokeWidth={1.5} />
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontSize: 14, fontWeight: 600, color: textP, marginBottom: 4 }}>
-                    CSV 파일을 드래그하거나 클릭하여 선택
+                    기존 CRM/EMR에서 내보낸 CSV 파일을 선택
                   </p>
-                  <p style={{ fontSize: 11, color: textS }}>최대 {MAX_ROWS}행 · Excel CSV(.csv)만 지원</p>
+                  <p style={{ fontSize: 11, color: textS }}>최대 {MAX_ROWS}행 · 환자/방문/외부 ID를 일괄 등록합니다</p>
                 </div>
               </div>
               <input ref={fileRef} type="file" accept=".csv" style={{ display:'none' }} onChange={onFileChange} />
+              <button
+                type="button"
+                onClick={downloadTemplateCSV}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
+                  padding: '9px 14px', borderRadius: 10,
+                  border: `1px solid ${TEAL}45`,
+                  background: darkMode ? '#1C1C1F' : '#FFFFFF',
+                  color: TEAL, fontSize: 12, fontWeight: 800,
+                  cursor: 'pointer', fontFamily: SANS,
+                }}
+              >
+                <Download size={13} /> CRM/EMR 샘플 CSV
+              </button>
 
               {parseError && (
                 <div style={{ width:'100%', padding:'10px 14px', borderRadius:10, background:'#FEF2F2', color:'#991B1B', fontSize:12, display:'flex', gap:8, alignItems:'flex-start' }}>
@@ -445,14 +533,17 @@ export default function CsvImportModal({ clinicId, darkMode, onClose, onImported
                     <span key={c} style={{ fontSize:11, fontWeight:600, padding:'2px 8px', borderRadius:6, background:TEAL+'18', color:TEAL }}>{c}</span>
                   ))}
                 </div>
-                <p style={{ fontSize:11, fontWeight:700, color:textS, marginBottom:6, letterSpacing:'0.04em', textTransform:'uppercase' }}>선택 열</p>
+                <p style={{ fontSize:11, fontWeight:700, color:textS, marginBottom:6, letterSpacing:'0.04em', textTransform:'uppercase' }}>선택 열 · CRM/EMR 참조값</p>
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                  {['lang','시술 / procedure','전화 / phone','이메일 / email','국적 / nationality','메모 / note','외부시스템 / CRM ID'].map(c => (
+                  {['lang','시술 / procedure','전화 / phone','이메일 / email','국적 / nationality','메모 / note','외부시스템','외부 환자 ID','차트번호','외부 예약 ID','CRM/EMR 링크'].map(c => (
                     <span key={c} style={{ fontSize:10, padding:'2px 7px', borderRadius:6, background:darkMode?'#2D2D31':'#F3F4F6', color:textS }}>{c}</span>
                   ))}
                 </div>
                 <p style={{ fontSize:10, color:textS, marginTop:10, lineHeight:1.6 }}>
-                  날짜 형식: YYYY-MM-DD · YYYY/MM/DD · MM/DD/YYYY · YYYY년 MM월 DD일 · MM월 DD일 · Excel 직렬 숫자
+                  먼저 샘플 CSV를 받아 기존 CRM/EMR export 열 이름을 맞춰보세요.
+                  <br />
+                  TikiPaste는 상담 1건 캡처용입니다. 기존 CRM/EMR의 환자·방문 목록은 이 CSV 가져오기에서 관리합니다.
+                  <br />날짜 형식: YYYY-MM-DD · YYYY/MM/DD · MM/DD/YYYY · YYYY년 MM월 DD일 · MM월 DD일 · Excel 직렬 숫자
                 </p>
               </div>
             </div>

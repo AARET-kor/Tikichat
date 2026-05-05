@@ -476,7 +476,26 @@ function IntegrationsSection({ darkMode }) {
       </div>
 
       <div className={`rounded-2xl border p-5 ${card}`}>
-        <h3 className={`text-sm font-semibold ${text}`}>Phase 1에서 저장하는 참조값</h3>
+        <h3 className={`text-sm font-semibold ${text}`}>어디에서 무엇을 관리하나요?</h3>
+        <p className={`text-[11px] mt-2 leading-relaxed ${subText}`}>
+          TikiPaste, CSV 가져오기, Memory의 역할을 섞지 않습니다. 상담 1건, 기존 데이터 가져오기, 환자별 기억은 서로 다른 운영 단계입니다.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-2">
+          {[
+            ['TikiPaste', '지금 보고 있는 상담 대화 1건을 붙여넣고, 환자/방문 후보로 넘기는 상담 유입 캡처'],
+            ['CRM/EMR 환자·방문 가져오기', '기존 시스템에서 내보낸 CSV 파일로 환자, 방문, 외부 ID, 차트번호, 링크를 일괄 등록'],
+            ['Memory', '이미 식별된 환자에게 남겨야 할 상담 요약, 위험 신호, 관심 시술, 주의사항을 누적'],
+          ].map(([title, desc]) => (
+            <div key={title} className={`rounded-xl border px-3 py-3 ${darkMode ? 'border-zinc-700 bg-zinc-900' : 'border-slate-100 bg-slate-50'}`}>
+              <div className={`text-xs font-bold ${text}`}>{title}</div>
+              <div className={`text-[11px] mt-1 leading-relaxed ${subText}`}>{desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`rounded-2xl border p-5 ${card}`}>
+        <h3 className={`text-sm font-semibold ${text}`}>CRM/EMR 가져오기에서 저장하는 참조값</h3>
         <div className="mt-3 space-y-2">
           {[
             ['source', '외부 시스템 이름'],
@@ -492,7 +511,8 @@ function IntegrationsSection({ darkMode }) {
           ))}
         </div>
         <p className={`text-[11px] mt-4 leading-relaxed ${subText}`}>
-          아직 API 키, webhook, 메시지 동기화, inbox는 만들지 않습니다. Quick Visit과 CSV import에서 참조값을 담는 것까지만 운영 기준으로 고정합니다.
+          지금은 CSV/수기 가져오기와 Quick Visit에서 참조값을 담는 것까지만 운영 기준으로 고정합니다.
+          API 키, webhook, 메시지 동기화, inbox는 아직 만들지 않습니다.
         </p>
       </div>
     </div>

@@ -35,7 +35,7 @@ Status meanings:
 | My Tiki link validity | stable after deploy smoke test | Generated links now use encoded tokens and patient-token auth requires only required `patient_links` fields. Must be retested with a newly generated link after deploy. |
 | Tiki Desk scroll | stable after deploy smoke test | Global document scroll and Tiki Desk internal scrolling are restored. Must be checked on actual staff screen sizes. |
 | New visit visibility | stable after deploy smoke test | New visits are inserted optimistically and date filters move to `today`, `tomorrow`, `week`, or `all` based on visit date. |
-| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented. Chrome extension and DOM-reading behavior are paused. |
+| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. Chrome extension, DOM-reading behavior, and CRM/EMR bulk import ownership are paused/excluded. |
 | Design-system pass | implemented / validating | Landing, staff shell, Tiki Desk, Protocol, Procedure Management, and My Tiki UI kit direction are standardized. More manual visual QA remains. |
 
 ## Batch Status
@@ -60,7 +60,7 @@ Status meanings:
 | Tiki Room real clinic usability | pilot-ready | Core room session flow verified. Real room devices still need acceptance testing. |
 | Tiki Desk operational visibility | stable / pilot-ready | Urgency, SLA, owner/latest actor, room traffic, scheduler health, and audit/history browse are surfaced. |
 | QR generation / patient link flow | stable / pilot-ready | Internal QR rendering via `/api/qr`; no external QR dependency remains. |
-| TikiPaste web-sidecar | usable / pilot-ready | Useful as a staff sidecar workspace. It is not an extension, overlay, or automatic chat-reader. |
+| TikiPaste web-sidecar | usable / pilot-ready | Useful as a staff sidecar workspace. It is not an extension, overlay, automatic chat-reader, or CRM/EMR import manager. |
 | Signup/login | stable | Real Auth path is restored when deployed env/build values match Supabase. |
 | Quick Visit + patient link generation | stable after smoke test | Works in code and tests. Needs one deployed link-open smoke test after latest deploy. |
 

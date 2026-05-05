@@ -4,7 +4,7 @@ Last updated: 2026-05-01
 
 ## Product Surface Naming
 
-- `Tiki Paste` = staff paste / extraction / memory-write surface.
+- `Tiki Paste` = staff sidecar for one-off consultation capture, reply drafting, and staff-confirmed workflow handoff.
 - `My Tiki` = patient portal / patient link entry.
 - `TikiBell` = patient-facing guide/helper inside `My Tiki`.
 - `Tiki Desk` = staff / clinic operations surface.
@@ -41,8 +41,19 @@ Display copy should use these names. Internal routes, schema fields, metadata va
   - copy actions
   - Quick Visit / My Tiki link / Tiki Desk handoff actions
 - Memory writes are staff-auth gated and must resolve clinic context from authenticated staff context, not caller-provided clinic input.
+- Existing CRM/EMR patient and visit data should be handled through Tiki Desk import/settings surfaces, not inside Tiki Paste.
+- Tiki Memory is for patient-specific remembered context after a patient is identified, not for CSV/import management.
 - Do not broaden Tiki Paste into a generic document CMS without a separate decision.
 - Do not build extension-only behavior, desktop overlays, automatic arbitrary browser DOM reading, or a large OCR platform without a separate decision.
+
+### CRM/EMR Import vs Tiki Paste vs Memory
+
+- CRM/EMR import belongs in Tiki Desk operations/settings and CSV/manual import flows.
+- CRM/EMR CSV import should expose a small downloadable sample template so clinics can map exports without guessing supported columns.
+- Tiki Paste handles a single current consultation conversation and can stage it as a pending intake.
+- Tiki Memory stores patient-specific context after identification, such as summaries, risks, interests, and notes.
+- Do not make Tiki Paste the owner of bulk CRM/EMR files.
+- Do not make Memory the owner of raw CRM/EMR import files.
 
 ### My Tiki
 
