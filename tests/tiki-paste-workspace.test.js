@@ -18,13 +18,13 @@ test("TikiPaste is a web sidecar workspace, not an overlay launcher", () => {
 
 test("TikiPaste supports practical handoff actions", () => {
   assert.match(tikiPasteSource, /QuickVisitCreate/);
-  assert.match(tikiPasteSource, /Quick Visit/);
-  assert.match(tikiPasteSource, /My Tiki 링크 준비/);
-  assert.match(tikiPasteSource, /Tiki Desk로 보내기/);
+  assert.match(tikiPasteSource, /직접 새 환자 등록/);
+  assert.match(tikiPasteSource, /My Tiki 링크는 환자와 방문이 확정된 뒤에만 표시됩니다/);
+  assert.match(tikiPasteSource, /My Tiki 링크 복사/);
   assert.match(tikiPasteSource, /상담 유입으로 보류 저장/);
-  assert.match(tikiPasteSource, /환자 후보 매칭/);
+  assert.match(tikiPasteSource, /기존 환자 확인 \/ 새 환자 등록/);
   assert.match(tikiPasteSource, /기존 환자로 저장/);
-  assert.match(tikiPasteSource, /새 환자로 저장/);
+  assert.match(tikiPasteSource, /새 환자 등록/);
   assert.match(tikiPasteSource, /\/api\/conversation-intakes/);
 });
 

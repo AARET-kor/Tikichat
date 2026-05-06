@@ -54,6 +54,35 @@ async function getStaffAuthHeaders() {
   return headers;
 }
 
+function friendlyError(message, fallback = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.') {
+  const raw = String(message || '').trim();
+  if (!raw) return fallback;
+  if (/column .* does not exist|schema cache|invalid input syntax|violates|duplicate key|foreign key/i.test(raw)) {
+    return '현재 배포된 데이터 구조와 화면이 맞지 않습니다. 관리자에게 알려 주세요.';
+  }
+  if (/401|jwt|auth|session|로그인|unauthorized/i.test(raw)) {
+    return '로그인 세션을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.';
+  }
+  if (/Failed to fetch|NetworkError|Load failed/i.test(raw)) {
+    return '네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
+  }
+  if (/message or image required/i.test(raw)) {
+    return '상담 내용이나 스크린샷을 먼저 넣어 주세요.';
+  }
+  return raw.length > 120 ? fallback : raw;
+}
+
+function missingFieldLabel(field) {
+  const labels = {
+    patient_name: '환자 이름',
+    visit_date: '방문 예정일',
+    contact_channel: '연락 채널',
+    phone: '연락처',
+    source_handle: '상담 ID',
+  };
+  return labels[field] || String(field || '').replaceAll('_', ' ');
+}
+
 // ── CSS keyframes ─────────────────────────────────────────────────────────────
 const GLOBAL_STYLE = `
   @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
@@ -152,6 +181,46 @@ function Toast({ message }) {
     }}>
       <Check size={13} style={{ color:C.mocha }} />
       {message}
+    </div>
+  );
+}
+
+function WorkflowSteps({ step }) {
+  const steps = [
+    '상담 입력',
+    'AI 분석',
+    '환자 확인',
+    '다음 조치',
+  ];
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(4, minmax(0, 1fr))', gap:8 }}>
+      {steps.map((label, index) => {
+        const number = index + 1;
+        const active = number === step;
+        const done = number < step;
+        return (
+          <div key={label} style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'10px 12px', borderRadius:14,
+            border:`1px solid ${active ? C.mocha : C.border}`,
+            background:active ? C.mochaPale : done ? C.white : C.bgSub,
+            color:active ? C.mochaDk : done ? C.textSub : C.textMt,
+            boxShadow:active ? '0 8px 22px rgba(1,69,242,0.12)' : 'none',
+          }}>
+            <span style={{
+              width:22, height:22, borderRadius:999,
+              display:'inline-flex', alignItems:'center', justifyContent:'center',
+              background:done ? C.sage : active ? C.mocha : C.bgDeep,
+              color:done || active ? '#fff' : C.textMt,
+              fontSize:11, fontWeight:950,
+              flexShrink:0,
+            }}>
+              {done ? '✓' : number}
+            </span>
+            <span style={{ fontSize:12, fontWeight:900, letterSpacing:'-0.03em' }}>{label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -298,6 +367,19 @@ function WorkspaceInput({
 }) {
   const canGenerate = input.trim() || image;
   return (
+    <section style={{ display:'grid', gap:14, padding:18, background:C.white, border:`1px solid ${C.border}`, borderRadius:18, boxShadow:'0 10px 32px rgba(1,69,242,0.06)' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:12, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Clipboard size={15} color={C.mocha} />
+        </div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:16, fontWeight:950, color:C.text, letterSpacing:'-0.04em' }}>1. 상담 입력</p>
+          <p style={{ fontSize:12, color:C.textMt, marginTop:3, lineHeight:1.55 }}>
+            외국인 환자 메시지를 붙여넣거나, 복사하기 어려운 경우에만 스크린샷을 올립니다.
+          </p>
+        </div>
+      </div>
+
     <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1.45fr) minmax(300px, 0.85fr)', gap:16, alignItems:'stretch' }}>
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         <PasteZone
@@ -380,7 +462,7 @@ function WorkspaceInput({
           }}>
             {loading
               ? <><Loader2 size={12} style={{ animation:'spin 1s linear infinite' }} /> 분석 중</>
-              : <><Sparkles size={12} /> 분석하고 답장 만들기</>
+              : <><Sparkles size={12} /> AI 분석 시작</>
             }
           </button>
         </div>
@@ -422,6 +504,7 @@ function WorkspaceInput({
         />
       </div>
     </div>
+    </section>
   );
 }
 
@@ -433,19 +516,33 @@ function AnalysisStrip({ result }) {
   const intent = result?.last_message_intent || result?.intent;
 
   return (
-    <div style={{ animation:'analysisIn 0.35s ease-out' }}>
+    <section style={{ animation:'analysisIn 0.35s ease-out', display:'grid', gap:14, padding:18, background:C.white, border:`1px solid ${C.border}`, borderRadius:18, boxShadow:'0 10px 32px rgba(1,69,242,0.06)' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:12, background:C.mochaPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Brain size={15} color={C.mocha} />
+        </div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:16, fontWeight:950, color:C.text, letterSpacing:'-0.04em' }}>2. AI 분석</p>
+          <p style={{ fontSize:12, color:C.textMt, marginTop:3, lineHeight:1.55 }}>
+            환자 의도, 언어, 위험 신호를 먼저 확인합니다. 답변은 자동 전송되지 않습니다.
+          </p>
+        </div>
+      </div>
+
       {/* Conversation summary */}
       {summary && (
         <div style={{
-          padding:'12px 16px', marginBottom:12,
-          background:C.bgSub,
-          borderRadius:12,
+          padding:'18px 20px',
+          background:`linear-gradient(135deg, ${C.mochaPale}, ${C.white})`,
+          border:`1px solid ${C.borderMd}`,
+          borderRadius:16,
+          boxShadow:'inset 0 1px 0 rgba(255,255,255,0.7)',
         }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
-            <BookOpen size={11} color={C.textMt} />
-            <span style={{ fontSize:10, fontWeight:700, color:C.textMt, textTransform:'uppercase', letterSpacing:'0.08em' }}>대화 요약 · 직원 참고용</span>
+          <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
+            <BookOpen size={14} color={C.mocha} />
+            <span style={{ fontSize:12, fontWeight:900, color:C.mochaDk, letterSpacing:'-0.02em' }}>환자 대화 요약</span>
           </div>
-          <p style={{ fontSize:13, color:C.textSub, lineHeight:1.65, letterSpacing:'-0.01em' }}>{summary}</p>
+          <p style={{ fontSize:17, color:C.text, lineHeight:1.72, letterSpacing:'-0.03em', fontWeight:750 }}>{summary}</p>
         </div>
       )}
 
@@ -460,7 +557,7 @@ function AnalysisStrip({ result }) {
         {/* Intent badge */}
         {intent && (
           <div style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:999, background:C.bgSub }}>
-            <span style={{ fontSize:11, fontWeight:600, color:C.textSub, letterSpacing:'-0.01em' }}>마지막 의도: {intent}</span>
+            <span style={{ fontSize:12, fontWeight:750, color:C.textSub, letterSpacing:'-0.01em' }}>마지막 의도: {intent}</span>
           </div>
         )}
 
@@ -474,9 +571,9 @@ function AnalysisStrip({ result }) {
           </div>
         )}
 
-        <span style={{ fontSize:11, color:C.textMt, marginLeft:'auto', letterSpacing:'-0.01em' }}>답변은 환자 언어로 · 한국어 해석은 참고용</span>
+        <span style={{ fontSize:11, color:C.textMt, marginLeft:'auto', letterSpacing:'-0.01em' }}>답변은 환자 언어로 · 한국어 해석은 직원 참고용</span>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -603,6 +700,121 @@ function ReplyCard({ type, option, onCopy, delay }) {
   );
 }
 
+function getReplyOption(result, key) {
+  const option = result?.options?.[key];
+  if (!option) return { reply: '', ko_translation: '' };
+  if (typeof option === 'string') return { reply: option, ko_translation: '' };
+  return { reply: option.reply || '', ko_translation: option.ko_translation || '' };
+}
+
+function BestReplyPanel({ result, onCopy }) {
+  const [copiedKey, setCopiedKey] = useState('');
+  const best = getReplyOption(result, 'kind');
+  const quick = getReplyOption(result, 'firm');
+  const booking = getReplyOption(result, 'booking');
+
+  const copyText = async (text, key) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      onCopy?.(text);
+      setTimeout(() => setCopiedKey(''), 1800);
+    } catch { /* ignore */ }
+  };
+
+  const boosters = [
+    { key:'booking', label:'예약 유도 버전 복사', icon:TrendingUp, text:booking.reply, color:C.gold },
+    { key:'quick', label:'짧게 줄인 버전 복사', icon:Zap, text:quick.reply, color:C.mocha },
+    { key:'kind', label:'더 친절한 표현 복사', icon:Heart, text:best.reply, color:C.sage },
+  ].filter(item => item.text);
+
+  return (
+    <section style={{ display:'grid', gap:14, padding:18, background:C.white, border:`1px solid ${C.border}`, borderRadius:18, boxShadow:'0 10px 32px rgba(1,69,242,0.06)' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+        <div style={{ width:36, height:36, borderRadius:12, background:C.sagePale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Sparkles size={15} color={C.sage} />
+        </div>
+        <div style={{ flex:1 }}>
+          <p style={{ fontSize:16, fontWeight:950, color:C.text, letterSpacing:'-0.04em' }}>바로 쓸 답변</p>
+          <p style={{ fontSize:12, color:C.textMt, marginTop:3, lineHeight:1.55 }}>
+            선택지를 늘리지 않고, 직원이 바로 복사해 쓸 수 있는 가장 안전한 답변 1개만 먼저 보여줍니다.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => copyText(best.reply, 'best')}
+          style={{
+            display:'flex', alignItems:'center', gap:7,
+            padding:'10px 15px', borderRadius:11,
+            border:'none', background:C.mocha, color:'#fff',
+            fontSize:13, fontWeight:950, cursor:'pointer',
+            boxShadow:'0 5px 18px rgba(1,69,242,0.28)',
+          }}
+        >
+          {copiedKey === 'best' ? <Check size={14} /> : <Copy size={14} />}
+          {copiedKey === 'best' ? '복사됨' : '답변 복사'}
+        </button>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) 320px', gap:14, alignItems:'stretch' }}>
+        <div style={{
+          padding:22,
+          borderRadius:18,
+          border:`1px solid ${C.borderMd}`,
+          background:'linear-gradient(180deg, #ffffff 0%, #F7FBFF 100%)',
+          minHeight:220,
+          display:'flex',
+          flexDirection:'column',
+          justifyContent:'space-between',
+        }}>
+          <div>
+            <p style={{ fontSize:12, fontWeight:900, color:C.mochaDk, marginBottom:12 }}>환자에게 보낼 문장</p>
+            <p style={{ fontSize:22, color:C.text, lineHeight:1.78, whiteSpace:'pre-wrap', letterSpacing:'-0.04em', fontWeight:760 }}>
+              {best.reply}
+            </p>
+          </div>
+          {best.ko_translation && (
+            <div style={{ marginTop:18, padding:14, borderRadius:13, background:C.bg, border:`1px solid ${C.border}` }}>
+              <p style={{ fontSize:11, fontWeight:900, color:C.textMt, marginBottom:6 }}>한국어 해석</p>
+              <p style={{ fontSize:14, color:C.textSub, lineHeight:1.65 }}>{best.ko_translation}</p>
+            </div>
+          )}
+        </div>
+
+        <aside style={{ padding:16, borderRadius:18, background:C.bgSub, border:`1px solid ${C.border}`, display:'flex', flexDirection:'column', gap:10 }}>
+          <p style={{ fontSize:13, fontWeight:950, color:C.text, letterSpacing:'-0.03em' }}>부족하면 여기서 보강</p>
+          <p style={{ fontSize:11, color:C.textMt, lineHeight:1.55 }}>
+            기본 답변은 하나만 쓰고, 상황에 따라 아래 보강 버전만 복사하세요.
+          </p>
+          {boosters.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => copyText(item.text, item.key)}
+                style={{
+                  display:'flex', alignItems:'center', gap:9,
+                  width:'100%', padding:'11px 12px',
+                  borderRadius:12, border:`1px solid ${C.border}`,
+                  background:C.white, color:C.textSub,
+                  fontSize:12, fontWeight:900,
+                  cursor:'pointer', textAlign:'left',
+                }}
+              >
+                <Icon size={14} color={item.color} />
+                <span style={{ flex:1 }}>{item.label}</span>
+                {copiedKey === item.key ? <Check size={13} color={C.sage} /> : <Copy size={13} color={C.textMt} />}
+              </button>
+            );
+          })}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 // ── Save to memory bar ────────────────────────────────────────────────────────
 // States: idle → selecting (patient picker) → saving → saved | error
 function SaveToMemoryBar({ result, input, clinicId }) {
@@ -681,7 +893,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
       setSessionCount(d.session_count);
       setPhase('saved');
     } catch (err) {
-      setErrorMsg(err.message);
+      setErrorMsg(friendlyError(err.message, '상담 컨텍스트 저장에 실패했습니다.'));
       setPhase('error');
     }
   };
@@ -708,7 +920,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
       if (!r.ok) throw new Error(patient.error || `HTTP ${r.status}`);
       await doSave(patient);
     } catch (err) {
-      setErrorMsg(err.message);
+      setErrorMsg(friendlyError(err.message, '환자 생성에 실패했습니다.'));
       setPhase('error');
     }
   };
@@ -854,7 +1066,7 @@ function SaveToMemoryBar({ result, input, clinicId }) {
         cursor:'pointer', letterSpacing:'-0.01em', flexShrink:0,
       }}>
         <Save size={11} />
-        Tiki Desk로 보내기
+        환자 기록에 저장
       </button>
     </div>
   );
@@ -900,7 +1112,7 @@ function PendingIntakeBar({ result, input, sourceCapture, onSaved }) {
       setPhase('saved');
       onSaved?.(data.intake);
     } catch (err) {
-      setErrorMsg(err.message || '상담 유입 저장 실패');
+      setErrorMsg(friendlyError(err.message, '상담 유입 저장에 실패했습니다.'));
       setPhase('error');
     }
   }
@@ -1084,7 +1296,7 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
       setPhase('done');
       onCompleted?.(converted);
     } catch (err) {
-      setErrorMsg(err.message || '저장 실패');
+      setErrorMsg(friendlyError(err.message, '환자/방문 저장에 실패했습니다.'));
       setPhase('error');
     }
   }
@@ -1096,9 +1308,9 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
           <Search size={15} color={C.mocha} />
         </div>
         <div style={{ flex:1, minWidth:0 }}>
-          <p style={{ fontSize:14, fontWeight:950, color:C.text, letterSpacing:'-0.03em' }}>환자 후보 매칭</p>
+          <p style={{ fontSize:16, fontWeight:950, color:C.text, letterSpacing:'-0.04em' }}>3. 기존 환자 확인 / 새 환자 등록</p>
           <p style={{ fontSize:11, color:C.textMt, marginTop:3, lineHeight:1.55 }}>
-            복붙/스크린샷에서 읽은 환자 정보를 기존 환자 후보와 비교합니다. 자동 확정하지 않고 직원이 직접 선택합니다.
+            분석된 환자 정보를 기존 기록과 비교합니다. 자동 확정하지 않고 직원이 직접 선택합니다.
           </p>
         </div>
         {matchState?.loading && <Loader2 size={15} color={C.mocha} style={{ animation:'spin 1s linear infinite' }} />}
@@ -1126,7 +1338,7 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
               <span key={item} style={{ fontSize:10.5, fontWeight:850, color:C.mochaDk, background:C.mochaPale, borderRadius:999, padding:'4px 8px' }}>{item}</span>
             ))}
             {(result.missing_fields || []).map((field) => (
-              <span key={field} style={{ fontSize:10.5, fontWeight:850, color:C.red, background:C.redPale, borderRadius:999, padding:'4px 8px' }}>확인 필요: {field}</span>
+              <span key={field} style={{ fontSize:10.5, fontWeight:850, color:C.red, background:C.redPale, borderRadius:999, padding:'4px 8px' }}>확인 필요: {missingFieldLabel(field)}</span>
             ))}
           </div>
         </div>
@@ -1164,16 +1376,24 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
       </div>
 
       {phase === 'error' && (
-        <p style={{ fontSize:11, color:C.red, background:C.redPale, borderRadius:10, padding:'9px 11px' }}>{errorMsg}</p>
+        <p style={{ fontSize:11, color:C.red, background:C.redPale, borderRadius:10, padding:'9px 11px' }}>{friendlyError(errorMsg, '환자 저장에 실패했습니다. 입력값과 로그인 상태를 확인해 주세요.')}</p>
       )}
       {phase === 'done' && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, background:C.sagePale, borderRadius:10, padding:'10px 12px' }}>
+        <div style={{ display:'grid', gap:10, background:C.sagePale, borderRadius:12, padding:'13px 14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <Check size={14} color={C.sage} />
-          <p style={{ flex:1, fontSize:12, color:C.sage, fontWeight:900 }}>환자/방문/My Tiki 링크와 상담 메모리 저장이 완료되었습니다</p>
+          <div style={{ flex:1 }}>
+            <p style={{ fontSize:13, color:C.sage, fontWeight:950 }}>환자/방문 저장 완료</p>
+            <p style={{ fontSize:11, color:C.textMt, marginTop:2 }}>이제 My Tiki 링크를 복사해 환자에게 공유할 수 있습니다.</p>
+          </div>
+          </div>
           {linkUrl && (
-            <button type="button" onClick={() => navigator.clipboard.writeText(linkUrl)} style={{ border:'none', background:C.white, color:C.sage, borderRadius:8, padding:'6px 9px', fontSize:10.5, fontWeight:900, cursor:'pointer' }}>
-              링크 복사
-            </button>
+            <div style={{ display:'flex', alignItems:'center', gap:8, padding:9, borderRadius:10, background:C.white }}>
+              <span style={{ flex:1, minWidth:0, color:C.textSub, fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{linkUrl}</span>
+              <button type="button" onClick={() => navigator.clipboard.writeText(linkUrl)} style={{ border:'none', background:C.sage, color:'#fff', borderRadius:8, padding:'7px 10px', fontSize:11, fontWeight:900, cursor:'pointer' }}>
+                My Tiki 링크 복사
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -1212,7 +1432,7 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
             cursor:patientName.trim() && phase !== 'saving' ? 'pointer' : 'not-allowed',
           }}
         >
-          {phase === 'saving' ? '저장 중…' : '새 환자로 저장'}
+          {phase === 'saving' ? '저장 중…' : '새 환자 등록'}
         </button>
       </div>
     </section>
@@ -1284,7 +1504,7 @@ function PendingIntakeCard({ intake, clinicId, onConverted }) {
       setPhase('done');
       onConverted?.(data);
     } catch (err) {
-      setErrorMsg(err.message || '전환 실패');
+      setErrorMsg(friendlyError(err.message, '보류 상담 전환에 실패했습니다.'));
       setPhase('error');
     }
   }
@@ -1442,7 +1662,7 @@ function PendingIntakeQueue({ clinicId, refreshKey, onConverted }) {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setIntakes(data.intakes || []);
     } catch (err) {
-      setErrorMsg(err.message || '보류 상담을 불러오지 못했습니다');
+      setErrorMsg(friendlyError(err.message, '보류 상담을 불러오지 못했습니다.'));
       setIntakes([]);
     } finally {
       setLoading(false);
@@ -1507,7 +1727,7 @@ function EmptyState({ mode }) {
       </div>
       <div style={{ textAlign:'center' }}>
         <p style={{ fontSize:14, fontWeight:800, color:C.text, marginBottom:6, letterSpacing:'-0.02em' }}>외국인 환자 메시지를 분석합니다</p>
-        <p style={{ fontSize:12, color:C.textMt, lineHeight:1.7 }}>메시지를 붙여넣으면 언어를 감지하고<br />의료적으로 안전한 답장 3가지를 즉시 생성합니다</p>
+        <p style={{ fontSize:12, color:C.textMt, lineHeight:1.7 }}>메시지를 붙여넣으면 언어와 의도를 파악하고<br />바로 복사해 쓸 수 있는 답변을 준비합니다</p>
       </div>
       {examples && (
         <div style={{ width:'100%', maxWidth:480, display:'flex', flexDirection:'column', gap:8 }}>
@@ -1553,6 +1773,7 @@ export default function TikiPasteTab() {
   const [tikiActive, setTikiActive] = useState(false);
   const [quickVisitOpen, setQuickVisitOpen] = useState(false);
   const [intakeRefreshKey, setIntakeRefreshKey] = useState(0);
+  const [showPendingIntakes, setShowPendingIntakes] = useState(false);
   const [matchState, setMatchState] = useState({ loading:false, candidates:[], signals:null, recommended_mode:'create_or_review', error:'' });
   const tikiTimer = useRef(null);
 
@@ -1595,7 +1816,7 @@ export default function TikiPasteTab() {
       setError(null);
       showToast('스크린샷이 추가되었습니다');
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err.message, '스크린샷을 읽지 못했습니다.'));
     }
   }, [readImageFile]);
 
@@ -1626,7 +1847,7 @@ export default function TikiPasteTab() {
       }
       setResult(await res.json());
     } catch (err) {
-      setError(err.message);
+      setError(friendlyError(err.message, 'AI 분석에 실패했습니다. 잠시 후 다시 시도해 주세요.'));
     } finally {
       setLoading(false);
     }
@@ -1692,6 +1913,7 @@ export default function TikiPasteTab() {
 
   const handoffText = input || result?.extracted_text || result?.conversation_summary || result?.ko_summary || '';
   const hasContent = input.trim() || image || result || loading;
+  const activeStep = loading ? 2 : result ? 3 : 1;
 
   useEffect(() => {
     let active = true;
@@ -1731,7 +1953,7 @@ export default function TikiPasteTab() {
             candidates:[],
             signals:null,
             recommended_mode:'create_or_review',
-            error:err.message || '기존 환자 후보를 찾지 못했습니다',
+            error:friendlyError(err.message, '기존 환자 후보를 찾지 못했습니다.'),
           });
         }
       }
@@ -1766,7 +1988,7 @@ export default function TikiPasteTab() {
               <span style={{ fontSize:14, fontWeight:800, color:C.text, letterSpacing:'-0.03em' }}>Tiki Paste</span>
               <span style={{ fontSize:9, fontWeight:700, color:C.mocha, background:C.mochaPale, padding:'2px 7px', borderRadius:999, letterSpacing:'0.04em', textTransform:'uppercase' }}>AI Copilot</span>
             </div>
-            <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>외국어 메시지 → 의료 안전 답장 3종</p>
+            <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>상담 입력 → AI 분석 → 환자 확인 → 다음 조치</p>
           </div>
         </div>
 
@@ -1797,6 +2019,7 @@ export default function TikiPasteTab() {
 
       {/* ── Content ───────────────────────────────────────────────────────────── */}
       <div style={{ flex:1, maxWidth:1180, width:'100%', margin:'0 auto', padding:'24px 24px 40px', display:'flex', flexDirection:'column', gap:20 }}>
+        <WorkflowSteps step={activeStep} />
 
         {/* ── Input section ──────────────────────────────────────────────────── */}
         <WorkspaceInput
@@ -1821,12 +2044,12 @@ export default function TikiPasteTab() {
             <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', background:C.mochaPale, border:`1px solid ${C.border}`, borderRadius:11 }}>
               <Loader2 size={14} style={{ animation:'spin 1s linear infinite', color:C.mocha, flexShrink:0 }} />
               <div>
-                <p style={{ fontSize:12, fontWeight:700, color:C.mochaDk }}>언어 감지 → 의도 파악 → 답장 3종 생성 중...</p>
-                <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>병원 시술 DB를 참조하여 의료적으로 안전한 답변을 준비합니다</p>
+                <p style={{ fontSize:12, fontWeight:700, color:C.mochaDk }}>언어 감지 → 의도 파악 → 바로 쓸 답변 생성 중...</p>
+                <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>병원 시술 DB를 참조해 직원이 복사할 수 있는 답변 1개를 우선 준비합니다</p>
               </div>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14 }}>
-              {[0, 100, 200].map(d => <SkeletonCard key={d} delay={d} />)}
+            <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:14 }}>
+              <SkeletonCard delay={0} />
             </div>
           </div>
         )}
@@ -1850,27 +2073,15 @@ export default function TikiPasteTab() {
           <AnalysisStrip result={result} />
         )}
 
-        {/* ── Reply cards ────────────────────────────────────────────────────── */}
+        {/* ── Best reply ─────────────────────────────────────────────────────── */}
         {result && !loading && (
-          <div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:14 }}>
-              {REPLY_TYPES.map((type, i) => (
-                <ReplyCard
-                  key={type.key}
-                  type={type}
-                  option={result.options?.[type.key]}
-                  onCopy={(text) => { showToast('클립보드에 복사되었습니다'); triggerTiki(); }}
-                  delay={i * 80}
-                />
-              ))}
-            </div>
-            <p style={{ textAlign:'center', fontSize:10, color:C.textMt, marginTop:12, letterSpacing:'-0.01em' }}>
-              복사 버튼은 환자에게 전송할 원문만 복사합니다 · 한국어 해석은 직원 전용입니다
-            </p>
-          </div>
+          <BestReplyPanel
+            result={result}
+            onCopy={() => { showToast('클립보드에 복사되었습니다'); triggerTiki(); }}
+          />
         )}
 
-        {/* ── Save to memory ─────────────────────────────────────────────────── */}
+        {/* ── Patient confirmation ───────────────────────────────────────────── */}
         {result && !loading && (
           <div style={{ display:'grid', gap:12 }}>
             <PatientMatchPanel
@@ -1883,47 +2094,74 @@ export default function TikiPasteTab() {
                 setIntakeRefreshKey((value) => value + 1);
               }}
             />
-            <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr) auto', gap:12, alignItems:'stretch' }}>
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <SaveToMemoryBar result={result} input={handoffText} clinicId={clinicId} />
-              <PendingIntakeBar
-                result={result}
-                input={handoffText}
-                sourceCapture={sourceCapture}
-                onSaved={() => {
-                  showToast('상담 유입이 보류 intake로 저장되었습니다');
-                  setIntakeRefreshKey((value) => value + 1);
-                }}
-              />
-            </div>
-            <div style={{ display:'flex', gap:8, alignItems:'center', padding:'14px 16px', borderRadius:12, background:C.white, border:`1px solid ${C.border}` }}>
-              <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
-                display:'flex', alignItems:'center', gap:7,
-                padding:'9px 14px', borderRadius:9,
-                background:C.mocha, color:'#fff', border:'none',
-                fontSize:12, fontWeight:850,
-                boxShadow:`0 3px 12px rgba(1,69,242,0.26)`,
-              }}>
-                <UserPlus size={13} /> Quick Visit
-              </button>
-              <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
-                display:'flex', alignItems:'center', gap:7,
-                padding:'9px 14px', borderRadius:9,
-                background:C.mochaPale, color:C.mochaDk, border:`1px solid ${C.border}`,
-                fontSize:12, fontWeight:800,
-              }}>
-                <Send size={13} /> My Tiki 링크 준비
-              </button>
-            </div>
-            </div>
+            <section style={{ display:'grid', gap:12, padding:16, background:C.white, border:`1px solid ${C.border}`, borderRadius:16 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:36, height:36, borderRadius:11, background:C.goldPale, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Send size={15} color={C.gold} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ fontSize:16, fontWeight:950, color:C.text, letterSpacing:'-0.04em' }}>4. 다음 조치</p>
+                  <p style={{ fontSize:11, color:C.textMt, marginTop:3 }}>My Tiki 링크는 환자와 방문이 확정된 뒤에만 표시됩니다.</p>
+                </div>
+                <button className="action-btn" onClick={() => setQuickVisitOpen(true)} style={{
+                  display:'flex', alignItems:'center', gap:7,
+                  padding:'9px 14px', borderRadius:9,
+                  background:C.mochaPale, color:C.mochaDk, border:`1px solid ${C.border}`,
+                  fontSize:12, fontWeight:900,
+                }}>
+                  <UserPlus size={13} /> 직접 새 환자 등록
+                </button>
+              </div>
+              <div style={{ padding:'11px 13px', borderRadius:12, background:C.bgSub, color:C.textMt, fontSize:12, lineHeight:1.65 }}>
+                먼저 위에서 기존 환자 연결 또는 새 환자 등록을 확정하세요. 확정되면 환자 기록, 방문, Memory, My Tiki 링크가 이어집니다.
+              </div>
+            </section>
           </div>
         )}
 
-        <PendingIntakeQueue
-          clinicId={clinicId}
-          refreshKey={intakeRefreshKey}
-          onConverted={() => showToast('보류 상담이 환자 방문으로 전환되었습니다')}
-        />
+        <section style={{ display:'grid', gap:12 }}>
+          <button
+            type="button"
+            onClick={() => setShowPendingIntakes(value => !value)}
+            style={{
+              justifySelf:'start',
+              display:'inline-flex',
+              alignItems:'center',
+              gap:8,
+              padding:'9px 13px',
+              borderRadius:999,
+              border:`1px solid ${C.border}`,
+              background:C.white,
+              color:C.textSub,
+              fontSize:12,
+              fontWeight:900,
+              cursor:'pointer',
+            }}
+          >
+            <Clipboard size={13} />
+            보류 상담 열기
+          </button>
+          {showPendingIntakes && (
+            <>
+              {result && !loading && (
+                <PendingIntakeBar
+                  result={result}
+                  input={handoffText}
+                  sourceCapture={sourceCapture}
+                  onSaved={() => {
+                    showToast('상담 유입이 보류 intake로 저장되었습니다');
+                    setIntakeRefreshKey((value) => value + 1);
+                  }}
+                />
+              )}
+              <PendingIntakeQueue
+                clinicId={clinicId}
+                refreshKey={intakeRefreshKey}
+                onConverted={() => showToast('보류 상담이 환자 방문으로 전환되었습니다')}
+              />
+            </>
+          )}
+        </section>
 
         {/* ── Empty state ────────────────────────────────────────────────────── */}
         {!hasContent && !error && <EmptyState />}
@@ -1936,7 +2174,7 @@ export default function TikiPasteTab() {
           initialText={handoffText}
           onClose={() => setQuickVisitOpen(false)}
           onCreated={() => {
-            showToast('Quick Visit과 My Tiki 링크가 준비되었습니다');
+            showToast('새 환자 등록과 My Tiki 링크가 준비되었습니다');
           }}
         />
       )}
