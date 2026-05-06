@@ -69,4 +69,6 @@ test("buildTikiDeskCounts tracks attention, forms, and room-ready counts for the
   assert.equal(counts.needsAttention, 2);
   assert.equal(counts.formsNeeded, 1);
   assert.equal(counts.roomReady, 1);
+  assert.equal(counts.linkNeeded, 0);
+  assert.equal(counts.inRoom, 0);
 });

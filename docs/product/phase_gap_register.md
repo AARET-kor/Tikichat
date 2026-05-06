@@ -82,7 +82,7 @@ Implemented:
 - CRM/EMR CSV import now seeds patient Memory for successful created/visit-created rows with source system, external identifiers, visit/procedure context, external memo, and generated My Tiki link.
 - Tiki Memory detail now supports direct owner/admin editing of patient operating context: summary, procedure interests, concerns, risk level/flags, staff precautions, and staff notes.
 - Direct Memory edits are clinic-scoped and actor/audit-backed through `last_edited_by`, `last_edited_at`, journey `note_added`, and audit log writes.
-- Tiki Desk now includes a lightweight `외국인 환자 유입 큐` combining pending TikiPaste intakes and recent CSV import batch outcomes.
+- Tiki Desk now includes a lightweight secondary `신규 환자 후보 확인` area combining pending TikiPaste intakes and recent CSV import batch outcomes.
 - CSV import results are persisted as compact batch/row outcome records for staff visibility.
 
 Partial:

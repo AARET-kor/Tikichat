@@ -112,6 +112,8 @@ export function buildTikiDeskCounts(visits = []) {
     acc.formsNeeded += action.key === "complete_forms" ? 1 : 0;
     acc.roomReady += action.key === "send_to_room" ? 1 : 0;
     acc.needsAttention += ["confirm_arrival", "complete_forms"].includes(action.key) ? 1 : 0;
+    acc.linkNeeded += action.key === "send_link" ? 1 : 0;
+    acc.inRoom += action.key === "in_room" ? 1 : 0;
     return acc;
   }, {
     total: 0,
@@ -120,5 +122,7 @@ export function buildTikiDeskCounts(visits = []) {
     formsNeeded: 0,
     roomReady: 0,
     needsAttention: 0,
+    linkNeeded: 0,
+    inRoom: 0,
   });
 }

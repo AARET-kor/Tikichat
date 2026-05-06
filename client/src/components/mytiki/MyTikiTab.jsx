@@ -327,7 +327,7 @@ function DeskMetric({ label, value, helper, tone = 'info', darkMode }) {
   );
 }
 
-function FlowPatientLine({ visit, mode, darkMode }) {
+function FlowPatientLine({ visit, mode, darkMode, compact = false }) {
   const action = getDeskNextAction(visit);
   const tone = DESK_TONE[action.tone] || DESK_TONE.muted;
   const timeSource = mode === 'booked'
@@ -342,17 +342,17 @@ function FlowPatientLine({ visit, mode, darkMode }) {
       style={{
         borderColor: darkMode ? '#27272A' : '#D6E1EA',
         background: darkMode ? '#111827' : '#FFFFFF',
-        borderRadius: 16,
-        padding: '14px 15px',
-        minHeight: 88,
+        borderRadius: compact ? 14 : 16,
+        padding: compact ? '10px 11px' : '14px 15px',
+        minHeight: compact ? 72 : 88,
       }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div style={{ fontSize: 16, lineHeight: 1.2, fontWeight: 900, color: darkMode ? '#FAFAFA' : '#1B262C' }} className="truncate">
+          <div style={{ fontSize: compact ? 13 : 16, lineHeight: 1.2, fontWeight: 900, color: darkMode ? '#FAFAFA' : '#1B262C' }} className="truncate">
             {visit.patient_flag} {visit.patient_name}
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.3, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
+          <div style={{ marginTop: compact ? 4 : 6, fontSize: compact ? 11 : 13, lineHeight: 1.3, fontWeight: 700, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
             {visit.procedure_name}
           </div>
         </div>
@@ -363,8 +363,8 @@ function FlowPatientLine({ visit, mode, darkMode }) {
             background: tone.bg,
             color: tone.color,
             borderRadius: 999,
-            padding: '6px 10px',
-            fontSize: 12,
+            padding: compact ? '4px 7px' : '6px 10px',
+            fontSize: compact ? 10 : 12,
             fontWeight: 850,
             whiteSpace: 'nowrap',
           }}
@@ -372,11 +372,11 @@ function FlowPatientLine({ visit, mode, darkMode }) {
           {action.label}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-3" style={{ marginTop: 10 }}>
-        <span style={{ fontSize: 20, lineHeight: 1, fontWeight: 950, color: darkMode ? '#E4E4E7' : '#1B262C' }}>
+      <div className="flex items-center justify-between gap-3" style={{ marginTop: compact ? 7 : 10 }}>
+        <span style={{ fontSize: compact ? 14 : 20, lineHeight: 1, fontWeight: 950, color: darkMode ? '#E4E4E7' : '#1B262C' }}>
           {fmtVisitTime(timeSource, 'today')}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
+        <span style={{ fontSize: compact ? 10 : 13, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }} className="truncate">
           {mode === 'next' ? action.detail : visit.link_status === 'opened' ? 'My Tiki 열람' : LINK_META[visit.link_status]?.label || '상태 확인'}
         </span>
       </div>
@@ -384,35 +384,35 @@ function FlowPatientLine({ visit, mode, darkMode }) {
   );
 }
 
-function FlowColumn({ title, subtitle, empty, visits, mode, darkMode }) {
+function FlowColumn({ title, subtitle, empty, visits, mode, darkMode, compact = false }) {
   return (
     <section
       className="border"
       style={{
         borderColor: darkMode ? '#27272A' : '#D6E1EA',
         background: darkMode ? '#18181B' : '#EDF1F5',
-        borderRadius: 22,
-        padding: 16,
-        minHeight: 398,
+        borderRadius: compact ? 18 : 22,
+        padding: compact ? 12 : 16,
+        minHeight: compact ? 232 : 398,
       }}
     >
       <div>
-        <h3 style={{ fontSize: 21, lineHeight: 1.14, fontWeight: 950, letterSpacing: '-0.04em', color: darkMode ? '#FAFAFA' : '#1B262C' }}>{title}</h3>
-        <p style={{ marginTop: 6, fontSize: 13, lineHeight: 1.35, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }}>{subtitle}</p>
+        <h3 style={{ fontSize: compact ? 16 : 21, lineHeight: 1.14, fontWeight: 950, letterSpacing: '-0.04em', color: darkMode ? '#FAFAFA' : '#1B262C' }}>{title}</h3>
+        <p style={{ marginTop: 6, fontSize: compact ? 11 : 13, lineHeight: 1.35, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }}>{subtitle}</p>
       </div>
-      <div className="mt-4 space-y-2.5">
+      <div className={`${compact ? 'mt-3 space-y-2' : 'mt-4 space-y-2.5'}`}>
         {visits.length === 0 ? (
           <div
             className="border border-dashed"
             style={{
               borderColor: darkMode ? '#3F3F46' : '#D8C8BF',
-              borderRadius: 16,
-              minHeight: 118,
+              borderRadius: compact ? 14 : 16,
+              minHeight: compact ? 74 : 118,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: darkMode ? '#71717A' : '#98A2B3',
-              fontSize: 14,
+              fontSize: compact ? 12 : 14,
               fontWeight: 750,
               textAlign: 'center',
               padding: 18,
@@ -421,50 +421,208 @@ function FlowColumn({ title, subtitle, empty, visits, mode, darkMode }) {
             {empty}
           </div>
         ) : visits.map((visit) => (
-          <FlowPatientLine key={`${mode}-${visit.id}`} visit={visit} mode={mode} darkMode={darkMode} />
+          <FlowPatientLine key={`${mode}-${visit.id}`} visit={visit} mode={mode} darkMode={darkMode} compact={compact} />
         ))}
       </div>
     </section>
   );
 }
 
-function TikiDeskCommandBoard({ flow, counts, loading, darkMode }) {
+function DeskFlowStep({ index, label, value, helper, tone = 'info', darkMode }) {
+  const m = DESK_TONE[tone] || DESK_TONE.info;
+  const active = Number(value) > 0;
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-6 gap-3.5">
-        <DeskMetric label="오늘 예약" value={loading ? '…' : counts.total} helper="예약 시간 기준" tone="info" darkMode={darkMode} />
-        <DeskMetric label="도착 알림" value={loading ? '…' : counts.arrived} helper="저 왔어요 / 체크인" tone="warn" darkMode={darkMode} />
-        <DeskMetric label="대기 흐름" value={loading ? '…' : counts.waiting} helper="확인·서류·룸 대기" tone="steady" darkMode={darkMode} />
-        <DeskMetric label="서류 필요" value={loading ? '…' : counts.formsNeeded} helper="문진·동의서 확인" tone="urgent" darkMode={darkMode} />
-        <DeskMetric label="룸 이동 가능" value={loading ? '…' : counts.roomReady} helper="바로 배정 가능" tone="ready" darkMode={darkMode} />
-        <DeskMetric label="즉시 확인" value={loading ? '…' : counts.needsAttention} helper="데스크가 먼저 볼 일" tone="urgent" darkMode={darkMode} />
+    <div className="relative flex-1 min-w-[132px]">
+      <div
+        className="border h-full"
+        style={{
+          borderColor: darkMode ? '#27272A' : active ? m.border : '#D6E1EA',
+          background: darkMode ? '#111827' : active ? m.bg : '#FFFFFF',
+          borderRadius: 22,
+          padding: '16px 16px 15px',
+          boxShadow: darkMode ? 'none' : active ? `0 18px 38px ${m.color}12` : '0 10px 24px rgba(16, 54, 125, 0.05)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className="inline-flex items-center justify-center"
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              background: active ? m.color : darkMode ? '#27272A' : '#EDF1F5',
+              color: active ? '#FFFFFF' : darkMode ? '#A1A1AA' : '#40515D',
+              fontSize: 12,
+              fontWeight: 950,
+            }}
+          >
+            {index}
+          </span>
+          <span style={{ fontSize: 32, lineHeight: 1, fontWeight: 950, letterSpacing: '-0.06em', color: active ? m.color : darkMode ? '#E4E4E7' : '#1B262C' }}>
+            {value}
+          </span>
+        </div>
+        <div style={{ marginTop: 12, fontSize: 15, lineHeight: 1.22, fontWeight: 950, letterSpacing: '-0.035em', color: darkMode ? '#FAFAFA' : '#1B262C' }}>
+          {label}
+        </div>
+        <div style={{ marginTop: 5, fontSize: 12, lineHeight: 1.35, fontWeight: 750, color: darkMode ? '#A1A1AA' : '#40515D' }}>
+          {helper}
+        </div>
+      </div>
+      {index < 6 && (
+        <div
+          className="hidden xl:block absolute top-1/2 -right-3.5 z-10"
+          style={{
+            width: 20,
+            height: 2,
+            background: darkMode ? '#3F3F46' : '#D6E1EA',
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeskCompactPanel({ title, subtitle, value, helper, tone = 'info', icon: Icon, actionLabel, onAction, darkMode }) {
+  const m = DESK_TONE[tone] || DESK_TONE.info;
+  return (
+    <div
+      className="border"
+      style={{
+        borderColor: darkMode ? '#27272A' : m.border,
+        background: darkMode ? '#111827' : '#FFFFFF',
+        borderRadius: 22,
+        padding: 18,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        {Icon && (
+          <div className="shrink-0 flex items-center justify-center" style={{ width: 42, height: 42, borderRadius: 16, background: m.bg, color: m.color }}>
+            <Icon size={21} strokeWidth={2.6} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className={`text-[16px] font-black tracking-[-0.035em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{title}</p>
+              <p className={`mt-1 text-[12px] font-bold leading-relaxed ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>{subtitle}</p>
+            </div>
+            <span style={{ fontSize: 34, lineHeight: 1, fontWeight: 950, color: m.color }}>{value}</span>
+          </div>
+          <p className={`mt-3 text-[12px] font-semibold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{helper}</p>
+          {actionLabel && onAction && (
+            <button
+              onClick={onAction}
+              className="mt-4 w-full rounded-2xl px-4 py-3 text-[13px] font-black text-white"
+              style={{ background: m.color, boxShadow: `0 14px 28px ${m.color}22` }}
+            >
+              {actionLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TikiDeskCommandBoard({ flow, counts, intakeSummary = {}, roomSummary = {}, loading, darkMode, onOpenCsvImport }) {
+  const intakeCandidateCount = (intakeSummary.pending_intakes || 0) + (intakeSummary.review_needed || 0);
+  const flowSteps = [
+    { label: '상담 후보', value: intakeCandidateCount, helper: 'TikiPaste·가져오기 확인', tone: 'steady' },
+    { label: 'My Tiki 준비', value: counts.linkNeeded, helper: '링크 발급 필요', tone: 'info' },
+    { label: '오늘 방문', value: counts.total, helper: '예약 시간 기준', tone: 'muted' },
+    { label: '도착·서류', value: counts.needsAttention, helper: '데스크가 먼저 확인', tone: 'urgent' },
+    { label: '룸 이동', value: counts.roomReady, helper: '바로 배정 가능', tone: 'ready' },
+    { label: '진행 중', value: counts.inRoom, helper: '현재 룸 배정됨', tone: 'steady' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div
+        className="border"
+        style={{
+          borderColor: darkMode ? '#27272A' : '#D6E1EA',
+          background: darkMode ? '#0B1220' : 'linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 100%)',
+          borderRadius: 30,
+          padding: 18,
+          boxShadow: darkMode ? 'none' : '0 24px 70px rgba(16, 54, 125, 0.08)',
+        }}
+      >
+        <div className="flex items-end justify-between gap-4 mb-4">
+          <div>
+            <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 운영 흐름</p>
+            <h2 className={`mt-1 text-[24px] font-black tracking-[-0.055em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>상담부터 룸 이동까지 한 줄로 봅니다</h2>
+          </div>
+          <p className={`hidden lg:block text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+            숫자가 생기면 확인할 일이 있다는 뜻이고, 처리되면 바로 줄어듭니다.
+          </p>
+        </div>
+        <div className="flex flex-wrap xl:flex-nowrap gap-3">
+          {flowSteps.map((step, index) => (
+            <DeskFlowStep
+              key={step.label}
+              index={index + 1}
+              label={step.label}
+              value={loading ? '…' : step.value}
+              helper={step.helper}
+              tone={step.tone}
+              darkMode={darkMode}
+            />
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <FlowColumn
-          title="예약 순서"
-          subtitle="오늘 예정된 방문 시간"
-          empty="예약된 방문이 없습니다"
-          visits={flow.booked}
-          mode="booked"
-          darkMode={darkMode}
-        />
-        <FlowColumn
-          title="도착 순서"
-          subtitle="환자가 도착을 알린 실제 순서"
-          empty="아직 도착 알림이 없습니다"
-          visits={flow.arrived}
-          mode="arrived"
-          darkMode={darkMode}
-        />
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.9fr)] gap-4">
         <FlowColumn
           title="지금 할 일"
-          subtitle="데스크가 먼저 처리할 순서"
+          subtitle="상담, 링크, 도착, 서류, 룸 순서로 먼저 처리할 항목"
           empty="지금 처리할 일이 없습니다"
           visits={flow.nextActions}
           mode="next"
           darkMode={darkMode}
         />
+        <div className="space-y-4">
+          <DeskCompactPanel
+            title="신규 환자 후보"
+            subtitle="TikiPaste와 CRM/EMR 가져오기"
+            value={loading ? '…' : intakeCandidateCount}
+            helper={intakeCandidateCount > 0 ? '확인 후 기존 환자 연결 또는 새 환자로 저장하세요.' : '지금 확인할 후보가 없습니다.'}
+            tone="steady"
+            icon={Users}
+            actionLabel="가져오기 열기"
+            onAction={onOpenCsvImport}
+            darkMode={darkMode}
+          />
+          <DeskCompactPanel
+            title="룸 배정"
+            subtitle="빈 방과 다음 배정 후보"
+            value={loading ? '…' : roomSummary.readyQueue || 0}
+            helper={`빈 방 ${roomSummary.free || 0} · 사용 중 ${roomSummary.occupied || 0} · 전체 ${roomSummary.total || 0}`}
+            tone={roomSummary.readyQueue > 0 ? 'ready' : 'info'}
+            icon={DoorOpen}
+            darkMode={darkMode}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <FlowColumn
+              title="예약 순서"
+              subtitle="예정 시간"
+              empty="예약 없음"
+              visits={flow.booked.slice(0, 3)}
+              mode="booked"
+              darkMode={darkMode}
+              compact
+            />
+            <FlowColumn
+              title="도착 순서"
+              subtitle="도착 알림"
+              empty="도착 없음"
+              visits={flow.arrived.slice(0, 3)}
+              mode="arrived"
+              darkMode={darkMode}
+              compact
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1355,9 +1513,9 @@ function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpen
         <div>
           <div className="flex items-center gap-2">
             <Users size={15} style={{ color: TEAL }} />
-            <h2 className={`text-sm font-black ${textP}`}>외국인 환자 유입 큐</h2>
+            <h2 className={`text-sm font-black ${textP}`}>신규 환자 후보 확인</h2>
           </div>
-          <p className={`text-[11px] mt-1 ${textS}`}>TikiPaste 상담 유입과 CRM/EMR CSV 가져오기 결과를 한곳에서 봅니다.</p>
+          <p className={`text-[11px] mt-1 ${textS}`}>TikiPaste 상담과 CRM/EMR 가져오기 결과 중 직원 확인이 필요한 항목을 모아봅니다.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1366,31 +1524,31 @@ function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpen
           >
             CRM/EMR 가져오기
           </button>
-          <button onClick={onRefresh} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="유입 큐 새로고침">
+          <button onClick={onRefresh} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="신규 환자 후보 새로고침">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-4 gap-2 mt-4">
-        <EscalationMiniCard label="상담 유입" value={loading ? '…' : (summary.pending_intakes || 0)} sub="TikiPaste 보류" color={TEAL} darkMode={darkMode} />
-        <EscalationMiniCard label="CSV 배치" value={loading ? '…' : (summary.recent_import_batches || 0)} sub="최근 가져오기" color="#0F4C75" darkMode={darkMode} />
-        <EscalationMiniCard label="확인 필요" value={loading ? '…' : (summary.review_needed || 0)} sub="누락/주의/오류" color="#B45309" darkMode={darkMode} />
-        <EscalationMiniCard label="오류" value={loading ? '…' : (summary.import_errors || 0)} sub="가져오기 실패 행" color="#DC2626" darkMode={darkMode} />
+        <EscalationMiniCard label="상담 보류" value={loading ? '…' : (summary.pending_intakes || 0)} sub="TikiPaste 확인 대기" color={TEAL} darkMode={darkMode} />
+        <EscalationMiniCard label="가져오기" value={loading ? '…' : (summary.recent_import_batches || 0)} sub="최근 CSV/엑셀" color="#0F4C75" darkMode={darkMode} />
+        <EscalationMiniCard label="확인 필요" value={loading ? '…' : (summary.review_needed || 0)} sub="누락/주의" color="#B45309" darkMode={darkMode} />
+        <EscalationMiniCard label="오류" value={loading ? '…' : (summary.import_errors || 0)} sub="실패 행" color="#DC2626" darkMode={darkMode} />
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {loading ? (
-          <div className={`col-span-2 text-xs ${textS}`}>유입 큐 불러오는 중…</div>
+          <div className={`col-span-2 text-xs ${textS}`}>신규 환자 후보를 불러오는 중…</div>
         ) : items.length === 0 ? (
           <div className={`col-span-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs ${textS}`} style={{ borderColor: border }}>
-            아직 확인할 상담 유입이나 CSV 가져오기 결과가 없습니다.
+            지금 확인할 상담이나 가져오기 결과가 없습니다.
           </div>
         ) : (
           items.slice(0, 6).map((item) => {
             const isPaste = item.kind === 'tikipaste_intake';
             const title = isPaste
-              ? (item.patient_candidate?.name || item.source_handle || '상담 유입')
+              ? (item.patient_candidate?.name || item.source_handle || '상담 후보')
               : (item.filename || 'CSV 가져오기');
             const sub = isPaste
               ? `${item.source_channel || 'manual'} · ${item.last_patient_intent || '의도 확인 필요'}`
@@ -2038,18 +2196,13 @@ export default function MyTikiTab({ darkMode }) {
           <TikiDeskCommandBoard
             flow={deskFlow}
             counts={deskCounts}
+            intakeSummary={intakeQueue.summary}
+            roomSummary={roomSummary}
             loading={loading}
             darkMode={darkMode}
+            onOpenCsvImport={() => setShowCsvImport(true)}
           />
         </div>
-
-        <ForeignPatientIntakeQueue
-          queue={intakeQueue}
-          loading={loadingIntakeQueue}
-          darkMode={darkMode}
-          onRefresh={fetchIntakeQueue}
-          onOpenCsvImport={() => setShowCsvImport(true)}
-        />
 
         {attentionItems.length > 0 && (
           <div className={`mt-4 rounded-xl border px-4 py-3 text-[13px] font-bold ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
@@ -2062,57 +2215,6 @@ export default function MyTikiTab({ darkMode }) {
             사후관리 스케줄러 이상 · 백그라운드 발송이 지연될 수 있습니다.
           </div>
         )}
-
-          <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#F8FBFF' }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <DoorOpen size={14} style={{ color: TEAL }} />
-                <h2 className={`text-sm font-bold ${textP}`}>룸 현황</h2>
-              </div>
-              <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보를 한 화면에서 확인합니다.</p>
-            </div>
-            <button
-              onClick={() => setShowRoomSettings((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
-            >
-              {showRoomSettings ? '설정 닫기' : '룸 설정'}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2 mt-4">
-            <EscalationMiniCard label="방 목록" value={loading ? '…' : roomSummary.total} sub="등록된 운영 방" color={TEAL} darkMode={darkMode} />
-            <EscalationMiniCard label="빈 방" value={loading ? '…' : roomSummary.free} sub="즉시 배정 가능" color="#16A34A" darkMode={darkMode} />
-            <EscalationMiniCard label="사용 중" value={loading ? '…' : roomSummary.occupied} sub="현재 사용 중" color="#DC2626" darkMode={darkMode} />
-            <EscalationMiniCard label="대기 중" value={loading ? '…' : roomSummary.readyQueue} sub="다음 방 후보" color="#0F4C75" darkMode={darkMode} />
-          </div>
-
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            {(rooms || []).map((room, index) => (
-              <RoomTrafficCard
-                key={room.id}
-                room={room}
-                queueVisit={roomQueue[index] || null}
-                darkMode={darkMode}
-                busy={assigningRoomIds.has(room.current_visit?.id || roomQueue[index]?.id)}
-                onAssignRoom={handleAssignRoom}
-                onClearRoom={handleClearRoom}
-              />
-            ))}
-            {!loading && rooms.length === 0 && (
-              <div className={`col-span-4 text-xs ${textS}`}>등록된 방이 없습니다. 아래 방 목록에서 첫 번째 방을 추가하면 바로 룸 현황에 반영됩니다.</div>
-            )}
-          </div>
-
-          {showRoomSettings && (
-            <RoomPresetManager
-              rooms={rooms}
-              darkMode={darkMode}
-              onCreateRoom={handleCreateRoom}
-              onUpdateRoom={handleUpdateRoom}
-            />
-          )}
-        </div>
 
         <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}>
           <div className="flex items-start justify-between gap-4">
@@ -2406,6 +2508,72 @@ export default function MyTikiTab({ darkMode }) {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#0B1220' : '#F8FBFF' }}>
+          <div className="mb-4">
+            <p className={`text-[12px] font-black ${textP}`}>운영 보조</p>
+            <p className={`text-[11px] mt-1 ${textS}`}>오늘 운영 흐름을 해치지 않도록, 가져오기 확인과 룸 배정은 보조 영역에서 관리합니다.</p>
+          </div>
+
+          <ForeignPatientIntakeQueue
+            queue={intakeQueue}
+            loading={loadingIntakeQueue}
+            darkMode={darkMode}
+            onRefresh={fetchIntakeQueue}
+            onOpenCsvImport={() => setShowCsvImport(true)}
+          />
+
+          <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#FFFFFF' }}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <DoorOpen size={14} style={{ color: TEAL }} />
+                  <h2 className={`text-sm font-bold ${textP}`}>룸 배정 현황</h2>
+                </div>
+                <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보를 확인합니다.</p>
+              </div>
+              <button
+                onClick={() => setShowRoomSettings((prev) => !prev)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
+              >
+                {showRoomSettings ? '관리 닫기' : '룸 관리'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 mt-4">
+              <EscalationMiniCard label="방 목록" value={loading ? '…' : roomSummary.total} sub="등록된 운영 방" color={TEAL} darkMode={darkMode} />
+              <EscalationMiniCard label="빈 방" value={loading ? '…' : roomSummary.free} sub="즉시 배정 가능" color="#16A34A" darkMode={darkMode} />
+              <EscalationMiniCard label="사용 중" value={loading ? '…' : roomSummary.occupied} sub="현재 사용 중" color="#DC2626" darkMode={darkMode} />
+              <EscalationMiniCard label="대기 중" value={loading ? '…' : roomSummary.readyQueue} sub="다음 방 후보" color="#0F4C75" darkMode={darkMode} />
+            </div>
+
+            <div className="grid grid-cols-4 gap-3 mt-4">
+              {(rooms || []).map((room, index) => (
+                <RoomTrafficCard
+                  key={room.id}
+                  room={room}
+                  queueVisit={roomQueue[index] || null}
+                  darkMode={darkMode}
+                  busy={assigningRoomIds.has(room.current_visit?.id || roomQueue[index]?.id)}
+                  onAssignRoom={handleAssignRoom}
+                  onClearRoom={handleClearRoom}
+                />
+              ))}
+              {!loading && rooms.length === 0 && (
+                <div className={`col-span-4 text-xs ${textS}`}>등록된 방이 없습니다. 아래 방 목록에서 첫 번째 방을 추가하면 바로 룸 배정 현황에 반영됩니다.</div>
+              )}
+            </div>
+
+            {showRoomSettings && (
+              <RoomPresetManager
+                rooms={rooms}
+                darkMode={darkMode}
+                onCreateRoom={handleCreateRoom}
+                onUpdateRoom={handleUpdateRoom}
+              />
             )}
           </div>
         </div>

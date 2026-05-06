@@ -82,7 +82,7 @@ test("staff intake queue route is staff-gated and scoped to authenticated clinic
 test("Tiki Desk exposes foreign patient intake queue and CSV import sends batch context", () => {
   assert.match(deskSource, /ForeignPatientIntakeQueue/);
   assert.match(deskSource, /\/api\/staff\/intake-queue/);
-  assert.match(deskSource, /외국인 환자 유입 큐/);
+  assert.match(deskSource, /신규 환자 후보 확인/);
   assert.match(csvImportSource, /preview_stats/);
   assert.match(csvImportSource, /filename/);
 });

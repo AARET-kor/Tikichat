@@ -76,7 +76,7 @@ Stable:
   - backend import defensively excludes same-CSV duplicate visits for the same resolved patient and visit date before inserting visits
   - CSV import completion now shows a copy-back panel with My Tiki links and short summaries for pasting into the existing CRM/EMR
   - successful CSV-created patients/visits now seed patient Memory with CRM/EMR source, external identifiers, procedure interest, external memo, visit context, and generated My Tiki link
-  - Tiki Desk now has an `외국인 환자 유입 큐` that combines pending TikiPaste conversation intakes and recent CSV import batches
+  - Tiki Desk now keeps pending TikiPaste conversation intakes and recent CSV import batches in a secondary `신규 환자 후보 확인` area, rather than treating them as the primary daily operations board
   - CSV import batches/rows are persisted as compact operational summaries, not raw CRM file storage
   - Memory remains patient-specific context storage after identification, not raw CRM/EMR file management
 - Tiki Memory direct editing:
