@@ -17,7 +17,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Users, Link2, RefreshCw, XCircle, CheckCircle2,
+  Link2, RefreshCw, XCircle, CheckCircle2,
   AlertTriangle, Clock, Eye, Send, Plus, Search,
   ChevronRight, FileText, ClipboardCheck, Copy, Check, Loader2,
   LogIn, DoorOpen, ChevronDown, X, Navigation, UserCheck,
@@ -645,10 +645,8 @@ function DeskCompactPanel({ title, subtitle, value, helper, tone = 'info', icon:
   );
 }
 
-function TikiDeskCommandBoard({ flow, counts, intakeSummary = {}, roomSummary = {}, loading, darkMode, onOpenCsvImport }) {
-  const intakeCandidateCount = (intakeSummary.pending_intakes || 0) + (intakeSummary.review_needed || 0);
+function TikiDeskCommandBoard({ flow, counts, roomSummary = {}, loading, darkMode }) {
   const flowSteps = [
-    { label: '상담 후보', value: intakeCandidateCount, helper: 'TikiPaste·가져오기 확인', tone: 'steady' },
     { label: 'My Tiki 준비', value: counts.linkNeeded, helper: '링크 발급 필요', tone: 'info' },
     { label: '오늘 방문', value: counts.total, helper: '예약 시간 기준', tone: 'muted' },
     { label: '도착·서류', value: counts.needsAttention, helper: '데스크가 먼저 확인', tone: 'urgent' },
@@ -702,17 +700,6 @@ function TikiDeskCommandBoard({ flow, counts, intakeSummary = {}, roomSummary = 
           darkMode={darkMode}
         />
         <div className="space-y-4">
-          <DeskCompactPanel
-            title="신규 환자 후보"
-            subtitle="TikiPaste와 CRM/EMR 가져오기"
-            value={loading ? '…' : intakeCandidateCount}
-            helper={intakeCandidateCount > 0 ? '확인 후 기존 환자 연결 또는 새 환자로 저장하세요.' : '지금 확인할 후보가 없습니다.'}
-            tone="steady"
-            icon={Users}
-            actionLabel="가져오기 열기"
-            onAction={onOpenCsvImport}
-            darkMode={darkMode}
-          />
           <DeskCompactPanel
             title="룸 배정"
             subtitle="빈 방과 다음 배정 후보"
@@ -1622,158 +1609,6 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
   );
 }
 
-function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpenCsvImport }) {
-  const items = queue?.items || [];
-  const summary = queue?.summary || {};
-  const border = darkMode ? '#27272A' : '#D6E1EA';
-  const cardBg = darkMode ? '#111827' : '#FFFFFF';
-  const textP = darkMode ? 'text-zinc-100' : 'text-[#1B262C]';
-  const textS = darkMode ? 'text-zinc-400' : 'text-[#40515D]';
-  const laneMeta = {
-    review: { label: '확인 대기', sub: '정보 누락·주의 신호', color: '#B42318' },
-    existing: { label: '기존 환자 연결', sub: '중복·기존 기록 후보', color: '#0F4C75' },
-    new: { label: '새 환자 등록', sub: '새 방문으로 전환 가능', color: TEAL },
-    hold: { label: '보류', sub: '오류·판단 보류', color: '#6B7C88' },
-  };
-
-  function laneFor(item) {
-    if (item.kind === 'csv_import') {
-      if ((item.failed_count || 0) > 0 || (item.warning_rows || 0) > 0 || (item.invalid_rows || 0) > 0) return 'review';
-      if ((item.duplicate_count || 0) > 0 || (item.same_file_duplicate_rows || 0) > 0) return 'existing';
-      if ((item.created_count || 0) > 0 || (item.visit_created_count || 0) > 0) return 'new';
-      return 'hold';
-    }
-
-    const suggested = item.next_suggested_action || '';
-    if ((item.missing_fields || []).length > 0 || item.risk_level === 'high' || suggested === 'staff_review_before_reply' || suggested === 'ask_missing_info') return 'review';
-    if (suggested === 'link_existing_patient') return 'existing';
-    if (suggested === 'create_new_patient') return 'new';
-    return 'review';
-  }
-
-  const grouped = items.reduce((acc, item) => {
-    acc[laneFor(item)].push(item);
-    return acc;
-  }, { review: [], existing: [], new: [], hold: [] });
-
-  function openTikiPaste() {
-    window.location.href = '/app?tab=tiki_paste';
-  }
-
-  return (
-    <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: border, background: cardBg }}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Users size={15} style={{ color: TEAL }} />
-            <h2 className={`text-sm font-black ${textP}`}>신규 환자 후보 확인</h2>
-          </div>
-          <p className={`text-[11px] mt-1 ${textS}`}>TikiPaste 상담과 CRM/EMR 가져오기 결과 중 직원 확인이 필요한 항목을 모아봅니다.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenCsvImport}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
-          >
-            CRM/EMR 가져오기
-          </button>
-          <button onClick={onRefresh} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="신규 환자 후보 새로고침">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-4 gap-2 mt-4">
-        {Object.entries(laneMeta).map(([key, meta]) => (
-          <EscalationMiniCard key={key} label={meta.label} value={loading ? '…' : grouped[key].length} sub={meta.sub} color={meta.color} darkMode={darkMode} />
-        ))}
-      </div>
-
-      <div className="mt-4 grid grid-cols-4 gap-3">
-        {loading ? (
-          <div className={`col-span-4 text-xs ${textS}`}>신규 환자 후보를 불러오는 중…</div>
-        ) : items.length === 0 ? (
-          <div className={`col-span-4 rounded-xl border border-dashed px-4 py-5 text-center text-xs ${textS}`} style={{ borderColor: border }}>
-            지금 확인할 상담이나 가져오기 결과가 없습니다.
-          </div>
-        ) : (
-          Object.entries(laneMeta).map(([laneKey, meta]) => (
-            <section key={laneKey} className="rounded-2xl border p-3 min-h-[180px]" style={{ borderColor: `${meta.color}35`, background: darkMode ? '#0F172A' : '#F8FBFF' }}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className={`text-[12px] font-black ${textP}`}>{meta.label}</p>
-                  <p className={`text-[10px] mt-1 ${textS}`}>{meta.sub}</p>
-                </div>
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-black" style={{ background: `${meta.color}16`, color: meta.color }}>
-                  {grouped[laneKey].length}
-                </span>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {grouped[laneKey].length === 0 ? (
-                  <div className={`rounded-xl border border-dashed px-3 py-6 text-center text-[11px] ${textS}`} style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA' }}>
-                    해당 후보 없음
-                  </div>
-                ) : grouped[laneKey].slice(0, 4).map((item) => {
-                  const isPaste = item.kind === 'tikipaste_intake';
-                  const title = isPaste
-                    ? (item.patient_candidate?.name || item.source_handle || '상담 후보')
-                    : (item.filename || 'CSV 가져오기');
-                  const sub = isPaste
-                    ? `${item.source_channel || 'manual'} · ${item.last_patient_intent || '의도 확인 필요'}`
-                    : `총 ${item.total_rows || 0}행 · 생성 ${item.created_count || 0} · 방문 ${item.visit_created_count || 0} · 실패 ${item.failed_count || 0}`;
-                  const detail = isPaste
-                    ? `누락 ${(item.missing_fields || []).length || 0} · 위험도 ${item.risk_level || 'normal'}`
-                    : `확인 ${item.warning_rows || 0} · 중복 ${item.duplicate_count || 0} · 오류 ${item.failed_count || 0}`;
-                  const actionLabel = isPaste
-                    ? laneKey === 'existing' ? 'TikiPaste에서 연결'
-                      : laneKey === 'new' ? 'TikiPaste에서 등록'
-                        : 'TikiPaste에서 확인'
-                    : '가져오기 결과 확인';
-                  const action = isPaste ? openTikiPaste : onOpenCsvImport;
-
-                  return (
-                    <div key={`${item.kind}-${item.id}`} className="rounded-xl border p-3" style={{ borderColor: `${meta.color}28`, background: darkMode ? '#111827' : '#FFFFFF' }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className={`text-[12px] font-black truncate ${textP}`}>{title}</p>
-                          <p className={`text-[10px] mt-1 leading-relaxed ${textS}`}>{sub}</p>
-                        </div>
-                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black" style={{ background: `${meta.color}14`, color: meta.color }}>
-                          {isPaste ? '상담' : 'CSV'}
-                        </span>
-                      </div>
-                      <p className={`mt-2 text-[10px] ${textS}`}>{detail}</p>
-                      <button
-                        onClick={action}
-                        className="mt-3 w-full rounded-lg px-2 py-2 text-[10px] font-black border"
-                        style={{ borderColor: `${meta.color}35`, color: meta.color, background: darkMode ? '#0B1220' : `${meta.color}0A` }}
-                      >
-                        {actionLabel}
-                      </button>
-                    </div>
-                  );
-                })}
-                {grouped[laneKey].length > 4 && (
-                  <div className={`text-center text-[10px] font-bold ${textS}`}>
-                    외 {grouped[laneKey].length - 4}건 더 있음
-                  </div>
-                )}
-              </div>
-            </section>
-          ))
-        )}
-      </div>
-
-      {(summary.pending_intakes || summary.recent_import_batches || summary.review_needed || summary.import_errors) ? (
-        <div className={`mt-3 text-[10px] font-semibold ${textS}`}>
-          전체 기준: TikiPaste 보류 {summary.pending_intakes || 0} · 최근 가져오기 {summary.recent_import_batches || 0} · 누락/주의 {summary.review_needed || 0} · 실패 행 {summary.import_errors || 0}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 // ── MyTikiTab — Ops Board ────────────────────────────────────────────────────
 export default function MyTikiTab({ darkMode }) {
   const { clinicId, role } = useAuth();
@@ -1788,13 +1623,11 @@ export default function MyTikiTab({ darkMode }) {
   const [aftercareItems,  setAftercareItems]  = useState([]);
   const [aftercareSummary, setAftercareSummary] = useState({ due: 0, responded: 0, concern: 0, urgent: 0, safe_for_return: 0 });
   const [aftercareScheduler, setAftercareScheduler] = useState(null);
-  const [intakeQueue, setIntakeQueue] = useState({ summary: {}, items: [] });
   const [aftercarePlanProcedures, setAftercarePlanProcedures] = useState([]);
   const [aftercarePlans, setAftercarePlans] = useState([]);
   const [staffUsers,      setStaffUsers]      = useState([]);
   const [loadingEscalations, setLoadingEscalations] = useState(true);
   const [loadingAftercare, setLoadingAftercare] = useState(true);
-  const [loadingIntakeQueue, setLoadingIntakeQueue] = useState(true);
   const [loadingAftercarePlans, setLoadingAftercarePlans] = useState(true);
   const [loading,         setLoading]         = useState(true);
   const [fetchError,      setFetchError]      = useState(null);
@@ -1934,28 +1767,6 @@ export default function MyTikiTab({ darkMode }) {
   }, [clinicId, aftercareFilter]);
 
   useEffect(() => { fetchAftercare(); }, [fetchAftercare]);
-
-  const fetchIntakeQueue = useCallback(async () => {
-    if (!clinicId) return;
-    setLoadingIntakeQueue(true);
-    try {
-      const headers = await authHeaders();
-      const res = await fetch('/api/staff/intake-queue?limit=8', { headers });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setIntakeQueue({ summary: data.summary || {}, items: data.items || [] });
-    } catch (err) {
-      console.error('[intake-queue]', err.message);
-      setIntakeQueue({ summary: {}, items: [] });
-    } finally {
-      setLoadingIntakeQueue(false);
-    }
-  }, [clinicId]);
-
-  useEffect(() => { fetchIntakeQueue(); }, [fetchIntakeQueue]);
 
   const fetchAftercarePlans = useCallback(async () => {
     if (!clinicId) return;
@@ -2382,11 +2193,9 @@ export default function MyTikiTab({ darkMode }) {
           <TikiDeskCommandBoard
             flow={deskFlow}
             counts={deskCounts}
-            intakeSummary={intakeQueue.summary}
             roomSummary={roomSummary}
             loading={loading}
             darkMode={darkMode}
-            onOpenCsvImport={() => setShowCsvImport(true)}
           />
         </div>
 
@@ -2700,19 +2509,11 @@ export default function MyTikiTab({ darkMode }) {
 
         <div className="mt-6 rounded-3xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#0B1220' : '#F8FBFF' }}>
           <div className="mb-4">
-            <p className={`text-[12px] font-black ${textP}`}>운영 보조</p>
-            <p className={`text-[11px] mt-1 ${textS}`}>Tiki Desk는 요약과 다음 조치만 보여줍니다. 상세 룸 운영은 Tiki Room에서 이어갑니다.</p>
+            <p className={`text-[12px] font-black ${textP}`}>룸 요약</p>
+            <p className={`text-[11px] mt-1 ${textS}`}>Tiki Desk에서는 방 상태만 빠르게 확인하고, 상세 운영은 Tiki Room에서 이어갑니다.</p>
           </div>
 
-          <ForeignPatientIntakeQueue
-            queue={intakeQueue}
-            loading={loadingIntakeQueue}
-            darkMode={darkMode}
-            onRefresh={fetchIntakeQueue}
-            onOpenCsvImport={() => setShowCsvImport(true)}
-          />
-
-          <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#FFFFFF' }}>
+          <div className="rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#FFFFFF' }}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -2921,7 +2722,7 @@ export default function MyTikiTab({ darkMode }) {
           clinicId={clinicId}
           darkMode={darkMode}
           onClose={() => setShowCsvImport(false)}
-          onImported={() => { fetchVisits(); fetchIntakeQueue(); setShowCsvImport(false); }}
+          onImported={() => { fetchVisits(); setShowCsvImport(false); }}
         />
       )}
       {selectedEscalation && (

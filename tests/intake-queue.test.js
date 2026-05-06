@@ -80,14 +80,11 @@ test("staff intake queue route is staff-gated and scoped to authenticated clinic
   assert.match(serverSource, /\.from\("csv_import_batches"\)[\s\S]{0,500}\.eq\("clinic_id", req\.clinic_id\)/);
 });
 
-test("Tiki Desk exposes foreign patient intake queue and CSV import sends batch context", () => {
-  assert.match(deskSource, /ForeignPatientIntakeQueue/);
-  assert.match(deskSource, /\/api\/staff\/intake-queue/);
-  assert.match(deskSource, /신규 환자 후보 확인/);
-  assert.match(deskSource, /확인 대기/);
-  assert.match(deskSource, /기존 환자 연결/);
-  assert.match(deskSource, /새 환자 등록/);
-  assert.match(deskSource, /보류/);
+test("Tiki Desk keeps CRM/EMR import as a single top-level entry", () => {
+  assert.doesNotMatch(deskSource, /ForeignPatientIntakeQueue/);
+  assert.doesNotMatch(deskSource, /\/api\/staff\/intake-queue/);
+  assert.doesNotMatch(deskSource, /신규 환자 후보/);
+  assert.equal((deskSource.match(/CRM\/EMR 가져오기/g) || []).length, 1);
   assert.match(csvImportSource, /preview_stats/);
   assert.match(csvImportSource, /filename/);
 });
