@@ -201,12 +201,24 @@ export async function requirePatientToken(req, res, next) {
       .then(() => {})
       .catch(() => {});
 
+    let patientLang = null;
+    if (link.patient_id) {
+      const { data: patient, error: patientError } = await sb
+        .from("patients")
+        .select("lang")
+        .eq("id", link.patient_id)
+        .maybeSingle();
+
+      if (patientError) throw patientError;
+      patientLang = patient?.lang || null;
+    }
+
     // ── req 세팅 ───────────────────────────────────────────────────────────
     req.patient_link  = link;
     req.clinic_id     = link.clinic_id;
     req.patient_id    = link.patient_id;
     req.visit_id      = link.visit_id;
-    req.patient_lang  = "ko";
+    req.patient_lang  = patientLang || "en";
 
     next();
 

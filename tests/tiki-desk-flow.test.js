@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildVisitStatusBadges,
   buildTikiDeskCounts,
   buildTikiDeskFlow,
   getDeskNextAction,
@@ -31,6 +32,31 @@ test("getDeskNextAction prioritizes arrival confirmation before forms and room f
   assert.equal(action.key, "confirm_arrival");
   assert.equal(action.label, "도착 확인");
   assert.equal(action.priority, 10);
+});
+
+test("buildVisitStatusBadges summarizes My Tiki, forms, room, and aftercare readiness", () => {
+  const badges = buildVisitStatusBadges({
+    ...base,
+    link_status: "active",
+    patient_arrived_at: "2026-04-24T09:00:00.000Z",
+    checked_in_at: "2026-04-24T09:03:00.000Z",
+    intake_done: true,
+    consent_done: false,
+    room_ready: false,
+    room_id: null,
+    stage: "pre_visit",
+    followup_done: false,
+  });
+
+  const byKey = Object.fromEntries(badges.map((badge) => [badge.key, badge]));
+
+  assert.equal(byKey.consult.state, "done");
+  assert.equal(byKey.link.state, "active");
+  assert.equal(byKey.arrival.state, "done");
+  assert.equal(byKey.intake.state, "done");
+  assert.equal(byKey.consent.state, "missing");
+  assert.equal(byKey.room.state, "waiting");
+  assert.equal(byKey.aftercare.state, "waiting");
 });
 
 test("sortNextActionVisits orders operational next actions before passive bookings", () => {

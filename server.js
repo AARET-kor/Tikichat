@@ -1222,7 +1222,7 @@ app.get("/api/staff/intake-queue", requireStaffAuth, async (req, res) => {
     const [{ data: conversationIntakes, error: intakeError }, { data: importBatches, error: importError }] = await Promise.all([
       sb
         .from("conversation_intakes")
-        .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_patient_intent, risk_level, missing_fields")
+        .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_patient_intent, risk_level, missing_fields, next_suggested_action")
         .eq("clinic_id", req.clinic_id)
         .eq("status", "pending")
         .order("created_at", { ascending: false })

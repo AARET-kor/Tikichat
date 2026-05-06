@@ -63,7 +63,7 @@ test("buildImportRowInserts stores row-level queue details without raw CRM files
 
 test("buildIntakeQueueResponse combines pending TikiPaste and recent CSV imports", () => {
   const response = buildIntakeQueueResponse({
-    conversation_intakes: [{ id: "intake-1", risk_level: "medium", source_channel: "kakao" }],
+    conversation_intakes: [{ id: "intake-1", risk_level: "medium", source_channel: "kakao", next_suggested_action: "create_new_patient" }],
     import_batches: [{ id: "batch-1", filename: "afterdoc.csv", failed_count: 1 }],
   });
 
@@ -71,6 +71,7 @@ test("buildIntakeQueueResponse combines pending TikiPaste and recent CSV imports
   assert.equal(response.summary.recent_import_batches, 1);
   assert.equal(response.items.length, 2);
   assert.deepEqual(response.items.map(item => item.kind), ["tikipaste_intake", "csv_import"]);
+  assert.equal(response.items[0].next_suggested_action, "create_new_patient");
 });
 
 test("staff intake queue route is staff-gated and scoped to authenticated clinic", () => {
@@ -83,6 +84,10 @@ test("Tiki Desk exposes foreign patient intake queue and CSV import sends batch 
   assert.match(deskSource, /ForeignPatientIntakeQueue/);
   assert.match(deskSource, /\/api\/staff\/intake-queue/);
   assert.match(deskSource, /신규 환자 후보 확인/);
+  assert.match(deskSource, /확인 대기/);
+  assert.match(deskSource, /기존 환자 연결/);
+  assert.match(deskSource, /새 환자 등록/);
+  assert.match(deskSource, /보류/);
   assert.match(csvImportSource, /preview_stats/);
   assert.match(csvImportSource, /filename/);
 });

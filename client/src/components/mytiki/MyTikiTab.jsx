@@ -28,7 +28,7 @@ import QuickVisitCreate from './QuickVisitCreate';
 import CsvImportModal   from './CsvImportModal';
 import { deriveArrivalFlowState } from '../../lib/opsBoardArrival';
 import { buildQrImageUrl, shouldPollOpsBoard } from '../../lib/opsLite';
-import { buildTikiDeskCounts, buildTikiDeskFlow, getDeskNextAction } from '../../lib/tikiDeskFlow';
+import { buildTikiDeskCounts, buildTikiDeskFlow, buildVisitStatusBadges, getDeskNextAction } from '../../lib/tikiDeskFlow';
 import {
   AFTERCARE_FILTER_LABELS,
   ESCALATION_PRIORITY_META,
@@ -327,6 +327,124 @@ function DeskMetric({ label, value, helper, tone = 'info', darkMode }) {
   );
 }
 
+const VISIT_BADGE_TONE = {
+  done: { color: '#16A34A', bg: '#ECFDF3', border: '#BBF7D0' },
+  active: { color: '#0145F2', bg: '#EAF2FF', border: '#BBE1FA' },
+  missing: { color: '#B42318', bg: '#FFE6E1', border: 'rgba(250, 87, 62, 0.32)' },
+  waiting: { color: '#6B7C88', bg: '#EDF1F5', border: '#D6E1EA' },
+};
+
+function VisitStatusRail({ visit, darkMode, compact = false }) {
+  const badges = buildVisitStatusBadges(visit);
+  return (
+    <div className={`grid grid-cols-7 ${compact ? 'gap-1 mt-2' : 'gap-1.5 mt-3'}`}>
+      {badges.map((badge) => {
+        const tone = VISIT_BADGE_TONE[badge.state] || VISIT_BADGE_TONE.waiting;
+        return (
+          <div
+            key={badge.key}
+            title={`${badge.label}: ${badge.helper}`}
+            className="flex flex-col items-center justify-center border"
+            style={{
+              borderColor: darkMode ? '#27272A' : tone.border,
+              background: darkMode ? '#0F172A' : tone.bg,
+              borderRadius: compact ? 10 : 12,
+              minHeight: compact ? 32 : 42,
+              padding: compact ? '4px 2px' : '6px 3px',
+            }}
+          >
+            <span
+              style={{
+                width: compact ? 7 : 9,
+                height: compact ? 7 : 9,
+                borderRadius: 999,
+                background: badge.state === 'waiting' && darkMode ? '#52525B' : tone.color,
+                boxShadow: badge.state === 'missing' ? `0 0 0 4px ${tone.color}14` : 'none',
+              }}
+            />
+            <span
+              className="truncate"
+              style={{
+                marginTop: compact ? 3 : 5,
+                maxWidth: '100%',
+                fontSize: compact ? 9 : 10,
+                lineHeight: 1,
+                fontWeight: 850,
+                color: darkMode ? '#D4D4D8' : tone.color,
+              }}
+            >
+              {badge.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MyTikiStatusStrip({ visit, action, darkMode, compact = false }) {
+  const linkStatus = visit.link_status || 'none';
+  const linkLabel = linkStatus === 'opened'
+    ? '열람됨'
+    : ['active', 'sent'].includes(linkStatus)
+      ? '링크 발급됨'
+      : linkStatus === 'expired'
+        ? '링크 만료'
+        : '링크 필요';
+  const linkTone = linkStatus === 'opened'
+    ? VISIT_BADGE_TONE.done
+    : ['active', 'sent'].includes(linkStatus)
+      ? VISIT_BADGE_TONE.active
+      : VISIT_BADGE_TONE.missing;
+
+  const chips = [
+    { key: 'link', label: linkLabel, tone: linkTone },
+    { key: 'intake', label: visit.intake_done ? '문진 완료' : '문진 필요', tone: visit.intake_done ? VISIT_BADGE_TONE.done : VISIT_BADGE_TONE.missing },
+    { key: 'consent', label: visit.consent_done ? '동의 완료' : '동의 필요', tone: visit.consent_done ? VISIT_BADGE_TONE.done : VISIT_BADGE_TONE.missing },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" style={{ marginTop: compact ? 8 : 10 }}>
+      {chips.map((chip) => (
+        <span
+          key={chip.key}
+          className="inline-flex items-center"
+          style={{
+            borderRadius: 999,
+            border: `1px solid ${darkMode ? '#27272A' : chip.tone.border}`,
+            background: darkMode ? '#0F172A' : chip.tone.bg,
+            color: darkMode ? '#E4E4E7' : chip.tone.color,
+            padding: compact ? '4px 7px' : '5px 8px',
+            fontSize: compact ? 10 : 11,
+            lineHeight: 1,
+            fontWeight: 850,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {chip.label}
+        </span>
+      ))}
+      <span
+        className="inline-flex items-center min-w-0"
+        title={action.detail}
+        style={{
+          borderRadius: 999,
+          border: `1px solid ${darkMode ? '#27272A' : '#D6E1EA'}`,
+          background: darkMode ? '#111827' : '#F8FAFC',
+          color: darkMode ? '#D4D4D8' : '#40515D',
+          padding: compact ? '4px 7px' : '5px 8px',
+          fontSize: compact ? 10 : 11,
+          lineHeight: 1,
+          fontWeight: 850,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        오늘 할 일: {action.label}
+      </span>
+    </div>
+  );
+}
+
 function FlowPatientLine({ visit, mode, darkMode, compact = false }) {
   const action = getDeskNextAction(visit);
   const tone = DESK_TONE[action.tone] || DESK_TONE.muted;
@@ -380,6 +498,8 @@ function FlowPatientLine({ visit, mode, darkMode, compact = false }) {
           {mode === 'next' ? action.detail : visit.link_status === 'opened' ? 'My Tiki 열람' : LINK_META[visit.link_status]?.label || '상태 확인'}
         </span>
       </div>
+      <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact={compact} />
+      <VisitStatusRail visit={visit} darkMode={darkMode} compact={compact} />
     </div>
   );
 }
@@ -736,52 +856,55 @@ function RoomTrafficCard({ room, queueVisit, darkMode, busy, onAssignRoom, onCle
   const occupied = room.occupancy_state === 'occupied';
   const currentVisit = room.current_visit;
   const procedureName = currentVisit?.procedures?.name_ko || currentVisit?.procedures?.name_en || '방문 컨텍스트 없음';
+  const tone = occupied
+    ? { color: '#DC2626', bg: '#FEF2F2', label: '사용 중' }
+    : queueVisit
+      ? { color: TEAL, bg: '#EAF2FF', label: '배정 가능' }
+      : { color: '#16A34A', bg: '#F0FDF4', label: '빈 방' };
 
   return (
-    <div className={`rounded-2xl border p-4 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-100'}`}>
-      <div className="flex items-start justify-between gap-2">
+    <div className="rounded-2xl border p-3" style={{ borderColor: darkMode ? '#27272A' : `${tone.color}2E`, background: darkMode ? '#0F172A' : '#FFFFFF' }}>
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <p className={`text-[11px] font-semibold ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>{ROOM_TYPE_LABELS[room.room_type] || '진료실'}</p>
-          <p className={`text-sm font-bold mt-0.5 ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>{room.name}</p>
+          <p className={`text-[10px] font-bold ${darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>{ROOM_TYPE_LABELS[room.room_type] || '진료실'}</p>
+          <p className={`text-[14px] font-black mt-0.5 ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{room.name}</p>
         </div>
         <span
-          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold"
-          style={occupied
-            ? { background: '#FEF2F2', color: '#DC2626' }
-            : { background: '#F0FDF4', color: '#16A34A' }}
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black"
+          style={{ background: tone.bg, color: tone.color }}
         >
-          {occupied ? '사용 중' : '비어 있음'}
+          {tone.label}
         </span>
       </div>
 
       {occupied ? (
-        <div className="mt-3">
-          <div className={`text-[12px] font-semibold ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+        <div className="mt-2">
+          <div className={`text-[12px] font-black truncate ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
             {(currentVisit?.patients?.flag || '🏥')} {currentVisit?.patients?.name || '배정됨'}
           </div>
-          <div className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{procedureName}</div>
+          <div className={`text-[10px] mt-1 truncate ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{procedureName}</div>
           <button
             onClick={() => onClearRoom(currentVisit.id)}
             disabled={busy}
-            className="mt-3 px-3 py-1.5 rounded-lg text-[10px] font-semibold border disabled:opacity-50"
+            className="mt-2 w-full px-3 py-2 rounded-lg text-[10px] font-black border disabled:opacity-50"
             style={{ borderColor: '#FCA5A5', color: '#DC2626', background: darkMode ? '#1C1917' : '#FEF2F2' }}
           >
             방 비우기
           </button>
         </div>
       ) : (
-        <div className="mt-3">
-          <div className={`text-[10px] ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>다음 후보</div>
+        <div className="mt-2">
+          <div className={`text-[10px] font-bold ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>다음 후보</div>
           {queueVisit ? (
             <>
-              <div className={`text-[12px] font-semibold mt-1 ${darkMode ? 'text-zinc-100' : 'text-zinc-800'}`}>
+              <div className={`text-[12px] font-black mt-1 truncate ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
                 {queueVisit.patient_flag} {queueVisit.patient_name}
               </div>
-              <div className={`text-[10px] mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{queueVisit.procedure_name}</div>
+              <div className={`text-[10px] mt-1 truncate ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{queueVisit.procedure_name}</div>
               <button
                 onClick={() => onAssignRoom(queueVisit.id, room.id)}
                 disabled={busy}
-                className="mt-3 px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white disabled:opacity-50"
+                className="mt-2 w-full px-3 py-2 rounded-lg text-[10px] font-black text-white disabled:opacity-50"
                 style={{ background: TEAL }}
               >
                 다음 배정
@@ -1506,6 +1629,36 @@ function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpen
   const cardBg = darkMode ? '#111827' : '#FFFFFF';
   const textP = darkMode ? 'text-zinc-100' : 'text-[#1B262C]';
   const textS = darkMode ? 'text-zinc-400' : 'text-[#40515D]';
+  const laneMeta = {
+    review: { label: '확인 대기', sub: '정보 누락·주의 신호', color: '#B42318' },
+    existing: { label: '기존 환자 연결', sub: '중복·기존 기록 후보', color: '#0F4C75' },
+    new: { label: '새 환자 등록', sub: '새 방문으로 전환 가능', color: TEAL },
+    hold: { label: '보류', sub: '오류·판단 보류', color: '#6B7C88' },
+  };
+
+  function laneFor(item) {
+    if (item.kind === 'csv_import') {
+      if ((item.failed_count || 0) > 0 || (item.warning_rows || 0) > 0 || (item.invalid_rows || 0) > 0) return 'review';
+      if ((item.duplicate_count || 0) > 0 || (item.same_file_duplicate_rows || 0) > 0) return 'existing';
+      if ((item.created_count || 0) > 0 || (item.visit_created_count || 0) > 0) return 'new';
+      return 'hold';
+    }
+
+    const suggested = item.next_suggested_action || '';
+    if ((item.missing_fields || []).length > 0 || item.risk_level === 'high' || suggested === 'staff_review_before_reply' || suggested === 'ask_missing_info') return 'review';
+    if (suggested === 'link_existing_patient') return 'existing';
+    if (suggested === 'create_new_patient') return 'new';
+    return 'review';
+  }
+
+  const grouped = items.reduce((acc, item) => {
+    acc[laneFor(item)].push(item);
+    return acc;
+  }, { review: [], existing: [], new: [], hold: [] });
+
+  function openTikiPaste() {
+    window.location.href = '/app?tab=tiki_paste';
+  }
 
   return (
     <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: border, background: cardBg }}>
@@ -1531,59 +1684,92 @@ function ForeignPatientIntakeQueue({ queue, loading, darkMode, onRefresh, onOpen
       </div>
 
       <div className="grid grid-cols-4 gap-2 mt-4">
-        <EscalationMiniCard label="상담 보류" value={loading ? '…' : (summary.pending_intakes || 0)} sub="TikiPaste 확인 대기" color={TEAL} darkMode={darkMode} />
-        <EscalationMiniCard label="가져오기" value={loading ? '…' : (summary.recent_import_batches || 0)} sub="최근 CSV/엑셀" color="#0F4C75" darkMode={darkMode} />
-        <EscalationMiniCard label="확인 필요" value={loading ? '…' : (summary.review_needed || 0)} sub="누락/주의" color="#B45309" darkMode={darkMode} />
-        <EscalationMiniCard label="오류" value={loading ? '…' : (summary.import_errors || 0)} sub="실패 행" color="#DC2626" darkMode={darkMode} />
+        {Object.entries(laneMeta).map(([key, meta]) => (
+          <EscalationMiniCard key={key} label={meta.label} value={loading ? '…' : grouped[key].length} sub={meta.sub} color={meta.color} darkMode={darkMode} />
+        ))}
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-4 gap-3">
         {loading ? (
-          <div className={`col-span-2 text-xs ${textS}`}>신규 환자 후보를 불러오는 중…</div>
+          <div className={`col-span-4 text-xs ${textS}`}>신규 환자 후보를 불러오는 중…</div>
         ) : items.length === 0 ? (
-          <div className={`col-span-2 rounded-xl border border-dashed px-4 py-5 text-center text-xs ${textS}`} style={{ borderColor: border }}>
+          <div className={`col-span-4 rounded-xl border border-dashed px-4 py-5 text-center text-xs ${textS}`} style={{ borderColor: border }}>
             지금 확인할 상담이나 가져오기 결과가 없습니다.
           </div>
         ) : (
-          items.slice(0, 6).map((item) => {
-            const isPaste = item.kind === 'tikipaste_intake';
-            const title = isPaste
-              ? (item.patient_candidate?.name || item.source_handle || '상담 후보')
-              : (item.filename || 'CSV 가져오기');
-            const sub = isPaste
-              ? `${item.source_channel || 'manual'} · ${item.last_patient_intent || '의도 확인 필요'}`
-              : `총 ${item.total_rows || 0}행 · 생성 ${item.created_count || 0} · 방문 ${item.visit_created_count || 0} · 실패 ${item.failed_count || 0}`;
-            const tone = isPaste && item.risk_level === 'high'
-              ? '#DC2626'
-              : item.failed_count > 0 || item.missing_fields?.length
-                ? '#B45309'
-                : TEAL;
-
-            return (
-              <div key={`${item.kind}-${item.id}`} className="rounded-2xl border p-3" style={{ borderColor: `${tone}35`, background: darkMode ? '#0F172A' : '#F8FBFF' }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className={`text-[12px] font-black truncate ${textP}`}>{title}</p>
-                    <p className={`text-[11px] mt-1 leading-relaxed ${textS}`}>{sub}</p>
-                  </div>
-                  <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black" style={{ background: `${tone}16`, color: tone }}>
-                    {isPaste ? 'TikiPaste' : 'CSV'}
-                  </span>
+          Object.entries(laneMeta).map(([laneKey, meta]) => (
+            <section key={laneKey} className="rounded-2xl border p-3 min-h-[180px]" style={{ borderColor: `${meta.color}35`, background: darkMode ? '#0F172A' : '#F8FBFF' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className={`text-[12px] font-black ${textP}`}>{meta.label}</p>
+                  <p className={`text-[10px] mt-1 ${textS}`}>{meta.sub}</p>
                 </div>
-                {isPaste ? (
-                  <div className={`mt-2 text-[10px] ${textS}`}>
-                    누락: {(item.missing_fields || []).length ? item.missing_fields.join(', ') : '없음'} · 위험도 {item.risk_level || 'low'}
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-black" style={{ background: `${meta.color}16`, color: meta.color }}>
+                  {grouped[laneKey].length}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {grouped[laneKey].length === 0 ? (
+                  <div className={`rounded-xl border border-dashed px-3 py-6 text-center text-[11px] ${textS}`} style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA' }}>
+                    해당 후보 없음
                   </div>
-                ) : (
-                  <div className={`mt-2 text-[10px] ${textS}`}>
-                    확인 필요 {item.warning_rows || 0} · 중복 제외 {item.same_file_duplicate_rows || 0} · 기존 중복 {item.duplicate_count || 0}
+                ) : grouped[laneKey].slice(0, 4).map((item) => {
+                  const isPaste = item.kind === 'tikipaste_intake';
+                  const title = isPaste
+                    ? (item.patient_candidate?.name || item.source_handle || '상담 후보')
+                    : (item.filename || 'CSV 가져오기');
+                  const sub = isPaste
+                    ? `${item.source_channel || 'manual'} · ${item.last_patient_intent || '의도 확인 필요'}`
+                    : `총 ${item.total_rows || 0}행 · 생성 ${item.created_count || 0} · 방문 ${item.visit_created_count || 0} · 실패 ${item.failed_count || 0}`;
+                  const detail = isPaste
+                    ? `누락 ${(item.missing_fields || []).length || 0} · 위험도 ${item.risk_level || 'normal'}`
+                    : `확인 ${item.warning_rows || 0} · 중복 ${item.duplicate_count || 0} · 오류 ${item.failed_count || 0}`;
+                  const actionLabel = isPaste
+                    ? laneKey === 'existing' ? 'TikiPaste에서 연결'
+                      : laneKey === 'new' ? 'TikiPaste에서 등록'
+                        : 'TikiPaste에서 확인'
+                    : '가져오기 결과 확인';
+                  const action = isPaste ? openTikiPaste : onOpenCsvImport;
+
+                  return (
+                    <div key={`${item.kind}-${item.id}`} className="rounded-xl border p-3" style={{ borderColor: `${meta.color}28`, background: darkMode ? '#111827' : '#FFFFFF' }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className={`text-[12px] font-black truncate ${textP}`}>{title}</p>
+                          <p className={`text-[10px] mt-1 leading-relaxed ${textS}`}>{sub}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black" style={{ background: `${meta.color}14`, color: meta.color }}>
+                          {isPaste ? '상담' : 'CSV'}
+                        </span>
+                      </div>
+                      <p className={`mt-2 text-[10px] ${textS}`}>{detail}</p>
+                      <button
+                        onClick={action}
+                        className="mt-3 w-full rounded-lg px-2 py-2 text-[10px] font-black border"
+                        style={{ borderColor: `${meta.color}35`, color: meta.color, background: darkMode ? '#0B1220' : `${meta.color}0A` }}
+                      >
+                        {actionLabel}
+                      </button>
+                    </div>
+                  );
+                })}
+                {grouped[laneKey].length > 4 && (
+                  <div className={`text-center text-[10px] font-bold ${textS}`}>
+                    외 {grouped[laneKey].length - 4}건 더 있음
                   </div>
                 )}
               </div>
-            );
-          })
+            </section>
+          ))
         )}
       </div>
+
+      {(summary.pending_intakes || summary.recent_import_batches || summary.review_needed || summary.import_errors) ? (
+        <div className={`mt-3 text-[10px] font-semibold ${textS}`}>
+          전체 기준: TikiPaste 보류 {summary.pending_intakes || 0} · 최근 가져오기 {summary.recent_import_batches || 0} · 누락/주의 {summary.review_needed || 0} · 실패 행 {summary.import_errors || 0}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2515,7 +2701,7 @@ export default function MyTikiTab({ darkMode }) {
         <div className="mt-6 rounded-3xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#0B1220' : '#F8FBFF' }}>
           <div className="mb-4">
             <p className={`text-[12px] font-black ${textP}`}>운영 보조</p>
-            <p className={`text-[11px] mt-1 ${textS}`}>오늘 운영 흐름을 해치지 않도록, 가져오기 확인과 룸 배정은 보조 영역에서 관리합니다.</p>
+            <p className={`text-[11px] mt-1 ${textS}`}>Tiki Desk는 요약과 다음 조치만 보여줍니다. 상세 룸 운영은 Tiki Room에서 이어갑니다.</p>
           </div>
 
           <ForeignPatientIntakeQueue
@@ -2533,24 +2719,34 @@ export default function MyTikiTab({ darkMode }) {
                   <DoorOpen size={14} style={{ color: TEAL }} />
                   <h2 className={`text-sm font-bold ${textP}`}>룸 배정 현황</h2>
                 </div>
-                <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보를 확인합니다.</p>
+                <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보만 빠르게 확인합니다.</p>
               </div>
               <button
-                onClick={() => setShowRoomSettings((prev) => !prev)}
+                onClick={() => window.open('/room', '_blank', 'noopener,noreferrer')}
                 className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
               >
-                {showRoomSettings ? '관리 닫기' : '룸 관리'}
+                Tiki Room 열기
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 mt-4">
-              <EscalationMiniCard label="방 목록" value={loading ? '…' : roomSummary.total} sub="등록된 운영 방" color={TEAL} darkMode={darkMode} />
-              <EscalationMiniCard label="빈 방" value={loading ? '…' : roomSummary.free} sub="즉시 배정 가능" color="#16A34A" darkMode={darkMode} />
-              <EscalationMiniCard label="사용 중" value={loading ? '…' : roomSummary.occupied} sub="현재 사용 중" color="#DC2626" darkMode={darkMode} />
-              <EscalationMiniCard label="대기 중" value={loading ? '…' : roomSummary.readyQueue} sub="다음 방 후보" color="#0F4C75" darkMode={darkMode} />
+            <div className="mt-4 grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-2">
+              {[
+                ['전체 방', roomSummary.total, '등록된 방', TEAL],
+                ['빈 방', roomSummary.free, '즉시 배정', '#16A34A'],
+                ['사용 중', roomSummary.occupied, '현재 진행', '#DC2626'],
+                ['다음 후보', roomSummary.readyQueue, '룸 이동 가능', '#0F4C75'],
+              ].map(([label, value, sub, color]) => (
+                <div key={label} className="rounded-2xl border px-4 py-3" style={{ borderColor: `${color}32`, background: darkMode ? '#0F172A' : '#FFFFFF' }}>
+                  <p className={`text-[10px] font-black ${textS}`}>{label}</p>
+                  <div className="mt-1 flex items-end justify-between gap-2">
+                    <span style={{ fontSize: 32, lineHeight: 1, fontWeight: 950, color }}>{loading ? '…' : value}</span>
+                    <span className={`text-[10px] font-bold ${textS}`}>{sub}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-4 gap-2 mt-4">
               {(rooms || []).map((room, index) => (
                 <RoomTrafficCard
                   key={room.id}
@@ -2563,18 +2759,9 @@ export default function MyTikiTab({ darkMode }) {
                 />
               ))}
               {!loading && rooms.length === 0 && (
-                <div className={`col-span-4 text-xs ${textS}`}>등록된 방이 없습니다. 아래 방 목록에서 첫 번째 방을 추가하면 바로 룸 배정 현황에 반영됩니다.</div>
+                <div className={`col-span-4 text-xs ${textS}`}>등록된 방이 없습니다. Tiki Room에서 방을 먼저 설정하세요.</div>
               )}
             </div>
-
-            {showRoomSettings && (
-              <RoomPresetManager
-                rooms={rooms}
-                darkMode={darkMode}
-                onCreateRoom={handleCreateRoom}
-                onUpdateRoom={handleUpdateRoom}
-              />
-            )}
           </div>
         </div>
       </div>

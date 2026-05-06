@@ -76,6 +76,16 @@ test("patient link list and token auth avoid optional patient_links extension co
   }
 });
 
+test("patient token auth resolves My Tiki language from the patient row", () => {
+  const authStart = patientAuthSource.indexOf("export async function requirePatientToken");
+  const authEnd = patientAuthSource.indexOf("// ─────────────────────────────────────────────────────────────────────────────", authStart + 1);
+  const authSource = patientAuthSource.slice(authStart, authEnd);
+
+  assert.doesNotMatch(authSource, /req\.patient_lang\s*=\s*["']ko["']/);
+  assert.match(authSource, /\.from\("patients"\)[\s\S]{0,180}\.select\("lang"\)/);
+  assert.match(authSource, /req\.patient_lang\s*=\s*patientLang\s*\|\|\s*"en"/);
+});
+
 test("Quick Visit modal uses bounded touch-friendly scroll containers", () => {
   assert.match(quickVisitSource, /WebkitOverflowScrolling: 'touch'/);
   assert.match(quickVisitSource, /minHeight: 0/);

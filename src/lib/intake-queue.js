@@ -82,6 +82,7 @@ export function buildIntakeQueueResponse({
     visit_candidate: item.visit_candidate || {},
     last_patient_intent: item.last_patient_intent || "",
     missing_fields: item.missing_fields || [],
+    next_suggested_action: item.next_suggested_action || "",
   }));
 
   const importItems = (import_batches || []).map(batch => ({

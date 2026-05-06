@@ -126,3 +126,59 @@ export function buildTikiDeskCounts(visits = []) {
     inRoom: 0,
   });
 }
+
+export function buildVisitStatusBadges(visit = {}) {
+  const hasLink = ["active", "opened"].includes(visit.link_status);
+  const linkOpened = visit.link_status === "opened";
+  const arrived = Boolean(visit.patient_arrived_at || visit.checked_in_at);
+  const roomReady = typeof visit.room_ready === "boolean"
+    ? visit.room_ready
+    : Boolean(visit.checked_in_at && visit.intake_done && visit.consent_done);
+  const inRoom = Boolean(visit.room_id || visit.room);
+  const aftercareActive = visit.stage === "post_care" || Boolean(visit.followup_done);
+
+  return [
+    {
+      key: "consult",
+      label: "상담",
+      state: "done",
+      helper: "방문으로 등록됨",
+    },
+    {
+      key: "link",
+      label: "링크",
+      state: linkOpened ? "done" : hasLink ? "active" : "missing",
+      helper: linkOpened ? "My Tiki 열람" : hasLink ? "My Tiki 발급됨" : "My Tiki 링크 필요",
+    },
+    {
+      key: "arrival",
+      label: "도착",
+      state: arrived ? "done" : "waiting",
+      helper: arrived ? "도착 확인됨" : "도착 전",
+    },
+    {
+      key: "intake",
+      label: "문진",
+      state: visit.intake_done ? "done" : arrived ? "missing" : "waiting",
+      helper: visit.intake_done ? "문진 완료" : arrived ? "문진 확인 필요" : "문진 대기",
+    },
+    {
+      key: "consent",
+      label: "동의",
+      state: visit.consent_done ? "done" : arrived ? "missing" : "waiting",
+      helper: visit.consent_done ? "동의 완료" : arrived ? "동의서 확인 필요" : "동의 대기",
+    },
+    {
+      key: "room",
+      label: "룸",
+      state: inRoom ? "done" : roomReady ? "active" : "waiting",
+      helper: inRoom ? "룸 배정됨" : roomReady ? "룸 이동 가능" : "룸 대기",
+    },
+    {
+      key: "aftercare",
+      label: "사후",
+      state: visit.followup_done ? "done" : aftercareActive ? "active" : "waiting",
+      helper: visit.followup_done ? "사후관리 완료" : aftercareActive ? "사후관리 진행" : "시술 후 확인",
+    },
+  ];
+}
