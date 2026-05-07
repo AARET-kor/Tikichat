@@ -1143,7 +1143,7 @@ app.post("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
       payload: req.body || {},
     });
 
-    if (!insert.raw_text && !insert.analysis_payload?.extracted_text) {
+    if (!insert.raw_text) {
       return res.status(400).json({ error: "raw_text or analysis payload required" });
     }
 
@@ -1151,8 +1151,8 @@ app.post("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
       .from("conversation_intakes")
       .insert(insert)
       .select(`
-        id, status, source_channel, source_handle, parsed_language,
-        parsed_procedure_interests, last_patient_intent, risk_level,
+        id, status, source_channel, source_handle, detected_language,
+        last_intent, risk_level,
         missing_fields, next_suggested_action, created_at
       `)
       .single();
@@ -1191,9 +1191,9 @@ app.get("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
     let q = sb
       .from("conversation_intakes")
       .select(`
-        id, status, source_channel, source_handle, source_phone, source_memo,
-        patient_candidate, visit_candidate, parsed_language,
-        parsed_procedure_interests, last_patient_intent, risk_level,
+        id, status, source_channel, source_handle,
+        patient_candidate, visit_candidate, detected_language,
+        last_intent, risk_level,
         missing_fields, next_suggested_action, linked_patient_id,
         linked_visit_id, converted_at, created_at, updated_at
       `)
@@ -1222,7 +1222,7 @@ app.get("/api/staff/intake-queue", requireStaffAuth, async (req, res) => {
     const [{ data: conversationIntakes, error: intakeError }, { data: importBatches, error: importError }] = await Promise.all([
       sb
         .from("conversation_intakes")
-        .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_patient_intent, risk_level, missing_fields, next_suggested_action")
+        .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_intent, risk_level, missing_fields, next_suggested_action")
         .eq("clinic_id", req.clinic_id)
         .eq("status", "pending")
         .order("created_at", { ascending: false })

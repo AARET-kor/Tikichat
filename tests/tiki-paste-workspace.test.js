@@ -63,6 +63,21 @@ test("/api/conversation-intakes is staff-gated and scoped to authenticated clini
   assert.doesNotMatch(serverSource, /conversation_intakes[\s\S]{0,600}req\.body\.clinicId/);
 });
 
+test("conversation intake routes use the deployed conversation_intakes schema contract", () => {
+  for (const unsupportedColumn of [
+    "source_phone",
+    "source_memo",
+    "parsed_language",
+    "parsed_procedure_interests",
+    "last_patient_intent",
+    "analysis_payload",
+  ]) {
+    assert.doesNotMatch(serverSource, new RegExp(unsupportedColumn));
+  }
+  assert.match(serverSource, /detected_language/);
+  assert.match(serverSource, /last_intent/);
+});
+
 test("conversation intake conversion creates/link visits and My Tiki links only after staff action", () => {
   assert.match(serverSource, /buildConversationIntakeConversionPlan/);
   assert.match(serverSource, /\.from\("conversation_intakes"\)[\s\S]{0,400}\.eq\("clinic_id", req\.clinic_id\)/);

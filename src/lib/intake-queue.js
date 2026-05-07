@@ -80,7 +80,7 @@ export function buildIntakeQueueResponse({
     source_handle: item.source_handle || "",
     patient_candidate: item.patient_candidate || {},
     visit_candidate: item.visit_candidate || {},
-    last_patient_intent: item.last_patient_intent || "",
+    last_patient_intent: item.last_patient_intent || item.last_intent || "",
     missing_fields: item.missing_fields || [],
     next_suggested_action: item.next_suggested_action || "",
   }));
@@ -111,7 +111,7 @@ export function buildIntakeQueueResponse({
       pending_intakes: intakeItems.filter(item => item.status === "pending").length,
       recent_import_batches: importItems.length,
       import_errors: importItems.reduce((sum, item) => sum + (item.failed_count || 0), 0),
-      review_needed: intakeItems.filter(item => (item.missing_fields || []).length > 0 || item.risk_level === "high").length
+      review_needed: intakeItems.filter(item => (item.missing_fields || []).length > 0 || ["high", "urgent"].includes(item.risk_level)).length
         + importItems.reduce((sum, item) => sum + (item.warning_rows || 0) + (item.failed_count || 0), 0),
     },
     items,

@@ -32,10 +32,10 @@ test("normalizes a TikiPaste result into a pending conversation intake", () => {
   assert.equal(normalized.status, "pending");
   assert.equal(normalized.source_channel, "kakao");
   assert.equal(normalized.source_handle, "wangfang2024");
-  assert.equal(normalized.parsed_language, "중국어");
-  assert.deepEqual(normalized.parsed_procedure_interests, ["리프팅"]);
-  assert.equal(normalized.last_patient_intent, "리프팅 예약 문의");
-  assert.equal(normalized.risk_level, "medium");
+  assert.equal(normalized.detected_language, "중국어");
+  assert.deepEqual(normalized.visit_candidate.procedure_interests, ["리프팅"]);
+  assert.equal(normalized.last_intent, "리프팅 예약 문의");
+  assert.equal(normalized.risk_level, "attention");
   assert.deepEqual(normalized.missing_fields, []);
   assert.equal(normalized.next_suggested_action, "create_or_link_patient");
 });
@@ -69,6 +69,7 @@ test("builds an insert scoped to authenticated clinic and actor", () => {
   assert.equal(insert.clinic_id, "clinic-1");
   assert.equal(insert.created_by, "staff-1");
   assert.equal(insert.status, "pending");
+  assert.equal(insert.risk_level, "urgent");
   assert.equal(insert.next_suggested_action, "staff_review_before_reply");
 });
 

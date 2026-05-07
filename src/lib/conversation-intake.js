@@ -1,5 +1,14 @@
 const ALLOWED_STATUSES = new Set(["pending", "converted", "linked", "dismissed"]);
-const ALLOWED_RISK = new Set(["none", "low", "medium", "high"]);
+const RISK_STORAGE_MAP = {
+  none: "normal",
+  low: "normal",
+  medium: "attention",
+  high: "urgent",
+  normal: "normal",
+  attention: "attention",
+  urgent: "urgent",
+  unknown: "unknown",
+};
 const LANGUAGE_TO_CODE = {
   "한국어": "ko",
   "영어": "en",
@@ -26,6 +35,22 @@ function cleanObject(value) {
   return value;
 }
 
+function normalizeRiskForStorage(value) {
+  return RISK_STORAGE_MAP[cleanString(value, 40)] || "normal";
+}
+
+function intakeLanguage(intake = {}) {
+  return cleanString(intake.parsed_language || intake.detected_language, 80);
+}
+
+function intakeProcedureInterests(intake = {}) {
+  return cleanArray(intake.parsed_procedure_interests || intake.visit_candidate?.procedure_interests);
+}
+
+function intakeLastIntent(intake = {}) {
+  return cleanString(intake.last_patient_intent || intake.last_intent, 500);
+}
+
 export function normalizeConversationIntakePayload(input = {}) {
   const analysis = cleanObject(input.analysis);
   const source = cleanObject(input.source);
@@ -35,37 +60,43 @@ export function normalizeConversationIntakePayload(input = {}) {
   const source_phone = cleanString(source.phone || input.source_phone, 80);
   const source_memo = cleanString(source.memo || input.source_memo, 500);
   const raw_text = cleanString(input.raw_text || input.rawText || analysis.extracted_text, 8000);
+  const patient_candidate = {
+    ...cleanObject(input.patient_candidate),
+    ...(source_handle && !cleanObject(input.patient_candidate).source_handle ? { source_handle } : {}),
+    ...(source_phone && !cleanObject(input.patient_candidate).phone ? { phone: source_phone } : {}),
+    ...(source_memo ? { source_memo } : {}),
+  };
 
-  const risk_level = ALLOWED_RISK.has(analysis.risk_level) ? analysis.risk_level : "low";
+  const risk_level = normalizeRiskForStorage(analysis.risk_level || input.risk_level);
   const procedure_interests = cleanArray(analysis.procedure_interests);
   const missing_fields = cleanArray(input.missing_fields, 20);
-  if (!cleanObject(input.patient_candidate).name) missing_fields.push("patient_name");
+  if (!patient_candidate.name) missing_fields.push("patient_name");
   if (!cleanObject(input.visit_candidate).visit_date) missing_fields.push("visit_date");
+  const detected_language = cleanString(analysis.detected_language || input.detected_language || input.parsed_language, 80);
 
   return {
     status: ALLOWED_STATUSES.has(input.status) ? input.status : "pending",
     source_channel,
     source_handle,
-    source_phone,
-    source_memo,
     raw_text,
-    patient_candidate: cleanObject(input.patient_candidate),
+    input_type: cleanString(input.input_type || "text", 40) || "text",
+    detected_language,
+    summary: cleanString(analysis.summary || input.summary, 1000),
+    last_intent: cleanString(analysis.last_message_intent || analysis.intent || input.last_intent, 500),
+    patient_candidate,
     visit_candidate: {
       ...cleanObject(input.visit_candidate),
       procedure_interests,
     },
-    parsed_language: cleanString(analysis.detected_language || input.parsed_language, 80),
-    parsed_procedure_interests: procedure_interests,
-    last_patient_intent: cleanString(analysis.last_message_intent || analysis.intent, 500),
     risk_level,
-    recommended_replies: cleanObject(analysis.options),
+    risk_flags: cleanArray(analysis.risk_flags || input.risk_flags, 20),
+    recommended_replies: analysis.options || input.recommended_replies || [],
     missing_fields: [...new Set(missing_fields)].slice(0, 20),
     next_suggested_action: cleanString(
       input.next_suggested_action
-        || (risk_level === "high" ? "staff_review_before_reply" : "create_or_link_patient"),
+        || (risk_level === "urgent" ? "staff_review_before_reply" : "create_or_link_patient"),
       120,
     ),
-    analysis_payload: analysis,
   };
 }
 
@@ -83,7 +114,7 @@ function buildChannelRefs(intake = {}) {
   const channel = cleanString(intake.source_channel || "manual", 80) || "manual";
   const handle = cleanString(intake.source_handle || patientCandidate.source_handle || patientCandidate.handle, 160);
   const phone = cleanString(intake.source_phone || patientCandidate.phone, 80);
-  const memo = cleanString(intake.source_memo, 500);
+  const memo = cleanString(intake.source_memo || patientCandidate.source_memo, 500);
   if (!handle && !phone && !memo) return {};
   return {
     [channel]: {
@@ -95,11 +126,12 @@ function buildChannelRefs(intake = {}) {
 }
 
 function buildIntakeNotes(intake = {}, overrideNotes = "") {
+  const procedureInterests = intakeProcedureInterests(intake);
   const parts = [
     "TikiPaste 상담 유입",
-    cleanString(intake.last_patient_intent, 500),
-    cleanArray(intake.parsed_procedure_interests).length
-      ? `관심 시술: ${cleanArray(intake.parsed_procedure_interests).join(", ")}`
+    intakeLastIntent(intake),
+    procedureInterests.length
+      ? `관심 시술: ${procedureInterests.join(", ")}`
       : "",
     cleanString(intake.raw_text, 1200),
     cleanString(overrideNotes, 800),
@@ -113,10 +145,10 @@ export function buildConversationIntakeConversionPlan({ intake = {}, payload = {
   const visitCandidate = cleanObject(intake.visit_candidate);
   const payloadPatient = cleanObject(payload.patient);
   const payloadVisit = cleanObject(payload.visit);
-  const languageCode = cleanString(payloadPatient.lang || patientCandidate.lang || LANGUAGE_TO_CODE[intake.parsed_language], 20) || null;
+  const languageCode = cleanString(payloadPatient.lang || patientCandidate.lang || LANGUAGE_TO_CODE[intakeLanguage(intake)], 20) || null;
   const visitDate = cleanString(payloadVisit.visitDate || payloadVisit.visit_date || visitCandidate.visit_date, 80) || null;
   const procedureInterests = cleanArray(
-    payloadVisit.procedure_interests || visitCandidate.procedure_interests || intake.parsed_procedure_interests,
+    payloadVisit.procedure_interests || visitCandidate.procedure_interests || intakeProcedureInterests(intake),
   );
   const notes = buildIntakeNotes(intake, payloadVisit.notes || payloadVisit.internal_notes);
 

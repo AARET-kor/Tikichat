@@ -1521,7 +1521,7 @@ function PendingIntakeCard({ intake, clinicId, onConverted }) {
             {intake.source_handle ? ` · ${intake.source_handle}` : ''}
           </p>
           <p style={{ fontSize:11, color:C.textMt, marginTop:3, lineHeight:1.5 }}>
-            {intake.last_patient_intent || '의도 미확인'} · 위험도 {intake.risk_level || 'low'}
+            {intake.last_patient_intent || intake.last_intent || '의도 미확인'} · 위험도 {intake.risk_level || 'normal'}
           </p>
         </div>
         <span style={{ fontSize:10, fontWeight:800, color:C.mocha, background:C.mochaPale, padding:'4px 8px', borderRadius:999 }}>
@@ -1581,9 +1581,9 @@ function PendingIntakeCard({ intake, clinicId, onConverted }) {
         )}
       </div>
 
-      {intake.parsed_procedure_interests?.length > 0 && (
+      {(intake.parsed_procedure_interests || intake.visit_candidate?.procedure_interests)?.length > 0 && (
         <p style={{ fontSize:10.5, color:C.textMt }}>
-          관심 시술: {intake.parsed_procedure_interests.join(', ')}
+          관심 시술: {(intake.parsed_procedure_interests || intake.visit_candidate?.procedure_interests).join(', ')}
         </p>
       )}
 
