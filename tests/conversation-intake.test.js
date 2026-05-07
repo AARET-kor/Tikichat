@@ -29,7 +29,7 @@ test("normalizes a TikiPaste result into a pending conversation intake", () => {
     visit_candidate: { visit_date: "2026-05-03" },
   });
 
-  assert.equal(normalized.status, "pending");
+  assert.equal(normalized.status, "pending_review");
   assert.equal(normalized.source_channel, "kakao");
   assert.equal(normalized.source_handle, "wangfang2024");
   assert.equal(normalized.detected_language, "중국어");
@@ -68,7 +68,7 @@ test("builds an insert scoped to authenticated clinic and actor", () => {
 
   assert.equal(insert.clinic_id, "clinic-1");
   assert.equal(insert.created_by, "staff-1");
-  assert.equal(insert.status, "pending");
+  assert.equal(insert.status, "pending_review");
   assert.equal(insert.risk_level, "urgent");
   assert.equal(insert.next_suggested_action, "staff_review_before_reply");
 });

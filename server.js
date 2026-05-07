@@ -1178,13 +1178,13 @@ app.post("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/conversation-intakes?status=pending
+// ── GET /api/conversation-intakes?status=pending_review
 // Lightweight list for later Tiki Desk intake queue.
 app.get("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
   const sb = getSbAdmin();
   if (!sb) return res.status(503).json({ error: "Database unavailable" });
 
-  const status = String(req.query.status || "pending");
+  const status = String(req.query.status || "pending_review");
   const limit = Math.min(Number(req.query.limit || 50), 100);
 
   try {
@@ -1201,7 +1201,12 @@ app.get("/api/conversation-intakes", requireStaffAuth, async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(limit);
 
-    if (status !== "all") q = q.eq("status", status);
+    if (status !== "all") {
+      const statuses = status === "pending"
+        ? ["pending_review", "pending"]
+        : [status];
+      q = statuses.length > 1 ? q.in("status", statuses) : q.eq("status", status);
+    }
 
     const { data, error } = await q;
     if (error) throw error;
@@ -1224,7 +1229,7 @@ app.get("/api/staff/intake-queue", requireStaffAuth, async (req, res) => {
         .from("conversation_intakes")
         .select("id, created_at, status, source_channel, source_handle, patient_candidate, visit_candidate, last_intent, risk_level, missing_fields, next_suggested_action")
         .eq("clinic_id", req.clinic_id)
-        .eq("status", "pending")
+        .eq("status", "pending_review")
         .order("created_at", { ascending: false })
         .limit(limit),
       sb
@@ -1276,7 +1281,7 @@ app.post("/api/conversation-intakes/:id/convert", requireStaffAuth, async (req, 
 
     if (intakeError) throw intakeError;
     if (!intake) return res.status(404).json({ error: "Intake not found" });
-    if (intake.status !== "pending") {
+    if (!["pending_review", "pending"].includes(intake.status)) {
       return res.status(409).json({ error: "Intake already converted", status: intake.status });
     }
 
@@ -1370,7 +1375,7 @@ app.post("/api/conversation-intakes/:id/convert", requireStaffAuth, async (req, 
       })
       .eq("id", id)
       .eq("clinic_id", clinic_id)
-      .eq("status", "pending")
+      .in("status", ["pending_review", "pending"])
       .select("id, status, linked_patient_id, linked_visit_id, converted_at")
       .maybeSingle();
     if (updateError) throw updateError;

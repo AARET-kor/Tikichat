@@ -76,6 +76,7 @@ test("conversation intake routes use the deployed conversation_intakes schema co
   }
   assert.match(serverSource, /detected_language/);
   assert.match(serverSource, /last_intent/);
+  assert.match(serverSource, /pending_review/);
 });
 
 test("conversation intake conversion creates/link visits and My Tiki links only after staff action", () => {

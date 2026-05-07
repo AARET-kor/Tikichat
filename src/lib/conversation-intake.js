@@ -1,4 +1,4 @@
-const ALLOWED_STATUSES = new Set(["pending", "converted", "linked", "dismissed"]);
+const ALLOWED_STATUSES = new Set(["draft", "pending_review", "converted", "linked", "dismissed", "failed"]);
 const RISK_STORAGE_MAP = {
   none: "normal",
   low: "normal",
@@ -75,7 +75,7 @@ export function normalizeConversationIntakePayload(input = {}) {
   const detected_language = cleanString(analysis.detected_language || input.detected_language || input.parsed_language, 80);
 
   return {
-    status: ALLOWED_STATUSES.has(input.status) ? input.status : "pending",
+    status: ALLOWED_STATUSES.has(input.status) ? input.status : "pending_review",
     source_channel,
     source_handle,
     raw_text,

@@ -74,7 +74,7 @@ export function buildIntakeQueueResponse({
     kind: "tikipaste_intake",
     id: item.id,
     created_at: item.created_at,
-    status: item.status || "pending",
+    status: item.status || "pending_review",
     risk_level: item.risk_level || "low",
     source_channel: item.source_channel || "manual",
     source_handle: item.source_handle || "",
@@ -108,7 +108,7 @@ export function buildIntakeQueueResponse({
 
   return {
     summary: {
-      pending_intakes: intakeItems.filter(item => item.status === "pending").length,
+      pending_intakes: intakeItems.filter(item => ["pending", "pending_review"].includes(item.status)).length,
       recent_import_batches: importItems.length,
       import_errors: importItems.reduce((sum, item) => sum + (item.failed_count || 0), 0),
       review_needed: intakeItems.filter(item => (item.missing_fields || []).length > 0 || ["high", "urgent"].includes(item.risk_level)).length

@@ -1161,7 +1161,7 @@ function PendingIntakeBar({ result, input, sourceCapture, onSaved }) {
       <div style={{ flex:1 }}>
         <p style={{ fontSize:12, fontWeight:800, color:C.textSub }}>상담 유입으로 보류 저장</p>
         <p style={{ fontSize:10, color:C.textMt, marginTop:2 }}>
-          환자 생성 전, TikiPaste 분석 결과를 pending intake로 남깁니다
+          환자 생성 전, TikiPaste 분석 결과를 확인 대기로 남깁니다
         </p>
       </div>
       <button onClick={savePending} disabled={phase === 'saving'} style={{
@@ -1525,7 +1525,7 @@ function PendingIntakeCard({ intake, clinicId, onConverted }) {
           </p>
         </div>
         <span style={{ fontSize:10, fontWeight:800, color:C.mocha, background:C.mochaPale, padding:'4px 8px', borderRadius:999 }}>
-          pending
+          확인 대기
         </span>
       </div>
 
@@ -1657,7 +1657,7 @@ function PendingIntakeQueue({ clinicId, refreshKey, onConverted }) {
     try {
       const headers = await getStaffAuthHeaders();
       if (!headers.Authorization) throw new Error('로그인 세션이 필요합니다.');
-      const res = await fetch('/api/conversation-intakes?status=pending&limit=6', { headers });
+      const res = await fetch('/api/conversation-intakes?status=pending_review&limit=6', { headers });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setIntakes(data.intakes || []);
