@@ -8,6 +8,7 @@ import TikiPasteTab from '../components/magic/TikiPasteTab';
 import InsightsTab from '../components/insights/InsightsTab';
 import ProtocolTab from '../components/protocol/ProtocolTab';
 import MyTikiTab from '../components/mytiki/MyTikiTab';
+import PatientCareTab from '../components/patient-care/PatientCareTab';
 import { useAuth } from '../context/AuthContext';
 import {
   Layers, LogOut, ChevronDown, User, Sun, Moon, Settings, MapPin
@@ -200,6 +201,13 @@ export default function Dashboard() {
             canAccess('my_tiki')
               ? <MyTikiTab darkMode={darkMode} />
               : <AccessDenied feature="Tiki Desk" darkMode={darkMode} />
+          )}
+
+          {/* ── 환자 케어 (확인 요청 + 사후관리) ── */}
+          {activeTab === 'patient_care' && (
+            canAccess('patient_care')
+              ? <PatientCareTab darkMode={darkMode} />
+              : <AccessDenied feature="환자 케어" darkMode={darkMode} />
           )}
 
           {/* ── 설정 ── */}

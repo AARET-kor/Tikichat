@@ -16,7 +16,7 @@ export const ROLES = {
  * ─────────────────────────────────────────────────────────────
  * 제품 구조:
  *   All roles  : tiki_paste, tiki_talk, tiki_room
- *   owner/admin: tiki_memory, procedures, protocol, analytics, settings
+ *   owner/admin: patient_care, tiki_memory, procedures, protocol, analytics, settings
  */
 const FEATURE_ROLES = {
   // ── 전체 허용 (모든 직원) ────────────────────────────────────
@@ -31,6 +31,7 @@ const FEATURE_ROLES = {
   analytics:    ['owner', 'admin'],
   settings:     ['owner', 'admin'],
   my_tiki:      ['owner', 'admin'],
+  patient_care: ['owner', 'admin'],
 
   // ── 레거시 ID 별칭 (하위 호환) ───────────────────────────────
   stats:        ['owner', 'admin'],   // analytics의 구 ID

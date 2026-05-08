@@ -364,6 +364,30 @@ function parseRiskFlags(text) {
   });
 }
 
+function buildTimelineCorrectionNotes(existingNotes, correctionText, session) {
+  const clean = String(correctionText || '').trim();
+  if (!clean) return existingNotes || '';
+  const date = new Date().toISOString().slice(0, 10);
+  const target = [
+    session?.date,
+    session?.surface === 'room' ? (session?.room || 'Tiki Room') : '상담 기록',
+  ].filter(Boolean).join(' · ');
+  const correctionLine = `[타임라인 정정 | ${date} | ${target}] ${clean}`;
+  return [existingNotes, correctionLine].filter(Boolean).join('\n');
+}
+
+function extractTimelineCorrections(notes) {
+  return splitLines(notes)
+    .filter(line => line.startsWith('[타임라인 정정 |'))
+    .map((line) => {
+      const match = line.match(/^\[타임라인 정정 \| ([^\]]+)\]\s*(.*)$/);
+      return {
+        meta: match?.[1] || '',
+        text: match?.[2] || line,
+      };
+    });
+}
+
 function langLabel(lang) {
   return { ja: '일본어', zh: '중국어', en: '영어', vi: '베트남어', th: '태국어', ko: '한국어' }[lang] || '언어 미상';
 }
@@ -395,12 +419,12 @@ function adaptMemoryItemToRecord(item) {
       },
       painSensitivity: {
         level: item.risk_level === 'high' ? 'high' : item.risk_level === 'medium' ? 'medium' : 'low',
-        note: concerns[0] || item.ai_summary || '아직 별도 위험 신호가 없습니다.',
+        note: concerns[0] || item.ai_summary || '아직 별도 주의 신호가 없습니다.',
         sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
       },
       downtimeConcern: {
         level: staffPrecautions.length ? 'medium' : 'low',
-        note: staffPrecautions.join(' / ') || '직원 주의사항이 아직 없습니다.',
+        note: staffPrecautions.join(' / ') || '직원 확인사항이 아직 없습니다.',
         sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
       },
       scheduleDuration: {
@@ -411,7 +435,7 @@ function adaptMemoryItemToRecord(item) {
       },
       complaintRisk: {
         level: item.risk_level && item.risk_level !== 'none' ? item.risk_level : 'low',
-        note: riskFlags.map(flag => flag.detail || flag.description || flag.phrase).filter(Boolean).join(' / ') || '위험 신호 없음',
+        note: riskFlags.map(flag => flag.detail || flag.description || flag.phrase).filter(Boolean).join(' / ') || '주의 신호 없음',
         sessionRef: item.last_edited_at ? `직원 편집 ${item.last_edited_at.slice(0, 10)}` : null,
       },
     },
@@ -423,9 +447,10 @@ function adaptMemoryItemToRecord(item) {
       turns: item.session_count || 0,
       summary: [
         { cat: 'concern', text: item.ai_summary || '요약 없음' },
-        ...(staffPrecautions.length ? [{ cat: 'request', text: `직원 주의사항: ${staffPrecautions.join(', ')}` }] : []),
+        ...(staffPrecautions.length ? [{ cat: 'request', text: `직원 확인사항: ${staffPrecautions.join(', ')}` }] : []),
         ...(item.staff_notes ? [{ cat: 'history', text: `운영 메모: ${item.staff_notes}` }] : []),
       ],
+      corrections: extractTimelineCorrections(item.staff_notes),
       riskFlags: riskFlags.map(flag => ({
         level: (flag.severity || item.risk_level || 'medium').toUpperCase(),
         cat: flag.type || 'manual',
@@ -441,9 +466,9 @@ function adaptMemoryItemToRecord(item) {
 function sHead(label) {
   return (
     <div style={{
-      fontSize: 9, fontWeight: 800, letterSpacing: '0.10em',
-      textTransform: 'uppercase', color: C.textLight,
-      marginBottom: 14,
+      fontSize: 15, fontWeight: 950, letterSpacing: '-0.02em',
+      color: C.textMid,
+      marginBottom: 16,
     }}>
       {label}
     </div>
@@ -454,9 +479,9 @@ function LevelPill({ level }) {
   const c = LEVEL_CONFIG[level] || LEVEL_CONFIG.low;
   return (
     <span style={{
-      fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+      fontSize: 12, fontWeight: 850, letterSpacing: '0.01em',
       color: c.color, background: c.bg,
-      padding: '2px 7px', borderRadius: 5,
+      padding: '4px 9px', borderRadius: 8,
     }}>
       {c.label}
     </span>
@@ -469,21 +494,21 @@ function ContextCard({ icon: Icon, label, children, sessionRef, accent = C.mocha
     <div style={{
       background: C.surface,
       border: `1px solid ${C.border}`,
-      borderRadius: 12,
-      padding: '14px 16px',
-      display: 'flex', flexDirection: 'column', gap: 8,
+      borderRadius: 16,
+      padding: '18px 20px',
+      display: 'flex', flexDirection: 'column', gap: 12,
       boxShadow: '0 1px 6px rgba(1,69,242,0.05)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{
-          width: 24, height: 24, borderRadius: 7,
+          width: 34, height: 34, borderRadius: 11,
           background: `${accent}15`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
-          <Icon size={11} color={accent} strokeWidth={2} />
+          <Icon size={17} color={accent} strokeWidth={2.2} />
         </div>
-        <span style={{ fontSize: 10, fontWeight: 700, color: C.textMid, letterSpacing: '0.03em' }}>
+        <span style={{ fontSize: 15, fontWeight: 900, color: C.textMid, letterSpacing: '-0.02em' }}>
           {label}
         </span>
       </div>
@@ -491,7 +516,7 @@ function ContextCard({ icon: Icon, label, children, sessionRef, accent = C.mocha
         {children}
       </div>
       {sessionRef && (
-        <div style={{ fontSize: 9, color: C.textLight }}>
+        <div style={{ fontSize: 13, color: C.textLight, fontWeight: 750 }}>
           출처: {sessionRef}
         </div>
       )}
@@ -499,9 +524,111 @@ function ContextCard({ icon: Icon, label, children, sessionRef, accent = C.mocha
   );
 }
 
+function TimelineCorrectionPanel({ record, session, onCancel, onSaved }) {
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function saveTimelineCorrection() {
+    const trimmed = note.trim();
+    if (!trimmed) {
+      setError('정정 메모 내용을 입력해 주세요.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('로그인 세션을 확인할 수 없습니다.');
+      const res = await fetch(`/api/staff/memory/${encodeURIComponent(record.patient_id || record.id)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          staff_notes: buildTimelineCorrectionNotes(record._memory?.staff_notes || '', trimmed, session),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      onSaved?.(data.item);
+    } catch (err) {
+      setError(err.message || '정정 메모 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{
+      animation: 'tmFadeUp 0.18s ease both',
+      background: C.bg,
+      border: `1px solid ${C.borderMid}`,
+      borderRadius: 12,
+      padding: 12,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 9,
+      marginTop: 6,
+    }}>
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 950, color: C.text, marginBottom: 3 }}>
+          타임라인 정정 메모
+        </div>
+        <div style={{ fontSize: 12, color: C.textLight, lineHeight: 1.45, fontWeight: 700 }}>
+          원본 이력은 유지하고, 직원 확인용 정정 메모만 추가합니다.
+        </div>
+      </div>
+      <textarea
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        rows={3}
+        placeholder="예: 실제 상담일은 5월 7일이 아니라 5월 8일입니다. 환자 요청은 가격 비교가 아니라 회복 기간 확인이었습니다."
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          border: `1px solid ${C.border}`,
+          borderRadius: 10,
+          padding: '10px 12px',
+          fontSize: 14,
+          lineHeight: 1.6,
+          color: C.text,
+          background: C.surface,
+          fontFamily: C.F,
+          outline: 'none',
+        }}
+      />
+      {error && (
+        <div style={{ fontSize: 13, color: C.risk, fontWeight: 850 }}>
+          {error}
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 7 }}>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          style={{ border: `1px solid ${C.border}`, borderRadius: 9, background: C.surface, color: C.textMid, fontSize: 13, fontWeight: 850, padding: '8px 11px', cursor: 'pointer' }}
+        >
+          취소
+        </button>
+        <button
+          onClick={saveTimelineCorrection}
+          disabled={saving}
+          style={{ border: 'none', borderRadius: 9, background: C.mocha, color: '#fff', fontSize: 13, fontWeight: 950, padding: '8px 12px', cursor: saving ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <Save size={13} /> {saving ? '저장 중' : '정정 메모 저장'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── SessionCard ───────────────────────────────────────────────────────────────
-function SessionCard({ session, defaultOpen = false }) {
+function SessionCard({ session, defaultOpen = false, record, onMemorySaved }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [correcting, setCorrecting] = useState(false);
 
   const surfaceLabel = session.surface === 'room' ? `🏥 ${session.room}` : '💬 Tiki Talk';
   const hasRisk = session.riskFlags?.length > 0;
@@ -533,25 +660,25 @@ function SessionCard({ session, defaultOpen = false }) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>
+            <span style={{ fontSize: 16, fontWeight: 900, color: C.text }}>
               {session.date}
             </span>
             <span style={{
-              fontSize: 9, color: C.textMid,
-              background: C.bg, padding: '1px 7px', borderRadius: 5,
+              fontSize: 12, color: C.textMid, fontWeight: 800,
+              background: C.bg, padding: '3px 8px', borderRadius: 8,
             }}>
               {surfaceLabel}
             </span>
             {hasRisk && (
               <span style={{
-                fontSize: 9, fontWeight: 700, color: C.risk,
-                background: C.riskPale, padding: '1px 6px', borderRadius: 5,
+                fontSize: 12, fontWeight: 850, color: C.risk,
+                background: C.riskPale, padding: '3px 8px', borderRadius: 8,
               }}>
-                ⚠ 위험 감지
+                ⚠ 주의 신호
               </span>
             )}
           </div>
-          <span style={{ fontSize: 11, color: C.textLight }}>
+          <span style={{ fontSize: 13, color: C.textLight, fontWeight: 750 }}>
             {session.duration} · {session.turns}회 발화
           </span>
         </div>
@@ -574,14 +701,14 @@ function SessionCard({ session, defaultOpen = false }) {
             return (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 <span style={{
-                  fontSize: 9, fontWeight: 700,
+                  fontSize: 12, fontWeight: 850,
                   color: c.color, background: c.bg,
-                  padding: '2px 6px', borderRadius: 5,
+                  padding: '3px 8px', borderRadius: 7,
                   flexShrink: 0, marginTop: 1,
                 }}>
                   {c.label}
                 </span>
-                <span style={{ fontSize: 12, color: C.text, lineHeight: 1.55 }}>
+                <span style={{ fontSize: 14, color: C.text, lineHeight: 1.65, fontWeight: 650 }}>
                   {item.text}
                 </span>
               </div>
@@ -597,19 +724,77 @@ function SessionCard({ session, defaultOpen = false }) {
               padding: '8px 10px',
               display: 'flex', alignItems: 'flex-start', gap: 8,
             }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: C.risk, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 850, color: C.risk, flexShrink: 0 }}>
                 ⚠ {r.level}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: C.text, marginBottom: 2 }}>{r.phrase}</div>
+                <div style={{ fontSize: 14, color: C.text, marginBottom: 3, lineHeight: 1.55 }}>{r.phrase}</div>
                 {r.dismissed && (
-                  <div style={{ fontSize: 10, color: C.textMid }}>
+                  <div style={{ fontSize: 12, color: C.textMid, fontWeight: 750 }}>
                     확인: {r.dismissedBy} · {r.cat}
                   </div>
                 )}
               </div>
             </div>
           ))}
+
+          {session.corrections?.length > 0 && (
+            <div style={{
+              marginTop: 6,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}>
+              {session.corrections.map((correction, i) => (
+                <div key={i} style={{
+                  background: C.mochaPale,
+                  border: `1px solid ${C.borderMid}`,
+                  borderRadius: 10,
+                  padding: '9px 11px',
+                }}>
+                  <div style={{ fontSize: 12, color: C.mochaDark, fontWeight: 900, marginBottom: 4 }}>
+                    타임라인 정정 메모 · {correction.meta}
+                  </div>
+                  <div style={{ fontSize: 14, color: C.text, lineHeight: 1.55, fontWeight: 700 }}>
+                    {correction.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+            <button
+              onClick={() => setCorrecting(v => !v)}
+              style={{
+                border: `1px solid ${C.borderMid}`,
+                borderRadius: 9,
+                background: correcting ? C.mochaPale : C.surface,
+                color: C.mochaDark,
+                fontSize: 13,
+                fontWeight: 900,
+                padding: '7px 10px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Edit3 size={12} /> {correcting ? '정정 닫기' : '정정 메모 추가'}
+            </button>
+          </div>
+
+          {correcting && (
+            <TimelineCorrectionPanel
+              record={record}
+              session={session}
+              onCancel={() => setCorrecting(false)}
+              onSaved={(item) => {
+                setCorrecting(false);
+                onMemorySaved?.(item);
+              }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -796,14 +981,21 @@ function MemoryEditPanel({ record, onCancel, onSaved }) {
   const inputStyle = {
     width: '100%', boxSizing: 'border-box',
     border: `1px solid ${C.border}`,
-    borderRadius: 10,
-    padding: '10px 12px',
-    fontSize: 12,
-    lineHeight: 1.55,
+    borderRadius: 12,
+    padding: '12px 14px',
+    fontSize: 14,
+    lineHeight: 1.6,
     color: C.text,
     background: C.surface,
     fontFamily: C.F,
     outline: 'none',
+  };
+  const labelStyle = {
+    fontSize: 13,
+    fontWeight: 900,
+    color: C.textMid,
+    display: 'block',
+    marginBottom: 7,
   };
 
   return (
@@ -820,34 +1012,34 @@ function MemoryEditPanel({ record, onCancel, onSaved }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Edit3 size={16} color={C.mocha} />
         <div>
-          <h3 style={{ fontSize: 15, fontWeight: 900, color: C.text, margin: 0 }}>운영 기억 편집</h3>
-          <p style={{ fontSize: 11, color: C.textLight, margin: '3px 0 0' }}>
-            환자별 운영 기억만 정리합니다. CRM 원본 덤프나 전체 대화 원문은 저장하지 않습니다.
+          <h3 style={{ fontSize: 18, fontWeight: 950, color: C.text, margin: 0 }}>환자 케어 정보 수정</h3>
+          <p style={{ fontSize: 13, color: C.textLight, margin: '5px 0 0', lineHeight: 1.45 }}>
+            환자별 케어에 필요한 정보만 정리합니다. CRM 원본 덤프나 전체 대화 원문은 저장하지 않습니다.
           </p>
         </div>
       </div>
 
-      <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>요약</label>
+      <label style={labelStyle}>핵심 요약</label>
       <textarea value={summary} onChange={e => setSummary(e.target.value)} rows={4} style={inputStyle} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>관심 시술</label>
+          <label style={labelStyle}>관심 시술/상담 항목</label>
           <textarea value={interests} onChange={e => setInterests(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} placeholder={'리프팅\n보톡스'} />
         </div>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>주의사항</label>
+          <label style={labelStyle}>직원 확인사항</label>
           <textarea value={precautions} onChange={e => setPrecautions(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} placeholder={'통역 확인 필요\n통증 불안 높음'} />
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>환자 우려/걱정</label>
+          <label style={labelStyle}>환자 우려사항</label>
           <textarea value={concerns} onChange={e => setConcerns(e.target.value)} rows={4} style={{ ...inputStyle, marginTop: 6 }} />
         </div>
         <div>
-          <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>위험 신호</label>
+          <label style={labelStyle}>주의 신호</label>
           <select value={riskLevel} onChange={e => setRiskLevel(e.target.value)} style={{ ...inputStyle, marginTop: 6, height: 40 }}>
             <option value="none">없음</option>
             <option value="low">낮음</option>
@@ -858,10 +1050,10 @@ function MemoryEditPanel({ record, onCancel, onSaved }) {
         </div>
       </div>
 
-      <label style={{ fontSize: 11, fontWeight: 800, color: C.textMid }}>직원 메모</label>
+      <label style={labelStyle}>내부 메모</label>
       <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={inputStyle} />
 
-      {error && <div style={{ fontSize: 12, color: C.risk, fontWeight: 700 }}>{error}</div>}
+      {error && <div style={{ fontSize: 14, color: C.risk, fontWeight: 850 }}>{error}</div>}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button onClick={onCancel} disabled={saving} style={{ border: `1px solid ${C.border}`, borderRadius: 10, background: C.surface, color: C.textMid, fontWeight: 800, padding: '9px 14px', cursor: 'pointer' }}>
@@ -875,8 +1067,197 @@ function MemoryEditPanel({ record, onCancel, onSaved }) {
   );
 }
 
+function PatientContextEditPanel({ record, onCancel, onSaved }) {
+  const memory = record._memory || {};
+  const [interests, setInterests] = useState(joinLines(memory.procedure_interests));
+  const [painConcern, setPainConcern] = useState(joinLines(memory.concerns));
+  const [downtimeConcern, setDowntimeConcern] = useState(joinLines(memory.staff_precautions));
+  const [complaintLevel, setComplaintLevel] = useState(memory.risk_level || record.context.complaintRisk.level || 'none');
+  const [riskFlags, setRiskFlags] = useState(riskFlagsToText(memory.risk_flags));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function savePatientContext() {
+    setSaving(true);
+    setError('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) throw new Error('로그인 세션을 확인할 수 없습니다.');
+      const res = await fetch(`/api/staff/memory/${encodeURIComponent(record.patient_id || record.id)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          procedure_interests: splitLines(interests),
+          concerns: splitLines(painConcern),
+          staff_precautions: splitLines(downtimeConcern),
+          risk_level: complaintLevel,
+          risk_flags: parseRiskFlags(riskFlags),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      onSaved?.(data.item);
+    } catch (err) {
+      setError(err.message || '환자 파악 정보 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputStyle = {
+    width: '100%',
+    boxSizing: 'border-box',
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    padding: '12px 14px',
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: C.text,
+    background: C.surface,
+    fontFamily: C.F,
+    outline: 'none',
+  };
+  const labelStyle = {
+    fontSize: 13,
+    fontWeight: 900,
+    color: C.textMid,
+    display: 'block',
+    marginBottom: 7,
+  };
+
+  return (
+    <div style={{
+      animation: 'tmFadeUp 0.22s ease both',
+      background: 'linear-gradient(135deg, #FFFFFF 0%, #F6FAFF 100%)',
+      border: `1px solid ${C.borderMid}`,
+      borderRadius: 18,
+      padding: 18,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14,
+      boxShadow: '0 16px 34px rgba(1,69,242,0.10)',
+      marginBottom: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{
+          width: 34,
+          height: 34,
+          borderRadius: 11,
+          background: C.mochaPale,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Edit3 size={16} color={C.mocha} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: 18, fontWeight: 950, color: C.text, margin: 0 }}>
+            환자 파악 정보 수정
+          </h3>
+          <p style={{ fontSize: 13, color: C.textLight, margin: '5px 0 0', lineHeight: 1.55 }}>
+            화면에서 바로 판단해야 하는 환자 요지만 정리합니다. 상담·방문 이력은 원본 기록이라 여기서 수정하지 않습니다.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <label style={labelStyle}>관심 시술/상담 항목</label>
+          <textarea
+            value={interests}
+            onChange={e => setInterests(e.target.value)}
+            rows={4}
+            style={inputStyle}
+            placeholder={'필러\n리프팅'}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>통증 민감도 / 환자 우려</label>
+          <textarea
+            value={painConcern}
+            onChange={e => setPainConcern(e.target.value)}
+            rows={4}
+            style={inputStyle}
+            placeholder={'통증 불안 높음\n가격 비교 문의'}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div>
+          <label style={labelStyle}>회복 기간 우려 / 직원 확인사항</label>
+          <textarea
+            value={downtimeConcern}
+            onChange={e => setDowntimeConcern(e.target.value)}
+            rows={4}
+            style={inputStyle}
+            placeholder={'출국 전 붓기 설명 필요\n통역 확인 필요'}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>컴플레인 가능성</label>
+          <select
+            value={complaintLevel}
+            onChange={e => setComplaintLevel(e.target.value)}
+            style={{ ...inputStyle, height: 44 }}
+          >
+            <option value="none">없음</option>
+            <option value="low">낮음</option>
+            <option value="medium">주의</option>
+            <option value="high">높음</option>
+          </select>
+          <textarea
+            value={riskFlags}
+            onChange={e => setRiskFlags(e.target.value)}
+            rows={3}
+            style={{ ...inputStyle, marginTop: 8 }}
+            placeholder={'medium | expectation | 회복 기간 기대치 조정 필요'}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <div style={{
+          fontSize: 14,
+          color: C.risk,
+          fontWeight: 850,
+          background: C.riskPale,
+          border: `1px solid ${C.riskBorder}`,
+          borderRadius: 12,
+          padding: '10px 12px',
+        }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          style={{ border: `1px solid ${C.border}`, borderRadius: 11, background: C.surface, color: C.textMid, fontWeight: 850, padding: '10px 15px', cursor: 'pointer' }}
+        >
+          취소
+        </button>
+        <button
+          onClick={savePatientContext}
+          disabled={saving}
+          style={{ border: 'none', borderRadius: 11, background: C.mocha, color: '#fff', fontWeight: 950, padding: '10px 16px', cursor: saving ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 7, boxShadow: '0 10px 22px rgba(1,69,242,0.20)' }}
+        >
+          <Save size={14} /> {saving ? '저장 중' : '환자 파악 정보 저장'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MemoryDetail({ record, onMemorySaved }) {
   const [editing, setEditing] = useState(false);
+  const [contextEditing, setContextEditing] = useState(false);
   const allRisks = record.sessions.flatMap(s =>
     (s.riskFlags || []).map(r => ({ ...r, sessionDate: s.date, sessionSurface: s.surface }))
   );
@@ -909,26 +1290,26 @@ function MemoryDetail({ record, onMemorySaved }) {
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: C.text, margin: 0 }}>
+              <h2 style={{ fontSize: 22, fontWeight: 950, color: C.text, margin: 0, letterSpacing: '-0.03em' }}>
                 {record.name}
               </h2>
               {record.nameOrig && (
-                <span style={{ fontSize: 13, color: C.textMid }}>{record.nameOrig}</span>
+                <span style={{ fontSize: 15, color: C.textMid, fontWeight: 750 }}>{record.nameOrig}</span>
               )}
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
               <span style={{
-                fontSize: 11, fontWeight: 600, color: LANG_COLOR[record.lang] || C.mocha,
+                fontSize: 13, fontWeight: 850, color: LANG_COLOR[record.lang] || C.mocha,
                 background: `${LANG_COLOR[record.lang] || C.mocha}12`,
-                padding: '2px 9px', borderRadius: 6,
+                padding: '4px 10px', borderRadius: 8,
               }}>
                 {record.langLabel}
               </span>
-              <span style={{ fontSize: 11, color: C.textMid }}>
+              <span style={{ fontSize: 13, color: C.textMid, fontWeight: 750 }}>
                 {record.country} · {record.city}
               </span>
               {record.age && (
-                <span style={{ fontSize: 11, color: C.textLight }}>{record.age}세</span>
+                <span style={{ fontSize: 13, color: C.textLight, fontWeight: 750 }}>{record.age}세</span>
               )}
             </div>
           </div>
@@ -945,7 +1326,7 @@ function MemoryDetail({ record, onMemorySaved }) {
                 }}>
                   {stat.value}
                 </div>
-                <div style={{ fontSize: 10, color: C.textLight, marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: C.textLight, marginTop: 4, fontWeight: 800 }}>
                   {stat.label}
                 </div>
               </div>
@@ -961,7 +1342,7 @@ function MemoryDetail({ record, onMemorySaved }) {
               borderRadius: 10,
               background: editing ? C.mochaPale : C.surface,
               color: C.mochaDark,
-              fontSize: 12,
+              fontSize: 14,
               fontWeight: 900,
               padding: '8px 12px',
               cursor: 'pointer',
@@ -970,7 +1351,7 @@ function MemoryDetail({ record, onMemorySaved }) {
               gap: 6,
             }}
           >
-            <Edit3 size={13} /> {editing ? '편집 닫기' : '운영 기억 편집'}
+            <Edit3 size={13} /> {editing ? '편집 닫기' : '환자 케어 정보 수정'}
           </button>
         </div>
 
@@ -982,21 +1363,21 @@ function MemoryDetail({ record, onMemorySaved }) {
           flexWrap: 'wrap',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Calendar size={11} color={C.textLight} />
-            <span style={{ fontSize: 11, color: C.textMid }}>
+            <Calendar size={14} color={C.textLight} />
+            <span style={{ fontSize: 13, color: C.textMid, fontWeight: 750 }}>
               {record.context.scheduleDuration.stay}
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Clock size={11} color={C.textLight} />
-            <span style={{ fontSize: 11, color: C.textMid }}>
+            <Clock size={14} color={C.textLight} />
+            <span style={{ fontSize: 13, color: C.textMid, fontWeight: 750 }}>
               출국: {record.context.scheduleDuration.departure}
             </span>
           </div>
           {record.context.scheduleDuration.constraint && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AlertTriangle size={11} color={C.warn} />
-              <span style={{ fontSize: 11, color: C.warn, fontWeight: 600 }}>
+              <AlertTriangle size={14} color={C.warn} />
+              <span style={{ fontSize: 13, color: C.warn, fontWeight: 850 }}>
                 {record.context.scheduleDuration.constraint}
               </span>
             </div>
@@ -1017,7 +1398,50 @@ function MemoryDetail({ record, onMemorySaved }) {
 
       {/* ── Context cards grid ── */}
       <div>
-        {sHead('추출 컨텍스트')}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 12,
+        }}>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 950,
+            color: C.textMid,
+            letterSpacing: '-0.01em',
+          }}>
+            환자 파악 정보
+          </div>
+          <button
+            onClick={() => setContextEditing(v => !v)}
+            style={{
+              border: `1px solid ${C.borderMid}`,
+              borderRadius: 10,
+              background: contextEditing ? C.mochaPale : C.surface,
+              color: C.mochaDark,
+              fontSize: 13,
+              fontWeight: 900,
+              padding: '7px 11px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Edit3 size={13} /> {contextEditing ? '수정 닫기' : '일부 수정'}
+          </button>
+        </div>
+        {contextEditing && (
+          <PatientContextEditPanel
+            record={record}
+            onCancel={() => setContextEditing(false)}
+            onSaved={(item) => {
+              setContextEditing(false);
+              onMemorySaved?.(item);
+            }}
+          />
+        )}
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr',
           gap: 12,
@@ -1031,25 +1455,25 @@ function MemoryDetail({ record, onMemorySaved }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 20 }}>{record.flag}</span>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>
                   {record.langLabel}
                 </div>
-                <div style={{ fontSize: 11, color: C.textMid }}>{record.country}</div>
+                <div style={{ fontSize: 13, color: C.textMid, fontWeight: 750, marginTop: 3 }}>{record.country}</div>
               </div>
             </div>
           </ContextCard>
 
           {/* 2 — Procedure interests */}
           <ContextCard
-            icon={Stethoscope} label="시술 관심사"
+            icon={Stethoscope} label="관심 시술/상담 항목"
             sessionRef={record.context.procedureInterests.sessionRef}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
               {record.context.procedureInterests.values.map((v, i) => (
                 <span key={i} style={{
-                  fontSize: 11, color: C.mochaDark,
+                  fontSize: 13, color: C.mochaDark,
                   background: C.mochaPale,
-                  padding: '3px 9px', borderRadius: 7, fontWeight: 500,
+                  padding: '5px 10px', borderRadius: 9, fontWeight: 850,
                 }}>
                   {v}
                 </span>
@@ -1066,21 +1490,21 @@ function MemoryDetail({ record, onMemorySaved }) {
             <div style={{ marginBottom: 6 }}>
               <LevelPill level={record.context.painSensitivity.level} />
             </div>
-            <p style={{ fontSize: 12, color: C.textMid, lineHeight: 1.55, margin: 0 }}>
+            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65, margin: 0, fontWeight: 650 }}>
               {record.context.painSensitivity.note}
             </p>
           </ContextCard>
 
           {/* 4 — Downtime concern */}
           <ContextCard
-            icon={Clock} label="다운타임 우려"
+            icon={Clock} label="회복 기간 우려"
             sessionRef={record.context.downtimeConcern.sessionRef}
             accent={LEVEL_CONFIG[record.context.downtimeConcern.level]?.color || C.mocha}
           >
             <div style={{ marginBottom: 6 }}>
               <LevelPill level={record.context.downtimeConcern.level} />
             </div>
-            <p style={{ fontSize: 12, color: C.textMid, lineHeight: 1.55, margin: 0 }}>
+            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65, margin: 0, fontWeight: 650 }}>
               {record.context.downtimeConcern.note}
             </p>
           </ContextCard>
@@ -1091,16 +1515,16 @@ function MemoryDetail({ record, onMemorySaved }) {
             sessionRef={record.context.scheduleDuration.sessionRef}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>
                 {record.context.scheduleDuration.stay}
               </div>
-              <div style={{ fontSize: 11, color: C.textMid }}>
+              <div style={{ fontSize: 13, color: C.textMid, fontWeight: 750 }}>
                 출국: {record.context.scheduleDuration.departure}
               </div>
               {record.context.scheduleDuration.constraint && (
                 <div style={{
-                  fontSize: 11, fontWeight: 600, color: C.warn,
-                  background: C.warnPale, padding: '3px 8px', borderRadius: 6, marginTop: 2,
+                  fontSize: 13, fontWeight: 850, color: C.warn,
+                  background: C.warnPale, padding: '5px 10px', borderRadius: 8, marginTop: 2,
                 }}>
                   {record.context.scheduleDuration.constraint}
                 </div>
@@ -1110,14 +1534,14 @@ function MemoryDetail({ record, onMemorySaved }) {
 
           {/* 6 — Complaint risk */}
           <ContextCard
-            icon={Shield} label="컴플레인 위험도"
+            icon={Shield} label="컴플레인 가능성"
             sessionRef={record.context.complaintRisk.sessionRef}
             accent={RISK_LEVEL_CONFIG[record.context.complaintRisk.level]?.color || C.sage}
           >
             <div style={{ marginBottom: 6 }}>
               <LevelPill level={record.context.complaintRisk.level} />
             </div>
-            <p style={{ fontSize: 12, color: C.textMid, lineHeight: 1.55, margin: 0 }}>
+            <p style={{ fontSize: 14, color: C.textMid, lineHeight: 1.65, margin: 0, fontWeight: 650 }}>
               {record.context.complaintRisk.note}
             </p>
           </ContextCard>
@@ -1126,10 +1550,16 @@ function MemoryDetail({ record, onMemorySaved }) {
 
       {/* ── Conversation timeline ── */}
       <div>
-        {sHead('대화 타임라인')}
+        {sHead('상담·방문 이력')}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {record.sessions.map((s, i) => (
-            <SessionCard key={s.id} session={s} defaultOpen={i === 0} />
+            <SessionCard
+              key={s.id}
+              session={s}
+              defaultOpen={i === 0}
+              record={record}
+              onMemorySaved={onMemorySaved}
+            />
           ))}
         </div>
       </div>
@@ -1137,7 +1567,7 @@ function MemoryDetail({ record, onMemorySaved }) {
       {/* ── Risk history ── */}
       {allRisks.length > 0 && (
         <div>
-          {sHead('위험 이력')}
+          {sHead('주의 신호 이력')}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {allRisks.map((r, i) => (
               <div key={i} style={{
@@ -1158,25 +1588,25 @@ function MemoryDetail({ record, onMemorySaved }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: C.risk }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: C.risk }}>
                       {r.level}
                     </span>
                     <span style={{
-                      fontSize: 9, color: C.textMid,
+                      fontSize: 12, color: C.textMid, fontWeight: 800,
                       background: 'rgba(0,0,0,0.05)',
-                      padding: '1px 6px', borderRadius: 4,
+                      padding: '3px 8px', borderRadius: 7,
                     }}>
                       {r.cat}
                     </span>
-                    <span style={{ fontSize: 10, color: C.textLight, marginLeft: 'auto' }}>
+                    <span style={{ fontSize: 12, color: C.textLight, marginLeft: 'auto', fontWeight: 750 }}>
                       {r.sessionDate}
                     </span>
                   </div>
-                  <p style={{ fontSize: 12, color: C.text, margin: '0 0 4px' }}>
+                  <p style={{ fontSize: 14, color: C.text, margin: '0 0 5px', lineHeight: 1.6 }}>
                     {r.phrase}
                   </p>
                   {r.dismissed && (
-                    <span style={{ fontSize: 10, color: C.sage }}>
+                    <span style={{ fontSize: 12, color: C.sage, fontWeight: 850 }}>
                       ✓ 확인됨 — {r.dismissedBy}
                     </span>
                   )}
@@ -1215,8 +1645,8 @@ function EmptyDetail() {
         <p style={{ fontSize: 14, fontWeight: 600, color: C.textMid, margin: '0 0 5px' }}>
           환자를 선택하세요
         </p>
-        <p style={{ fontSize: 12, color: C.textLight, margin: 0 }}>
-          대화에서 추출된 컨텍스트가 표시됩니다
+        <p style={{ fontSize: 13, color: C.textLight, margin: 0 }}>
+          환자 파악 정보와 상담·방문 이력이 표시됩니다
         </p>
       </div>
     </div>

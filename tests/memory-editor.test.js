@@ -67,7 +67,43 @@ test("staff Memory edit API is admin-gated, clinic-scoped, and audit-backed", ()
 test("Tiki Memory UI loads real Memory and exposes direct edit controls", () => {
   assert.match(memoryUiSource, /\/api\/staff\/memory/);
   assert.match(memoryUiSource, /MemoryEditPanel/);
-  assert.match(memoryUiSource, /운영 기억 편집/);
+  assert.match(memoryUiSource, /환자 케어 정보 수정/);
   assert.match(memoryUiSource, /staff_precautions/);
   assert.match(memoryUiSource, /staff_notes/);
+});
+
+test("Tiki Memory UI uses clinic-grade Korean labels for patient context", () => {
+  assert.match(memoryUiSource, /환자 케어 정보 수정/);
+  assert.match(memoryUiSource, /환자 파악 정보/);
+  assert.match(memoryUiSource, /상담·방문 이력/);
+  assert.match(memoryUiSource, /컴플레인 가능성/);
+  assert.doesNotMatch(memoryUiSource, /추출 컨텍스트/);
+  assert.doesNotMatch(memoryUiSource, /대화 타임라인/);
+  assert.doesNotMatch(memoryUiSource, /컴플레인 위험도/);
+});
+
+test("Tiki Memory edit panel starts from a more readable staff type scale", () => {
+  assert.match(memoryUiSource, /fontSize:\s*14,[\s\S]*lineHeight:\s*1\.6/);
+  assert.match(memoryUiSource, /labelStyle/);
+  assert.doesNotMatch(memoryUiSource, /fontSize:\s*11,\s*fontWeight:\s*800/);
+});
+
+test("Tiki Memory patient context cards expose a narrow edit flow without timeline mutation", () => {
+  assert.match(memoryUiSource, /PatientContextEditPanel/);
+  assert.match(memoryUiSource, /환자 파악 정보 수정/);
+  assert.match(memoryUiSource, /savePatientContext/);
+  assert.match(memoryUiSource, /procedure_interests/);
+  assert.match(memoryUiSource, /staff_precautions/);
+  assert.match(memoryUiSource, /risk_flags/);
+  assert.doesNotMatch(memoryUiSource, /timeline:\s*splitLines/);
+});
+
+test("Tiki Memory timeline correction adds staff notes without mutating timeline items", () => {
+  assert.match(memoryUiSource, /TimelineCorrectionPanel/);
+  assert.match(memoryUiSource, /타임라인 정정 메모/);
+  assert.match(memoryUiSource, /saveTimelineCorrection/);
+  assert.match(memoryUiSource, /buildTimelineCorrectionNotes/);
+  assert.match(memoryUiSource, /staff_notes:\s*buildTimelineCorrectionNotes/);
+  assert.doesNotMatch(memoryUiSource, /session\.summary\s*=/);
+  assert.doesNotMatch(memoryUiSource, /sessions:\s*splitLines/);
 });

@@ -2,14 +2,14 @@
  * Sidebar.jsx — 병원/직원용 메인 내비게이션
  *
  * 상단 2개: 티키 Paste | 티키 Room (외부 탭)
- * 중단:     티키 데스크 → 메모리 → 프로토콜 → 시술 관리 → 통계
+ * 중단:     티키 데스크 → 환자 케어 → 메모리 → 프로토콜 → 시술 관리 → 통계
  * 하단:     설정 + 사용자 정보
  *
  * 크기 기준: 아이콘 24-28px, 라벨 15-16px, 사이드바 폭 208px
  */
 
 import { BarChart3, Settings, Shield, Stethoscope, Sparkles, Brain,
-  BookOpen, Monitor, Users, Layers } from 'lucide-react';
+  BookOpen, Monitor, Users, Layers, HeartPulse } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -30,6 +30,14 @@ const NAV_ITEMS = [
     icon:          Users,
     label:         '티키 데스크',
     sublabel:      '운영 현황',
+    requiredRoles: ['owner', 'admin'],
+    accent:        MOCHA,
+  },
+  {
+    id:            'patient_care',
+    icon:          HeartPulse,
+    label:         '환자 케어',
+    sublabel:      '확인·사후관리',
     requiredRoles: ['owner', 'admin'],
     accent:        MOCHA,
   },
