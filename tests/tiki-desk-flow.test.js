@@ -4,9 +4,17 @@ import {
   buildVisitStatusBadges,
   buildTikiDeskCounts,
   buildTikiDeskFlow,
+  buildMyTikiStatusSummary,
+  getDeskPrimaryCta,
   getDeskNextAction,
   sortNextActionVisits,
 } from "../client/src/lib/tikiDeskFlow.js";
+import { readFileSync } from "node:fs";
+
+const tikiDeskSource = readFileSync(
+  new URL("../client/src/components/mytiki/MyTikiTab.jsx", import.meta.url),
+  "utf8",
+);
 
 const base = {
   id: "v0",
@@ -97,4 +105,64 @@ test("buildTikiDeskCounts tracks attention, forms, and room-ready counts for the
   assert.equal(counts.roomReady, 1);
   assert.equal(counts.linkNeeded, 0);
   assert.equal(counts.inRoom, 0);
+});
+
+test("Tiki Desk command board keeps only today tasks, My Tiki status, and room status on the main surface", () => {
+  assert.match(tikiDeskSource, /오늘 할 일/);
+  assert.match(tikiDeskSource, /My Tiki 상태/);
+  assert.match(tikiDeskSource, /룸 상태/);
+  assert.match(tikiDeskSource, /openDedicatedSurface/);
+  assert.doesNotMatch(tikiDeskSource, /환자 질문이 운영 task로 전환된 항목/);
+  assert.doesNotMatch(tikiDeskSource, /사후관리 체크인, 위험 신호, 리턴 가능 상태를 운영 task로 확인합니다/);
+});
+
+test("Tiki Desk next-action cards expose a concrete primary CTA per operational state", () => {
+  assert.deepEqual(getDeskPrimaryCta({ key: "send_link" }), {
+    type: "generate_link",
+    label: "My Tiki 링크 발급",
+    helper: "환자에게 보낼 링크를 만듭니다",
+  });
+  assert.deepEqual(getDeskPrimaryCta({ key: "confirm_arrival" }), {
+    type: "check_in",
+    label: "도착 확인",
+    helper: "체크인으로 처리합니다",
+  });
+  assert.deepEqual(getDeskPrimaryCta({ key: "send_to_room" }), {
+    type: "assign_room",
+    label: "빈 룸 배정",
+    helper: "바로 배정 가능한 첫 방으로 보냅니다",
+  });
+});
+
+test("Tiki Desk today cards wire direct actions instead of passive-only rows", () => {
+  assert.match(tikiDeskSource, /onPrimaryAction/);
+  assert.match(tikiDeskSource, /handleDeskPrimaryAction/);
+  assert.match(tikiDeskSource, /copy_my_tiki_link/);
+  assert.match(tikiDeskSource, /assign_room/);
+});
+
+test("buildMyTikiStatusSummary groups patients by link and form state", () => {
+  const summary = buildMyTikiStatusSummary([
+    { ...base, id: "needs-link", link_status: "none", intake_done: false, consent_done: false },
+    { ...base, id: "active-link", link_status: "active", intake_done: true, consent_done: false },
+    { ...base, id: "opened", link_status: "opened", intake_done: true, consent_done: true },
+  ]);
+
+  assert.deepEqual(summary.map((group) => [group.key, group.count]), [
+    ["link_needed", 1],
+    ["link_active", 1],
+    ["link_opened", 1],
+    ["intake_done", 2],
+    ["consent_needed", 2],
+  ]);
+  assert.equal(summary[0].patients[0].id, "needs-link");
+});
+
+test("Tiki Desk exposes a My Tiki patient-level drilldown", () => {
+  assert.match(tikiDeskSource, /MyTikiStatusDrilldown/);
+  assert.match(tikiDeskSource, /selectedMyTikiGroup/);
+  assert.match(tikiDeskSource, /링크 발급됨/);
+  assert.match(tikiDeskSource, /열람됨/);
+  assert.match(tikiDeskSource, /문진 완료/);
+  assert.match(tikiDeskSource, /동의 필요/);
 });

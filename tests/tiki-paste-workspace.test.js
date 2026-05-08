@@ -51,7 +51,15 @@ test("TikiPaste patient matching is staff-gated and clinic-scoped", () => {
   assert.match(serverSource, /buildPatientMatchSignals/);
   assert.match(serverSource, /rankPatientMatches/);
   assert.match(serverSource, /\.eq\("clinic_id", req\.clinic_id\)/);
+  assert.match(serverSource, /\.from\("visits"\)[\s\S]{0,220}\.in\("patient_id", patientIds\)/);
   assert.match(tikiPasteSource, /\/api\/patients\/match-candidates/);
+});
+
+test("TikiPaste explains match evidence and safe next action", () => {
+  assert.match(tikiPasteSource, /강한 후보/);
+  assert.match(tikiPasteSource, /점/);
+  assert.match(tikiPasteSource, /새 환자 저장 판단/);
+  assert.match(tikiPasteSource, /전화·핸들·이름 순서·생년·방문일/);
 });
 
 test("/api/conversation-intakes is staff-gated and scoped to authenticated clinic", () => {

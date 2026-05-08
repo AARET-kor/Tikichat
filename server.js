@@ -101,6 +101,7 @@ import {
 import { validateClinicRulePatch } from "./src/lib/clinic-rule-config-validate.js";
 import { buildAuditHistoryResponse, normalizeAuditHistoryLimit } from "./src/lib/audit-history.js";
 import { buildConversationIntakeConversionPlan, buildConversationIntakeInsert } from "./src/lib/conversation-intake.js";
+import { normalizeCsvAliasProfiles, validateCsvAliasProfilePatch } from "./src/lib/csv-import-config.js";
 import { buildCsvImportMemoryUpserts, partitionDuplicateImportVisits } from "./src/lib/csv-import.js";
 import { buildExternalRefsFromImportRow, hasExternalRefs, normalizeExternalRefs } from "./src/lib/external-refs.js";
 import { buildImportBatchInsert, buildImportRowInserts, buildIntakeQueueResponse } from "./src/lib/intake-queue.js";
@@ -2264,7 +2265,29 @@ app.post("/api/patients/match-candidates", requireStaffAuth, async (req, res) =>
       if (row?.id && !byId.has(row.id)) byId.set(row.id, row);
     }
 
-    const candidates = rankPatientMatches({ signals, candidates: [...byId.values()] }).slice(0, 5);
+    const patientsForMatching = [...byId.values()];
+    const patientIds = patientsForMatching.map((patient) => patient.id).filter(Boolean);
+    if (patientIds.length) {
+      const { data: recentVisits, error: visitError } = await sb
+        .from("visits")
+        .select("patient_id, visit_date")
+        .eq("clinic_id", req.clinic_id)
+        .in("patient_id", patientIds)
+        .order("visit_date", { ascending: false })
+        .limit(160);
+      if (visitError) throw visitError;
+      const visitsByPatient = new Map();
+      for (const visit of recentVisits || []) {
+        const list = visitsByPatient.get(visit.patient_id) || [];
+        if (list.length < 5) list.push({ visit_date: visit.visit_date });
+        visitsByPatient.set(visit.patient_id, list);
+      }
+      for (const patient of patientsForMatching) {
+        patient.recent_visits = visitsByPatient.get(patient.id) || [];
+      }
+    }
+
+    const candidates = rankPatientMatches({ signals, candidates: patientsForMatching }).slice(0, 5);
     res.json({
       signals,
       candidates,
@@ -2740,6 +2763,122 @@ app.patch("/api/staff/clinic-rule-config", requireStaffAuth, requireRole("owner"
     if (status >= 500) {
       console.error("[clinic-rule-config:patch]", err.message);
     }
+    return res.status(status).json({ error: err.message });
+  }
+});
+
+app.get("/api/staff/csv-import-config", requireStaffAuth, async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { data, error } = await sb
+      .from("integration_profiles")
+      .select("id, system_name, system_label, import_format")
+      .eq("clinic_id", clinic_id)
+      .eq("is_active", true)
+      .in("mode", ["csv", "manual", "copy_paste"])
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      if (error.code === "42P01") {
+        return res.json({ ok: true, profiles: [], storage_available: false });
+      }
+      throw error;
+    }
+
+    return res.json({
+      ok: true,
+      profiles: normalizeCsvAliasProfiles(data || []),
+      storage_available: true,
+    });
+  } catch (err) {
+    console.error("[csv-import-config:get]", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch("/api/staff/csv-import-config", requireStaffAuth, requireRole("owner", "admin"), async (req, res) => {
+  const clinic_id = req.clinic_id;
+  const actor_user_id = req.staff_user_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const patch = validateCsvAliasProfilePatch(req.body || {});
+
+    const { data: existing, error: existingError } = await sb
+      .from("integration_profiles")
+      .select("id, import_format")
+      .eq("clinic_id", clinic_id)
+      .eq("system_name", patch.system_name)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (existingError && existingError.code !== "42P01") throw existingError;
+    if (existingError?.code === "42P01") {
+      return res.status(503).json({ error: "integration_profiles table is not available" });
+    }
+
+    const nextImportFormat = {
+      ...(existing?.import_format || {}),
+      ...patch.import_format,
+      updated_at: new Date().toISOString(),
+    };
+
+    const query = existing?.id
+      ? sb
+          .from("integration_profiles")
+          .update({
+            system_label: patch.system_label,
+            mode: patch.mode,
+            import_format: nextImportFormat,
+            updated_by: actor_user_id,
+          })
+          .eq("id", existing.id)
+      : sb
+          .from("integration_profiles")
+          .insert({
+            clinic_id,
+            system_name: patch.system_name,
+            system_label: patch.system_label,
+            mode: patch.mode,
+            import_format: nextImportFormat,
+            export_format: {},
+            matching_rules: {},
+            is_active: true,
+            created_by: actor_user_id,
+            updated_by: actor_user_id,
+          });
+
+    const { data: saved, error: saveError } = await query
+      .select("id, system_name, system_label, import_format")
+      .single();
+
+    if (saveError) throw saveError;
+
+    await writeAuditLog({
+      eventType: "csv_import_alias_config_updated",
+      clinicId: clinic_id,
+      channel: "dashboard",
+      direction: "internal",
+      status: "success",
+      intent: "csv_import_config",
+      errorMessage: JSON.stringify({
+        actor_user_id,
+        system_name: patch.system_name,
+        fields: Object.keys(patch.import_format.csv_aliases || {}),
+      }),
+    });
+
+    return res.json({
+      ok: true,
+      profile: normalizeCsvAliasProfiles([saved])[0],
+    });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) console.error("[csv-import-config:patch]", err.message);
     return res.status(status).json({ error: err.message });
   }
 });

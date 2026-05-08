@@ -76,6 +76,51 @@ export function getDeskNextAction(visit = {}) {
   };
 }
 
+export function getDeskPrimaryCta(action = {}, visit = {}) {
+  if (["active", "sent", "opened"].includes(visit.link_status) && visit.link?.url) {
+    return {
+      type: "copy_my_tiki_link",
+      label: "링크 복사",
+      helper: "이미 발급된 My Tiki 링크를 복사합니다",
+    };
+  }
+
+  const actionKey = action.key || action;
+  const ctas = {
+    send_link: {
+      type: "generate_link",
+      label: "My Tiki 링크 발급",
+      helper: "환자에게 보낼 링크를 만듭니다",
+    },
+    confirm_arrival: {
+      type: "check_in",
+      label: "도착 확인",
+      helper: "체크인으로 처리합니다",
+    },
+    complete_forms: {
+      type: "focus_visit",
+      label: "서류 확인",
+      helper: "방문 행에서 문진·동의 상태를 확인합니다",
+    },
+    send_to_room: {
+      type: "assign_room",
+      label: "빈 룸 배정",
+      helper: "바로 배정 가능한 첫 방으로 보냅니다",
+    },
+    in_room: {
+      type: "open_room",
+      label: "Tiki Room 열기",
+      helper: "진료실 화면에서 이어서 처리합니다",
+    },
+  };
+
+  return ctas[actionKey] || {
+    type: "focus_visit",
+    label: "방문 확인",
+    helper: "방문 행으로 이동합니다",
+  };
+}
+
 export function sortBookedVisits(visits = []) {
   return [...visits].sort((a, b) => timeValue(a.visit_date) - timeValue(b.visit_date));
 }
@@ -181,4 +226,55 @@ export function buildVisitStatusBadges(visit = {}) {
       helper: visit.followup_done ? "사후관리 완료" : aftercareActive ? "사후관리 진행" : "시술 후 확인",
     },
   ];
+}
+
+export function buildMyTikiStatusSummary(visits = []) {
+  const groups = [
+    {
+      key: "link_needed",
+      label: "링크 필요",
+      helper: "아직 My Tiki 링크가 없습니다",
+      patients: [],
+    },
+    {
+      key: "link_active",
+      label: "링크 발급됨",
+      helper: "환자에게 전달할 수 있습니다",
+      patients: [],
+    },
+    {
+      key: "link_opened",
+      label: "열람됨",
+      helper: "환자가 My Tiki를 열었습니다",
+      patients: [],
+    },
+    {
+      key: "intake_done",
+      label: "문진 완료",
+      helper: "문진표 제출이 끝났습니다",
+      patients: [],
+    },
+    {
+      key: "consent_needed",
+      label: "동의 필요",
+      helper: "동의서 확인이 남았습니다",
+      patients: [],
+    },
+  ];
+  const byKey = Object.fromEntries(groups.map((group) => [group.key, group]));
+
+  for (const visit of visits) {
+    const status = visit.link_status || "none";
+    if (status === "opened") byKey.link_opened.patients.push(visit);
+    else if (["active", "sent"].includes(status)) byKey.link_active.patients.push(visit);
+    else byKey.link_needed.patients.push(visit);
+
+    if (visit.intake_done) byKey.intake_done.patients.push(visit);
+    if (!visit.consent_done) byKey.consent_needed.patients.push(visit);
+  }
+
+  return groups.map((group) => ({
+    ...group,
+    count: group.patients.length,
+  }));
 }

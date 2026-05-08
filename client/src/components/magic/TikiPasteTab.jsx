@@ -83,6 +83,34 @@ function missingFieldLabel(field) {
   return labels[field] || String(field || '').replaceAll('_', ' ');
 }
 
+function matchConfidenceLabel(confidence) {
+  if (confidence === 'high') return '강한 후보';
+  if (confidence === 'medium') return '확인 필요';
+  if (confidence === 'low') return '약한 후보';
+  return '참고 후보';
+}
+
+function matchConfidenceColor(confidence) {
+  if (confidence === 'high') return C.sage;
+  if (confidence === 'medium') return C.gold;
+  if (confidence === 'low') return C.red;
+  return C.textMt;
+}
+
+function newPatientSafetyText(matches = [], missingFields = []) {
+  const top = matches[0];
+  if (top?.confidence === 'high') {
+    return '강한 기존 환자 후보가 있습니다. 새 환자로 저장하기 전 중복 생성 여부를 먼저 확인하세요.';
+  }
+  if (top?.confidence === 'medium') {
+    return '일부 정보가 겹치는 기존 환자가 있습니다. 이름·연락처 확인 후 새 환자 등록을 결정하세요.';
+  }
+  if (missingFields.length) {
+    return `새 환자 등록은 가능하지만 ${missingFields.map(missingFieldLabel).join(', ')} 확인이 필요합니다.`;
+  }
+  return '강한 기존 환자 후보가 없어 새 환자로 저장해도 비교적 안전합니다.';
+}
+
 // ── CSS keyframes ─────────────────────────────────────────────────────────────
 const GLOBAL_STYLE = `
   @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
@@ -1193,6 +1221,8 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
   const candidate = result?.patient_candidate || {};
   const visitCandidate = result?.visit_candidate || {};
   const matches = matchState?.candidates || [];
+  const selectedMatch = matches.find((match) => match.patient?.id === selectedPatient?.id);
+  const safeToCreateText = newPatientSafetyText(matches, result?.missing_fields || []);
 
   useEffect(() => {
     setSelectedPatient(matches[0]?.confidence === 'high' ? matches[0].patient : null);
@@ -1260,6 +1290,7 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
             mode: 'create_patient',
             patient: {
               name: patientName.trim(),
+              birth_year: candidate.birth_year || null,
               nationality: candidate.nationality || null,
               lang: candidate.lang || null,
             },
@@ -1317,9 +1348,12 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1.1fr 0.9fr', gap:12 }}>
-        <div style={{ display:'grid', gap:8, padding:12, borderRadius:12, background:C.bgSub, border:`1px solid ${C.border}` }}>
-          <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>분석된 환자/방문 후보</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 150px', gap:8 }}>
+        <div style={{ display:'grid', gap:9, padding:12, borderRadius:12, background:C.bgSub, border:`1px solid ${C.border}` }}>
+          <div>
+            <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>분석된 환자/방문 후보</p>
+            <p style={{ marginTop:3, fontSize:10.5, color:C.textMt }}>이 정보로 기존 환자와 비교합니다. 틀린 값은 저장 전에 고치세요.</p>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 150px 110px', gap:8 }}>
             <input
               value={patientName}
               onChange={(e) => setPatientName(e.target.value)}
@@ -1332,6 +1366,9 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
               type="date"
               style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, outline:'none', background:C.white }}
             />
+            <div style={{ border:`1px solid ${C.border}`, borderRadius:9, padding:'9px 10px', fontSize:12, background:C.white, color:candidate.birth_year ? C.text : C.textMt }}>
+              {candidate.birth_year || '생년 미확인'}
+            </div>
           </div>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
             {(result.procedure_interests || []).slice(0, 5).map((item) => (
@@ -1344,7 +1381,10 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
         </div>
 
         <div style={{ display:'grid', gap:8, padding:12, borderRadius:12, background:C.bgSub, border:`1px solid ${C.border}` }}>
-          <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>기존 환자 후보</p>
+          <div>
+            <p style={{ fontSize:11, fontWeight:900, color:C.textSub }}>기존 환자 후보</p>
+            <p style={{ marginTop:3, fontSize:10.5, color:C.textMt }}>전화·핸들·이름 순서·생년·방문일을 함께 봅니다.</p>
+          </div>
           {matchState?.error && <p style={{ fontSize:11, color:C.red }}>{matchState.error}</p>}
           {!matchState?.loading && matches.length === 0 && (
             <p style={{ fontSize:11, color:C.textMt, lineHeight:1.5 }}>확실한 기존 환자 후보가 없습니다. 새 환자로 저장하거나 보류 intake에 남겨 확인하세요.</p>
@@ -1361,18 +1401,43 @@ function PatientMatchPanel({ result, input, sourceCapture, matchState, onComplet
                 border:`1px solid ${selectedPatient?.id === match.patient.id ? C.mocha : C.border}`,
                 background:selectedPatient?.id === match.patient.id ? C.mochaPale : C.white,
                 borderRadius:10,
-                padding:'9px 10px',
+                padding:'10px 11px',
                 cursor:'pointer',
               }}
             >
-              <span style={{ fontSize:12, fontWeight:900, color:C.text }}>{match.patient.name}</span>
-              <span style={{ fontSize:10.5, color:C.textMt }}>
-                {match.confidence === 'high' ? '높은 확률' : match.confidence === 'medium' ? '확인 필요' : '낮은 확률'}
-                {' · '}{match.reasons.join(', ') || '부분 일치'}
+              <span style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+                <span style={{ fontSize:12.5, fontWeight:950, color:C.text }}>{match.patient.name}</span>
+                <span style={{ fontSize:10, fontWeight:900, color:matchConfidenceColor(match.confidence), background:`${matchConfidenceColor(match.confidence)}14`, borderRadius:999, padding:'3px 7px' }}>
+                  {matchConfidenceLabel(match.confidence)} · {match.score}점
+                </span>
               </span>
+              <span style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:4 }}>
+                {(match.reasons || ['부분 일치']).map((reason) => (
+                  <span key={reason} style={{ fontSize:10, fontWeight:800, color:C.textSub, background:C.bg, border:`1px solid ${C.border}`, borderRadius:999, padding:'3px 7px' }}>
+                    {reason}
+                  </span>
+                ))}
+              </span>
+              <span style={{ fontSize:10.5, color:C.textMt, marginTop:4, lineHeight:1.45 }}>{match.safety_note || '직원이 직접 확인한 뒤 연결하세요.'}</span>
             </button>
           ))}
         </div>
+      </div>
+
+      <div style={{
+        border:`1px solid ${selectedMatch?.confidence === 'high' ? '#B9FA48' : C.border}`,
+        background:selectedMatch?.confidence === 'high' ? C.sagePale : C.bgSub,
+        borderRadius:12,
+        padding:'10px 12px',
+        display:'grid',
+        gap:4,
+      }}>
+        <p style={{ fontSize:11, fontWeight:950, color:C.text }}>
+          {selectedMatch ? `선택한 후보: ${selectedMatch.patient.name}` : '새 환자 저장 판단'}
+        </p>
+        <p style={{ fontSize:11, color:C.textSub, lineHeight:1.5 }}>
+          {selectedMatch?.safety_note || safeToCreateText}
+        </p>
       </div>
 
       {phase === 'error' && (

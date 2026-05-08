@@ -40,3 +40,36 @@ test("ranks exact channel or external refs above weak name-only matches", () => 
   assert.equal(ranked[2].patient.id, "weak");
   assert.equal(ranked[2].confidence, "medium");
 });
+
+test("uses name order, birth year, and visit date as supporting evidence", () => {
+  const ranked = rankPatientMatches({
+    signals: { name: "Fang Wang", birth_year: 1991, visit_date: "2026-05-05", lang: "zh" },
+    candidates: [
+      {
+        id: "same-person",
+        name: "Wang Fang",
+        lang: "zh",
+        birth_year: 1991,
+        channel_refs: {},
+        external_refs: {},
+        recent_visits: [{ visit_date: "2026-05-05T00:00:00.000Z" }],
+      },
+      {
+        id: "name-only",
+        name: "Wang Fang",
+        lang: "zh",
+        birth_year: 1988,
+        channel_refs: {},
+        external_refs: {},
+        recent_visits: [],
+      },
+    ],
+  });
+
+  assert.equal(ranked[0].patient.id, "same-person");
+  assert.equal(ranked[0].confidence, "high");
+  assert.match(ranked[0].reasons.join(" "), /이름 순서만 다름/);
+  assert.match(ranked[0].reasons.join(" "), /출생연도 일치/);
+  assert.match(ranked[0].reasons.join(" "), /방문일 일치/);
+  assert.match(ranked[0].safety_note, /기존 환자/);
+});

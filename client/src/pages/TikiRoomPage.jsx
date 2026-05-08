@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle2,
   ChevronRight,
   DoorOpen,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   Stethoscope,
   UserRound,
+  UsersRound,
   Volume2,
   XCircle,
 } from 'lucide-react';
@@ -225,10 +227,241 @@ function PatientOverlay({ visible, text, lang, onClose }) {
   );
 }
 
+function RoomHubMetric({ label, value, helper, tone = 'default' }) {
+  const tones = {
+    default: { bg: C.panelStrong, border: C.border, color: C.mocha },
+    safe: { bg: '#FBFFF4', border: 'rgba(59,101,0,0.18)', color: C.sage },
+    warn: { bg: '#FFFDF8', border: 'rgba(181,112,26,0.22)', color: C.amber },
+    risk: { bg: '#FFF8F7', border: 'rgba(192,74,63,0.22)', color: C.red },
+  };
+  const meta = tones[tone] || tones.default;
+  return (
+    <div
+      style={{
+        borderRadius: 22,
+        border: `1px solid ${meta.border}`,
+        background: meta.bg,
+        padding: '18px 20px',
+        boxShadow: '0 16px 36px rgba(16,54,125,0.05)',
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 850, color: C.textSub }}>{label}</div>
+      <div style={{ marginTop: 10, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+        <span style={{ fontSize: 42, lineHeight: 0.95, fontWeight: 950, color: meta.color }}>{value}</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.textMute, paddingBottom: 4 }}>{helper}</span>
+      </div>
+    </div>
+  );
+}
+
+function getRoomVisitName(visit) {
+  return visit?.patients?.name || visit?.patient_name || '환자 정보 없음';
+}
+
+function getRoomVisitProcedure(visit) {
+  return visit?.procedures?.name_ko || visit?.procedures?.name_en || visit?.procedure_name || '시술 정보 없음';
+}
+
+function RoomHubCard({ room, queueVisit, busy, onOpenFixed, onLoadNext, onClear }) {
+  const occupied = room.occupancy_state === 'occupied';
+  const currentVisit = room.current_visit;
+  const tone = occupied
+    ? { label: '사용 중', color: C.red, bg: C.redSoft, border: 'rgba(192,74,63,0.24)' }
+    : queueVisit
+      ? { label: '다음 후보 있음', color: C.mocha, bg: C.mochaSoft, border: 'rgba(1,69,242,0.24)' }
+      : { label: '빈 방', color: C.sage, bg: C.sageSoft, border: 'rgba(59,101,0,0.22)' };
+
+  return (
+    <div
+      className="room-hub-card"
+      style={{
+        borderRadius: 28,
+        border: `1px solid ${tone.border}`,
+        background: 'linear-gradient(145deg, #FFFFFF 0%, #F8FBFF 100%)',
+        padding: 22,
+        minHeight: 255,
+        boxShadow: '0 22px 48px rgba(16,54,125,0.08)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 18,
+        transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 850, color: C.textMute, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {room.room_type || 'procedure'}
+          </div>
+          <div style={{ marginTop: 5, fontSize: 24, lineHeight: 1.15, fontWeight: 950, color: C.text }}>
+            {room.name}
+          </div>
+        </div>
+        <span
+          style={{
+            borderRadius: 999,
+            background: tone.bg,
+            color: tone.color,
+            padding: '8px 12px',
+            fontSize: 12,
+            fontWeight: 900,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {tone.label}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, borderRadius: 20, background: '#F4F8FE', padding: 16 }}>
+        {occupied ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textMute }}>현재 환자</div>
+            <div style={{ marginTop: 8, fontSize: 22, fontWeight: 950, color: C.text }}>
+              {currentVisit?.patients?.flag || '🏥'} {getRoomVisitName(currentVisit)}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 14, color: C.textSub, fontWeight: 750 }}>{getRoomVisitProcedure(currentVisit)}</div>
+          </>
+        ) : queueVisit ? (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textMute }}>다음 후보</div>
+            <div style={{ marginTop: 8, fontSize: 22, fontWeight: 950, color: C.text }}>
+              {queueVisit?.patients?.flag || '🏥'} {getRoomVisitName(queueVisit)}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 14, color: C.textSub, fontWeight: 750 }}>{getRoomVisitProcedure(queueVisit)}</div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textMute }}>대기 상태</div>
+            <div style={{ marginTop: 8, fontSize: 22, fontWeight: 950, color: C.text }}>바로 배정 가능</div>
+            <div style={{ marginTop: 8, fontSize: 14, color: C.textSub, fontWeight: 750 }}>룸 이동 가능한 환자가 생기면 여기서 바로 불러옵니다.</div>
+          </>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: occupied ? '1fr 1fr' : '1fr 1fr', gap: 10 }}>
+        <button
+          onClick={() => onOpenFixed(room.id)}
+          style={{
+            border: `1px solid ${C.border}`,
+            background: C.panelStrong,
+            color: C.text,
+            borderRadius: 16,
+            padding: '13px 12px',
+            fontSize: 13,
+            fontWeight: 900,
+            cursor: 'pointer',
+          }}
+        >
+          진료 화면 열기
+        </button>
+        {occupied ? (
+          <button
+            onClick={() => onClear(room.id)}
+            disabled={busy}
+            style={{
+              border: 'none',
+              background: C.red,
+              color: '#fff',
+              borderRadius: 16,
+              padding: '13px 12px',
+              fontSize: 13,
+              fontWeight: 900,
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.55 : 1,
+            }}
+          >
+            방 비우기
+          </button>
+        ) : (
+          <button
+            onClick={() => onLoadNext(room.id)}
+            disabled={busy}
+            style={{
+              border: 'none',
+              background: C.mocha,
+              color: '#fff',
+              borderRadius: 16,
+              padding: '13px 12px',
+              fontSize: 13,
+              fontWeight: 900,
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.55 : 1,
+              boxShadow: `0 14px 28px ${C.mocha}22`,
+            }}
+          >
+            다음 환자 불러오기
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReadyQueueCard({ visit, rooms, busy, onAssign }) {
+  const freeRooms = (rooms || []).filter((room) => room.occupancy_state !== 'occupied');
+  return (
+    <div
+      className="room-queue-card"
+      style={{
+        borderRadius: 22,
+        border: `1px solid ${C.border}`,
+        background: C.panelStrong,
+        padding: 18,
+        boxShadow: '0 14px 32px rgba(16,54,125,0.05)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 950, color: C.text }}>
+            {visit?.patients?.flag || '🏥'} {getRoomVisitName(visit)}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 13, fontWeight: 750, color: C.textSub }}>{getRoomVisitProcedure(visit)}</div>
+        </div>
+        <span style={{ height: 32, borderRadius: 999, padding: '8px 11px', background: C.sageSoft, color: C.sage, fontSize: 12, fontWeight: 900 }}>
+          룸 이동 가능
+        </span>
+      </div>
+      <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {freeRooms.slice(0, 4).map((room) => (
+          <button
+            key={room.id}
+            onClick={() => onAssign(visit.id, room.id)}
+            disabled={busy}
+            style={{
+              border: `1px solid ${C.border}`,
+              background: C.mochaSoft,
+              color: C.mocha,
+              borderRadius: 999,
+              padding: '9px 12px',
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.55 : 1,
+            }}
+          >
+            {room.name} 배정
+          </button>
+        ))}
+        {freeRooms.length === 0 && (
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.textMute }}>현재 빈 방이 없습니다.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TikiRoomPage() {
-  const [roomId, setRoomId] = useState(() => window.localStorage.getItem(ROOM_STORAGE_KEY) || '');
+  const [roomId, setRoomId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('roomId') || params.get('room_id') || window.localStorage.getItem(ROOM_STORAGE_KEY) || '';
+  });
+  const [roomViewMode, setRoomViewMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('mode') === 'room' || params.get('roomId') || params.get('room_id') ? 'fixed' : 'hub';
+  });
   const [boot, setBoot] = useState(null);
+  const [hub, setHub] = useState({ rooms: [], room_ready_queue: [], room_summary: { total: 0, free: 0, occupied: 0, readyQueue: 0 } });
   const [loading, setLoading] = useState(true);
+  const [hubLoading, setHubLoading] = useState(true);
   const [busyAction, setBusyAction] = useState('');
   const [inputText, setInputText] = useState('');
   const [analysis, setAnalysis] = useState(null);
@@ -250,29 +483,44 @@ export default function TikiRoomPage() {
   const loadCurrent = useCallback(async (explicitRoomId) => {
     setLoading(true);
     try {
-      const target = explicitRoomId ?? roomId;
+      const target = explicitRoomId ?? (roomViewMode === 'fixed' ? roomId : '');
       const params = target ? `?roomId=${encodeURIComponent(target)}` : '';
       const data = await apiJson(`/api/room/current${params}`);
       setBoot(data);
-      if (!target && data.available_rooms?.length > 0) {
-        const firstRoom = data.available_rooms[0]?.id;
-        if (firstRoom) {
-          window.localStorage.setItem(ROOM_STORAGE_KEY, firstRoom);
-          setRoomId(firstRoom);
-        }
-      }
       if (data.communication_state?.latest_input) setAnalysis(data.communication_state.latest_input);
+      else if (!target) setAnalysis(null);
       if (data.communication_state?.latest_response) setSelectedResponse(data.communication_state.latest_response);
+      else if (!target) setSelectedResponse(null);
     } catch (error) {
       showToast(error.message);
     } finally {
       setLoading(false);
     }
-  }, [roomId, showToast]);
+  }, [roomId, roomViewMode, showToast]);
+
+  const loadRoomHub = useCallback(async () => {
+    setHubLoading(true);
+    try {
+      const data = await apiJson('/api/staff/ops-board?dateRange=today&stage=all&limit=300');
+      setHub({
+        rooms: data.rooms || [],
+        room_ready_queue: data.room_ready_queue || [],
+        room_summary: data.room_summary || { total: 0, free: 0, occupied: 0, readyQueue: 0 },
+      });
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setHubLoading(false);
+    }
+  }, [showToast]);
 
   useEffect(() => {
     loadCurrent();
   }, [loadCurrent]);
+
+  useEffect(() => {
+    loadRoomHub();
+  }, [loadRoomHub]);
 
   useEffect(() => {
     if (!roomId) return;
@@ -292,7 +540,7 @@ export default function TikiRoomPage() {
     return () => window.speechSynthesis.removeEventListener?.('voiceschanged', loadVoices);
   }, []);
 
-  const availableRooms = boot?.available_rooms || [];
+  const availableRooms = hub.rooms?.length ? hub.rooms : (boot?.available_rooms || []);
   const currentRoom = boot?.room || availableRooms.find((room) => room.id === roomId) || null;
   const prep = boot?.prep;
   const currentPatient = boot?.current_patient;
@@ -460,6 +708,66 @@ export default function TikiRoomPage() {
     }
   };
 
+  const openRoomHub = async () => {
+    setRoomViewMode('hub');
+    window.history.replaceState(null, '', '/room');
+    await loadRoomHub();
+    await loadCurrent('');
+  };
+
+  const openFixedRoom = async (nextRoomId) => {
+    if (!nextRoomId) return;
+    setRoomId(nextRoomId);
+    setRoomViewMode('fixed');
+    window.localStorage.setItem(ROOM_STORAGE_KEY, nextRoomId);
+    window.history.replaceState(null, '', `/room?roomId=${encodeURIComponent(nextRoomId)}&mode=room`);
+    setAnalysis(null);
+    setSelectedResponse(null);
+    await loadCurrent(nextRoomId);
+  };
+
+  const runHubRoomAction = async (targetRoomId, endpoint, successMessage, { openFixed = false } = {}) => {
+    if (!targetRoomId) return;
+    setBusyAction(`${endpoint}:${targetRoomId}`);
+    try {
+      const data = await apiJson(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ roomId: targetRoomId }),
+      });
+      await loadRoomHub();
+      if (openFixed && data?.room) {
+        setBoot(data);
+        setRoomId(targetRoomId);
+        setRoomViewMode('fixed');
+        window.localStorage.setItem(ROOM_STORAGE_KEY, targetRoomId);
+        window.history.replaceState(null, '', `/room?roomId=${encodeURIComponent(targetRoomId)}&mode=room`);
+      }
+      showToast(successMessage);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const assignVisitToRoom = async (visitId, targetRoomId) => {
+    if (!visitId || !targetRoomId) return;
+    setBusyAction(`assign-room:${visitId}:${targetRoomId}`);
+    try {
+      await apiJson(`/api/staff/visits/${visitId}/assign-room`, {
+        method: 'POST',
+        body: JSON.stringify({ room_id: targetRoomId }),
+      });
+      await loadRoomHub();
+      await openFixedRoom(targetRoomId);
+      showToast('환자를 방에 배정했습니다');
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setBusyAction('');
+    }
+  };
+
   const statusTone = useMemo(() => {
     if (!analysis?.sensitivity) return 'default';
     if (analysis.sensitivity.level === 'high') return 'risk';
@@ -474,6 +782,214 @@ export default function TikiRoomPage() {
           <Loader2 size={20} className="animate-spin" />
           Tiki Room 준비 중…
         </div>
+      </div>
+    );
+  }
+
+  if (roomViewMode === 'hub') {
+    const rooms = hub.rooms || [];
+    const queue = hub.room_ready_queue || [];
+    const summary = hub.room_summary || { total: rooms.length, free: 0, occupied: 0, readyQueue: queue.length };
+    const queueByIndex = queue.slice(0, Math.max(rooms.length, 1));
+
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, fontFamily: C.sans, color: C.text, padding: 22, overflowY: 'auto' }}>
+        <style>{`
+          @keyframes roomHubRise {
+            from { opacity: 0; transform: translateY(18px) scale(0.985); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          @keyframes roomPulseLine {
+            0%, 100% { transform: scaleX(0.72); opacity: 0.44; }
+            50% { transform: scaleX(1); opacity: 0.9; }
+          }
+          .room-hub-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 28px 58px rgba(16,54,125,0.13) !important;
+          }
+          .room-queue-card:hover {
+            transform: translateY(-2px);
+            transition: transform 180ms ease;
+          }
+        `}</style>
+        <div style={{ maxWidth: 1500, margin: '0 auto', display: 'grid', gap: 18 }}>
+          <div
+            style={{
+              borderRadius: 34,
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F7FAFF 58%, #EAF2FF 100%)',
+              border: `1px solid ${C.border}`,
+              boxShadow: '0 28px 70px rgba(16,54,125,0.10)',
+              padding: '28px 30px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 18,
+              animation: 'roomHubRise 420ms ease both',
+            }}
+          >
+            <div
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 22,
+                background: C.mocha,
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: `0 18px 42px ${C.mocha}33`,
+              }}
+            >
+              <DoorOpen size={28} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0, fontSize: 42, lineHeight: 1.05, fontWeight: 980, letterSpacing: '-0.045em' }}>룸 배정 콘솔</h1>
+                <span style={{ borderRadius: 999, background: C.mochaSoft, color: C.mocha, padding: '8px 12px', fontSize: 13, fontWeight: 900 }}>
+                  Tiki Room
+                </span>
+              </div>
+              <p style={{ margin: '10px 0 0', fontSize: 17, lineHeight: 1.55, color: C.textSub, fontWeight: 750 }}>
+                빈 방, 사용 중인 방, 다음 후보를 한 화면에서 보고 바로 배정합니다. 방을 열면 고정 진료실 화면으로 전환됩니다.
+              </p>
+            </div>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={loadRoomHub}
+              disabled={hubLoading}
+              style={{
+                border: `1px solid ${C.border}`,
+                background: C.panelStrong,
+                color: C.text,
+                borderRadius: 16,
+                padding: '14px 18px',
+                fontSize: 14,
+                fontWeight: 900,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: hubLoading ? 'default' : 'pointer',
+              }}
+            >
+              {hubLoading ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+              새로고침
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14, animation: 'roomHubRise 460ms ease 80ms both' }}>
+            <RoomHubMetric label="전체 방" value={summary.total ?? rooms.length} helper="등록된 룸" />
+            <RoomHubMetric label="빈 방" value={summary.free ?? rooms.filter((room) => room.occupancy_state !== 'occupied').length} helper="즉시 배정" tone="safe" />
+            <RoomHubMetric label="사용 중" value={summary.occupied ?? rooms.filter((room) => room.occupancy_state === 'occupied').length} helper="진료 진행" tone="risk" />
+            <RoomHubMetric label="대기 후보" value={summary.readyQueue ?? queue.length} helper="룸 이동 가능" tone="warn" />
+          </div>
+
+          <div
+            style={{
+              borderRadius: 34,
+              border: `1px solid ${C.border}`,
+              background: 'rgba(255,255,255,0.86)',
+              padding: 24,
+              boxShadow: '0 24px 60px rgba(16,54,125,0.08)',
+              animation: 'roomHubRise 500ms ease 120ms both',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
+              <div style={{ width: 46, height: 46, borderRadius: 18, background: C.mochaSoft, color: C.mocha, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <UsersRound size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: 25, fontWeight: 950, color: C.text }}>방별 배정 상태</div>
+                <div style={{ marginTop: 4, fontSize: 14, fontWeight: 750, color: C.textSub }}>방 카드에서 바로 불러오기, 비우기, 고정 진료 화면 열기를 처리합니다.</div>
+              </div>
+              <div style={{ flex: 1, height: 3, borderRadius: 999, background: C.mocha, transformOrigin: 'left', animation: 'roomPulseLine 2400ms ease-in-out infinite' }} />
+            </div>
+
+            {rooms.length ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                {rooms.map((room, index) => (
+                  <RoomHubCard
+                    key={room.id}
+                    room={room}
+                    queueVisit={queueByIndex[index]}
+                    busy={!!busyAction}
+                    onOpenFixed={openFixedRoom}
+                    onLoadNext={(targetRoomId) => runHubRoomAction(targetRoomId, '/api/room/load-next', '다음 환자를 방에 불러왔습니다', { openFixed: true })}
+                    onClear={(targetRoomId) => runHubRoomAction(targetRoomId, '/api/room/clear', '방을 비웠습니다')}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div style={{ borderRadius: 24, border: `1px dashed ${C.border}`, background: '#F8FBFF', padding: 34, textAlign: 'center', color: C.textSub, fontSize: 16, fontWeight: 800 }}>
+                등록된 룸이 없습니다. Tiki Desk의 룸 설정에서 방을 먼저 추가해 주세요.
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1.1fr 0.9fr',
+              gap: 16,
+              animation: 'roomHubRise 520ms ease 180ms both',
+            }}
+          >
+            <div style={{ borderRadius: 30, border: `1px solid ${C.border}`, background: C.panelStrong, padding: 24, boxShadow: '0 18px 48px rgba(16,54,125,0.06)' }}>
+              <div style={{ fontSize: 24, fontWeight: 950 }}>룸 이동 후보</div>
+              <div style={{ marginTop: 5, fontSize: 14, color: C.textSub, fontWeight: 750 }}>문진/동의/체크인이 준비된 환자를 빈 방에 직접 배정합니다.</div>
+              <div style={{ marginTop: 18, display: 'grid', gap: 12 }}>
+                {queue.length ? queue.slice(0, 6).map((visit) => (
+                  <ReadyQueueCard
+                    key={visit.id}
+                    visit={visit}
+                    rooms={rooms}
+                    busy={!!busyAction}
+                    onAssign={assignVisitToRoom}
+                  />
+                )) : (
+                  <div style={{ borderRadius: 22, border: `1px dashed ${C.border}`, background: '#F8FBFF', padding: 28, color: C.textSub, fontSize: 15, fontWeight: 800, textAlign: 'center' }}>
+                    지금 룸 이동 가능한 환자가 없습니다.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ borderRadius: 30, border: `1px solid ${C.border}`, background: '#F8FBFF', padding: 24, boxShadow: '0 18px 48px rgba(16,54,125,0.06)' }}>
+              <div style={{ fontSize: 24, fontWeight: 950 }}>운영 원칙</div>
+              <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
+                {[
+                  ['Tiki Desk', '오늘 운영은 요약만 봅니다.'],
+                  ['Room Console', '배정, 불러오기, 비우기는 여기서 처리합니다.'],
+                  ['Fixed Room', '환자와 대화할 때만 고정 진료실 화면을 엽니다.'],
+                ].map(([title, body]) => (
+                  <div key={title} style={{ borderRadius: 20, background: C.panelStrong, border: `1px solid ${C.border}`, padding: 16 }}>
+                    <div style={{ fontSize: 15, fontWeight: 950, color: C.mocha }}>{title}</div>
+                    <div style={{ marginTop: 5, fontSize: 14, lineHeight: 1.55, color: C.textSub, fontWeight: 750 }}>{body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {toast && (
+          <div
+            style={{
+              position: 'fixed',
+              left: '50%',
+              bottom: 24,
+              transform: 'translateX(-50%)',
+              background: C.ink,
+              color: '#fff',
+              borderRadius: 999,
+              padding: '10px 16px',
+              fontSize: 13,
+              fontWeight: 700,
+              zIndex: 60,
+              boxShadow: '0 12px 28px rgba(31,41,55,0.20)',
+            }}
+          >
+            {toast}
+          </div>
+        )}
       </div>
     );
   }
@@ -516,9 +1032,28 @@ export default function TikiRoomPage() {
           </div>
           <div>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.10em', color: C.textMute, textTransform: 'uppercase' }}>
-              Tiki Room
+              Tiki Room · 진료실 화면
             </div>
             <div style={{ marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={openRoomHub}
+                style={{
+                  border: `1px solid ${C.border}`,
+                  background: C.panel,
+                  color: C.textSub,
+                  borderRadius: 10,
+                  padding: '8px 10px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <ArrowLeft size={13} />
+                룸 배정 콘솔
+              </button>
               <select
                 value={roomId}
                 onChange={(event) => {

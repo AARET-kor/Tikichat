@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  normalizeCsvAliasProfiles,
+  validateCsvAliasProfilePatch,
+} from "../src/lib/csv-import-config.js";
+import {
   buildCsvImportMemoryUpserts,
   buildImportVisitKey,
   partitionDuplicateImportVisits,
@@ -52,9 +56,11 @@ test("CSV import supports manual column mapping when CRM export headers are not 
 test("CSV import exposes CRM/EMR export presets for common Korean clinic systems", () => {
   assert.match(csvImportSource, /CRM_EXPORT_PRESETS/);
   assert.match(csvImportSource, /Vegas/);
+  assert.match(csvImportSource, /AfterDoc/);
   assert.match(csvImportSource, /의사랑/);
   assert.match(csvImportSource, /Dr\.Palette/);
   assert.match(csvImportSource, /selectedPreset/);
+  assert.match(csvImportSource, /병원별 컬럼 preset/);
 });
 
 test("CSV import done state provides copy-back text for existing CRM/EMR", () => {
@@ -62,6 +68,66 @@ test("CSV import done state provides copy-back text for existing CRM/EMR", () =>
   assert.match(csvImportSource, /CRM\/EMR에 붙여넣기/);
   assert.match(csvImportSource, /copyBackText/);
   assert.match(csvImportSource, /portal_url/);
+  assert.match(csvImportSource, /외부 환자 ID/);
+  assert.match(csvImportSource, /처리 결과/);
+});
+
+test("CSV import supports retrying only failed result rows", () => {
+  assert.match(csvImportSource, /retryFailedRows/);
+  assert.match(csvImportSource, /실패 행만 다시 처리/);
+  assert.match(csvImportSource, /downloadFailedRowsCSV/);
+  assert.match(csvImportSource, /실패 행 CSV/);
+  assert.match(csvImportSource, /failedRowEdits/);
+  assert.match(csvImportSource, /실패 행 수정/);
+});
+
+test("clinic custom CSV aliases are validated before saving", () => {
+  const patch = validateCsvAliasProfilePatch({
+    system_name: "Gangnam CRM",
+    system_label: "강남 CRM",
+    aliases: {
+      name: ["고객명", "고객명", ""],
+      visit_date: ["예약일"],
+      phone: ["휴대폰"],
+    },
+  });
+
+  assert.equal(patch.system_name, "gangnam_crm");
+  assert.equal(patch.system_label, "강남 CRM");
+  assert.deepEqual(patch.import_format.csv_aliases.name, ["고객명"]);
+  assert.equal(patch.mode, "csv");
+
+  assert.throws(
+    () => validateCsvAliasProfilePatch({ system_name: "bad", aliases: { raw_sql: ["x"] } }),
+    /unknown alias fields/,
+  );
+});
+
+test("clinic custom CSV alias profiles normalize integration profile rows", () => {
+  const profiles = normalizeCsvAliasProfiles([
+    {
+      id: "profile-1",
+      system_name: "gangnam_crm",
+      system_label: "강남 CRM",
+      import_format: {
+        csv_aliases: {
+          name: ["고객명"],
+          visit_date: ["예약일"],
+          raw_sql: ["ignored"],
+        },
+      },
+    },
+  ]);
+
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].system_label, "강남 CRM");
+  assert.deepEqual(profiles[0].aliases, { name: ["고객명"], visit_date: ["예약일"] });
+});
+
+test("staff CSV import config routes are staff-gated and admin-write only", () => {
+  assert.match(serverSource, /app\.get\("\/api\/staff\/csv-import-config", requireStaffAuth,/);
+  assert.match(serverSource, /app\.patch\("\/api\/staff\/csv-import-config", requireStaffAuth, requireRole\("owner", "admin"\),/);
+  assert.match(serverSource, /\.from\("integration_profiles"\)/);
 });
 
 test("CSV import builds patient Memory context from external CRM/EMR rows", () => {

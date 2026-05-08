@@ -244,7 +244,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
         {/* Tiki Room */}
         <button
           onClick={() => window.open('/room', '_blank')}
-          title="Tiki Room — 진료실 AI 어시스턴트 (새 탭)"
+          title="Tiki Room — 룸 배정과 진료실 AI 어시스턴트 (새 탭)"
           style={{
             width: '100%', minHeight: 68, padding: '12px 13px',
             display: 'flex', alignItems: 'center', gap: 11,
@@ -258,7 +258,7 @@ export default function Sidebar({ activeTab, onTabChange, darkMode }) {
           </span>
           <span style={{ textAlign: 'left' }}>
             <span style={{ display: 'block', fontSize: 16, fontWeight: 920, lineHeight: 1.1 }}>Tiki Room</span>
-            <span style={{ display: 'block', fontSize: 12, fontWeight: 750, opacity: 0.72, marginTop: 5 }}>진료실 화면</span>
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 750, opacity: 0.72, marginTop: 5 }}>룸 배정/진료 화면</span>
           </span>
           {/* 외부 링크 표시 */}
           <span style={{ position: 'absolute', top: 12, right: 12, fontSize: 12, opacity: 0.55, color: MOCHA_DARK }}>↗</span>

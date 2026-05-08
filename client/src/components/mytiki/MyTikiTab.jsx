@@ -28,7 +28,7 @@ import QuickVisitCreate from './QuickVisitCreate';
 import CsvImportModal   from './CsvImportModal';
 import { deriveArrivalFlowState } from '../../lib/opsBoardArrival';
 import { buildQrImageUrl, shouldPollOpsBoard } from '../../lib/opsLite';
-import { buildTikiDeskCounts, buildTikiDeskFlow, buildVisitStatusBadges, getDeskNextAction } from '../../lib/tikiDeskFlow';
+import { buildMyTikiStatusSummary, buildTikiDeskCounts, buildTikiDeskFlow, buildVisitStatusBadges, getDeskNextAction, getDeskPrimaryCta } from '../../lib/tikiDeskFlow';
 import {
   AFTERCARE_FILTER_LABELS,
   ESCALATION_PRIORITY_META,
@@ -445,24 +445,31 @@ function MyTikiStatusStrip({ visit, action, darkMode, compact = false }) {
   );
 }
 
-function FlowPatientLine({ visit, mode, darkMode, compact = false }) {
+function FlowPatientLine({ visit, mode, darkMode, compact = false, rooms = [], busy = false, onPrimaryAction }) {
   const action = getDeskNextAction(visit);
+  const primaryCta = getDeskPrimaryCta(action, visit);
   const tone = DESK_TONE[action.tone] || DESK_TONE.muted;
   const timeSource = mode === 'booked'
     ? visit.visit_date
     : mode === 'arrived'
       ? visit.patient_arrived_at || visit.checked_in_at
       : action.at || visit.visit_date;
+  const freeRoomCount = (rooms || []).filter((room) => room.occupancy_state === 'free' || room.status === 'free').length;
+  const ctaHelper = primaryCta.type === 'assign_room'
+    ? freeRoomCount > 0
+      ? `${freeRoomCount}개 빈 룸 중 첫 방에 배정`
+      : '빈 룸이 없으면 룸 화면에서 확인'
+    : primaryCta.helper;
 
   return (
     <div
-      className="border"
+      className="border transition-all hover:-translate-y-0.5 hover:shadow-lg"
       style={{
         borderColor: darkMode ? '#27272A' : '#D6E1EA',
         background: darkMode ? '#111827' : '#FFFFFF',
         borderRadius: compact ? 14 : 16,
-        padding: compact ? '10px 11px' : '14px 15px',
-        minHeight: compact ? 72 : 88,
+        padding: compact ? '10px 11px' : '15px 16px',
+        minHeight: compact ? 72 : 116,
       }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -500,11 +507,28 @@ function FlowPatientLine({ visit, mode, darkMode, compact = false }) {
       </div>
       <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact={compact} />
       <VisitStatusRail visit={visit} darkMode={darkMode} compact={compact} />
+      {!compact && mode === 'next' && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5" style={{ borderColor: darkMode ? '#27272A' : '#E0E7F0', background: darkMode ? '#0F172A' : '#F8FBFF' }}>
+          <div className="min-w-0">
+            <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{primaryCta.label}</p>
+            <p className={`mt-0.5 truncate text-[11px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{ctaHelper}</p>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onPrimaryAction?.(primaryCta.type, visit, action)}
+            className="shrink-0 rounded-xl px-3.5 py-2 text-[12px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97] disabled:opacity-50"
+            style={{ background: tone.color, boxShadow: `0 12px 24px ${tone.color}22` }}
+          >
+            {busy ? '처리 중…' : primaryCta.label}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-function FlowColumn({ title, subtitle, empty, visits, mode, darkMode, compact = false }) {
+function FlowColumn({ title, subtitle, empty, visits, mode, darkMode, compact = false, rooms = [], busyVisitIds = new Set(), onPrimaryAction }) {
   return (
     <section
       className="border"
@@ -541,7 +565,16 @@ function FlowColumn({ title, subtitle, empty, visits, mode, darkMode, compact = 
             {empty}
           </div>
         ) : visits.map((visit) => (
-          <FlowPatientLine key={`${mode}-${visit.id}`} visit={visit} mode={mode} darkMode={darkMode} compact={compact} />
+          <FlowPatientLine
+            key={`${mode}-${visit.id}`}
+            visit={visit}
+            mode={mode}
+            darkMode={darkMode}
+            compact={compact}
+            rooms={rooms}
+            busy={busyVisitIds.has(visit.id)}
+            onPrimaryAction={onPrimaryAction}
+          />
         ))}
       </div>
     </section>
@@ -633,7 +666,7 @@ function DeskCompactPanel({ title, subtitle, value, helper, tone = 'info', icon:
           {actionLabel && onAction && (
             <button
               onClick={onAction}
-              className="mt-4 w-full rounded-2xl px-4 py-3 text-[13px] font-black text-white"
+              className="mt-4 w-full rounded-2xl px-4 py-3.5 text-[14px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.98]"
               style={{ background: m.color, boxShadow: `0 14px 28px ${m.color}22` }}
             >
               {actionLabel}
@@ -645,92 +678,220 @@ function DeskCompactPanel({ title, subtitle, value, helper, tone = 'info', icon:
   );
 }
 
-function TikiDeskCommandBoard({ flow, counts, roomSummary = {}, loading, darkMode }) {
-  const flowSteps = [
-    { label: 'My Tiki 준비', value: counts.linkNeeded, helper: '링크 발급 필요', tone: 'info' },
-    { label: '오늘 방문', value: counts.total, helper: '예약 시간 기준', tone: 'muted' },
-    { label: '도착·서류', value: counts.needsAttention, helper: '데스크가 먼저 확인', tone: 'urgent' },
-    { label: '룸 이동', value: counts.roomReady, helper: '바로 배정 가능', tone: 'ready' },
-    { label: '진행 중', value: counts.inRoom, helper: '현재 룸 배정됨', tone: 'steady' },
-  ];
+function MyTikiStatusDrilldown({
+  groups,
+  selectedKey,
+  onSelectGroup,
+  darkMode,
+  onPrimaryAction,
+}) {
+  const selected = groups.find((group) => group.key === selectedKey) || groups[0] || { patients: [], count: 0 };
+  const toneByKey = {
+    link_needed: DESK_TONE.urgent,
+    link_active: DESK_TONE.info,
+    link_opened: DESK_TONE.ready,
+    intake_done: DESK_TONE.ready,
+    consent_needed: DESK_TONE.warn,
+  };
+
+  return (
+    <section
+      className="border tiki-desk-rise"
+      style={{
+        borderColor: darkMode ? '#27272A' : '#D6E1EA',
+        background: darkMode ? '#111827' : '#FFFFFF',
+        borderRadius: 22,
+        padding: 16,
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className={`text-[18px] font-black tracking-[-0.04em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>My Tiki 상태 상세</h3>
+          <p className={`mt-1 text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+            링크 발급, 열람, 문진, 동의 상태를 환자별로 바로 확인합니다.
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-[12px] font-black ${darkMode ? 'bg-zinc-800 text-zinc-200' : 'bg-[#EDF1F5] text-[#10367D]'}`}>
+          {selected.count || 0}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {groups.map((group) => {
+          const active = selected.key === group.key;
+          const tone = toneByKey[group.key] || DESK_TONE.info;
+          return (
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => onSelectGroup(group.key)}
+              className="rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+              style={{
+                borderColor: darkMode ? '#27272A' : active ? tone.border : '#D6E1EA',
+                background: darkMode ? '#0F172A' : active ? tone.bg : '#F8FBFF',
+                color: darkMode ? '#E4E4E7' : tone.color,
+              }}
+            >
+              <span className="block text-[11px] font-black">{group.label}</span>
+              <span className="mt-1 block text-[24px] leading-none font-black">{group.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {(selected.patients || []).length === 0 ? (
+          <div className={`rounded-2xl border border-dashed px-4 py-6 text-center text-[13px] font-bold ${darkMode ? 'border-zinc-700 text-zinc-500' : 'border-[#D6E1EA] text-[#6B7C88]'}`}>
+            해당 상태의 환자가 없습니다.
+          </div>
+        ) : selected.patients.slice(0, 5).map((visit) => {
+          const action = getDeskNextAction(visit);
+          const cta = getDeskPrimaryCta(action, visit);
+          const tone = toneByKey[selected.key] || DESK_TONE.info;
+          return (
+            <div
+              key={`${selected.key}-${visit.id}`}
+              className="rounded-2xl border px-3 py-3"
+              style={{ borderColor: darkMode ? '#27272A' : '#E0E7F0', background: darkMode ? '#0F172A' : '#F8FBFF' }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className={`truncate text-[14px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{visit.patient_flag} {visit.patient_name}</p>
+                  <p className={`mt-1 truncate text-[11px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{visit.procedure_name} · {fmtVisitTime(visit.visit_date, 'today')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onPrimaryAction(cta.type, visit, action)}
+                  className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97]"
+                  style={{ background: tone.color }}
+                >
+                  {cta.label}
+                </button>
+              </div>
+              <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact />
+            </div>
+          );
+        })}
+        {(selected.patients || []).length > 5 && (
+          <div className={`text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+            외 {selected.patients.length - 5}명은 아래 방문 목록에서 확인하세요.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TikiDeskCommandBoard({
+  flow,
+  counts,
+  myTikiStatusGroups,
+  selectedMyTikiGroup,
+  roomSummary = {},
+  loading,
+  darkMode,
+  onOpenRoom,
+  onQuickCreate,
+  onPrimaryAction,
+  onSelectMyTikiGroup,
+  rooms = [],
+  busyVisitIds = new Set(),
+}) {
+  const primaryTasks = flow.nextActions || [];
 
   return (
     <div className="space-y-5">
       <div
-        className="border"
+        className="border tiki-desk-rise"
         style={{
           borderColor: darkMode ? '#27272A' : '#D6E1EA',
           background: darkMode ? '#0B1220' : 'linear-gradient(135deg, #FFFFFF 0%, #F8FBFF 100%)',
-          borderRadius: 30,
-          padding: 18,
+          borderRadius: 32,
+          padding: 22,
           boxShadow: darkMode ? 'none' : '0 24px 70px rgba(16, 54, 125, 0.08)',
         }}
       >
-        <div className="flex items-end justify-between gap-4 mb-4">
+        <div className="flex items-end justify-between gap-4 mb-5">
           <div>
-            <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 운영 흐름</p>
-            <h2 className={`mt-1 text-[24px] font-black tracking-[-0.055em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>상담부터 룸 이동까지 한 줄로 봅니다</h2>
+            <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 운영 핵심</p>
+            <h2 className={`mt-1 text-[28px] font-black tracking-[-0.055em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>지금 할 일, My Tiki, 룸 상태만 크게 봅니다</h2>
           </div>
-          <p className={`hidden lg:block text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
-            숫자가 생기면 확인할 일이 있다는 뜻이고, 처리되면 바로 줄어듭니다.
+          <p className={`hidden lg:block text-[14px] font-bold leading-relaxed ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+            숫자가 생기면 바로 처리할 일이 있다는 뜻입니다.
           </p>
         </div>
-        <div className="flex flex-wrap xl:flex-nowrap gap-3">
-          {flowSteps.map((step, index) => (
-            <DeskFlowStep
-              key={step.label}
-              index={index + 1}
-              label={step.label}
-              value={loading ? '…' : step.value}
-              helper={step.helper}
-              tone={step.tone}
-              darkMode={darkMode}
-            />
-          ))}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.9fr)] gap-4">
-        <FlowColumn
-          title="지금 할 일"
-          subtitle="상담, 링크, 도착, 서류, 룸 순서로 먼저 처리할 항목"
-          empty="지금 처리할 일이 없습니다"
-          visits={flow.nextActions}
-          mode="next"
-          darkMode={darkMode}
-        />
-        <div className="space-y-4">
-          <DeskCompactPanel
-            title="룸 배정"
-            subtitle="빈 방과 다음 배정 후보"
-            value={loading ? '…' : roomSummary.readyQueue || 0}
-            helper={`빈 방 ${roomSummary.free || 0} · 사용 중 ${roomSummary.occupied || 0} · 전체 ${roomSummary.total || 0}`}
-            tone={roomSummary.readyQueue > 0 ? 'ready' : 'info'}
-            icon={DoorOpen}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)] gap-4">
+          <FlowColumn
+            title="오늘 할 일"
+            subtitle="상담 확인, 링크 발급, 도착·서류, 룸 이동 순서로 먼저 처리합니다"
+            empty="지금 처리할 일이 없습니다"
+            visits={primaryTasks}
+            mode="next"
             darkMode={darkMode}
+            rooms={rooms}
+            busyVisitIds={busyVisitIds}
+            onPrimaryAction={onPrimaryAction}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <FlowColumn
-              title="예약 순서"
-              subtitle="예정 시간"
-              empty="예약 없음"
-              visits={flow.booked.slice(0, 3)}
-              mode="booked"
+
+          <div className="grid grid-cols-1 gap-4">
+            <DeskCompactPanel
+              title="My Tiki 상태"
+              subtitle="환자 링크와 서류 진행"
+              value={loading ? '…' : counts.linkNeeded}
+              helper={`링크 필요 ${counts.linkNeeded || 0} · 서류 확인 ${counts.needsAttention || 0} · 오늘 방문 ${counts.total || 0}`}
+              tone={counts.linkNeeded > 0 || counts.needsAttention > 0 ? 'urgent' : 'info'}
+              icon={Send}
+              actionLabel="새 환자 등록"
+              onAction={onQuickCreate}
               darkMode={darkMode}
-              compact
             />
-            <FlowColumn
-              title="도착 순서"
-              subtitle="도착 알림"
-              empty="도착 없음"
-              visits={flow.arrived.slice(0, 3)}
-              mode="arrived"
+            <MyTikiStatusDrilldown
+              groups={myTikiStatusGroups}
+              selectedKey={selectedMyTikiGroup}
+              onSelectGroup={onSelectMyTikiGroup}
               darkMode={darkMode}
-              compact
+              onPrimaryAction={onPrimaryAction}
+            />
+            <DeskCompactPanel
+              title="룸 상태"
+              subtitle="빈 방과 다음 배정 후보"
+              value={loading ? '…' : roomSummary.readyQueue || 0}
+              helper={`빈 방 ${roomSummary.free || 0} · 사용 중 ${roomSummary.occupied || 0} · 전체 ${roomSummary.total || 0}`}
+              tone={roomSummary.readyQueue > 0 ? 'ready' : 'info'}
+              icon={DoorOpen}
+              actionLabel="Tiki Room 열기"
+              onAction={onOpenRoom}
+              darkMode={darkMode}
             />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TikiDeskContextPreview({ flow, darkMode }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <FlowColumn
+        title="예약 순서"
+        subtitle="예정 시간"
+        empty="예약 없음"
+        visits={flow.booked.slice(0, 3)}
+        mode="booked"
+        darkMode={darkMode}
+        compact
+      />
+      <FlowColumn
+        title="도착 순서"
+        subtitle="도착 알림"
+        empty="도착 없음"
+        visits={flow.arrived.slice(0, 3)}
+        mode="arrived"
+        darkMode={darkMode}
+        compact
+      />
     </div>
   );
 }
@@ -1067,6 +1228,7 @@ function StagePicker({ visitId, currentStage, clinicId, darkMode, onStageChange,
 
 // ── VisitRow ──────────────────────────────────────────────────────────────────
 function VisitRow({
+  id,
   visit,
   dateRange,
   darkMode,
@@ -1101,7 +1263,7 @@ function VisitRow({
   const isCheckedIn = !!visit.checked_in_at;
 
   return (
-    <div className={`flex items-center gap-4 px-5 py-4 border-b transition-colors ${rowBg} ${isCheckedIn ? 'border-l-4' : ''}`}
+    <div id={id} className={`flex items-center gap-4 px-5 py-4 border-b transition-colors ${rowBg} ${isCheckedIn ? 'border-l-4' : ''}`}
          style={isCheckedIn ? { borderLeftColor: SAGE } : {}}>
 
       {/* Patient + time */}
@@ -1643,6 +1805,8 @@ export default function MyTikiTab({ darkMode }) {
   const [actionModal,     setActionModal]     = useState(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showCsvImport,   setShowCsvImport]   = useState(false);
+  const [deskNotice, setDeskNotice] = useState('');
+  const [selectedMyTikiGroup, setSelectedMyTikiGroup] = useState('link_needed');
   const [showRoomSettings, setShowRoomSettings] = useState(false);
   const [showAftercareEditor, setShowAftercareEditor] = useState(false);
   const [selectedAftercareProcedureId, setSelectedAftercareProcedureId] = useState('');
@@ -1823,6 +1987,7 @@ export default function MyTikiTab({ darkMode }) {
 
   const deskCounts = useMemo(() => buildTikiDeskCounts(visits), [visits]);
   const deskFlow = useMemo(() => buildTikiDeskFlow(visits, 4), [visits]);
+  const myTikiStatusGroups = useMemo(() => buildMyTikiStatusSummary(visits), [visits]);
 
   const groupedEscalations = escalations.reduce((acc, item) => {
     const key = escalationGroupBy === 'priority'
@@ -1860,8 +2025,10 @@ export default function MyTikiTab({ darkMode }) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok && res.status !== 409) throw new Error(d.error);
       await fetchVisits();
+      setDeskNotice('도착 확인이 처리됐습니다.');
     } catch (err) {
       console.error('[check-in]', err.message);
+      setDeskNotice('도착 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setCheckingInIds(prev => { const next = new Set(prev); next.delete(visitId); return next; });
     }
@@ -1880,8 +2047,10 @@ export default function MyTikiTab({ darkMode }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       await fetchVisits();
+      setDeskNotice('빈 룸에 배정했습니다.');
     } catch (err) {
       console.error('[assign-room]', err.message);
+      setDeskNotice('룸 배정에 실패했습니다. 빈 룸 상태를 확인해 주세요.');
     } finally {
       setAssigningRoomIds((prev) => {
         const next = new Set(prev);
@@ -2065,7 +2234,65 @@ export default function MyTikiTab({ darkMode }) {
   function handleAction(type, visit) {
     if (type === 'generate') setActionModal({ type: 'generate', visit });
     else if (type === 'revoke') handleRevoke(visit);
-    // detail — future
+    else if (type === 'detail') focusVisitRow(visit.id);
+  }
+
+  async function copyVisitLink(visit) {
+    const url = visit.link?.url || visit.link_url || visit.my_tiki_url;
+    if (!url) {
+      setDeskNotice('복사할 My Tiki 링크가 없습니다. 먼저 링크를 발급해 주세요.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setDeskNotice('My Tiki 링크를 복사했습니다.');
+    } catch {
+      setDeskNotice('브라우저 권한 때문에 복사하지 못했습니다. 링크 모달에서 다시 복사해 주세요.');
+    }
+  }
+
+  function focusVisitRow(visitId) {
+    const row = document.getElementById(`visit-row-${visitId}`);
+    if (!row) {
+      setDeskNotice('방문 목록에서 해당 환자를 찾지 못했습니다. 필터를 확인해 주세요.');
+      return;
+    }
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.animate?.([
+      { boxShadow: '0 0 0 0 rgba(1, 69, 242, 0)' },
+      { boxShadow: '0 0 0 5px rgba(1, 69, 242, 0.18)' },
+      { boxShadow: '0 0 0 0 rgba(1, 69, 242, 0)' },
+    ], { duration: 900, easing: 'ease-out' });
+  }
+
+  function handleDeskPrimaryAction(type, visit) {
+    if (type === 'generate_link') {
+      handleAction('generate', visit);
+      return;
+    }
+    if (type === 'copy_my_tiki_link') {
+      copyVisitLink(visit);
+      return;
+    }
+    if (type === 'check_in') {
+      handleCheckIn(visit.id);
+      return;
+    }
+    if (type === 'assign_room') {
+      const freeRoom = (rooms || []).find((room) => room.occupancy_state === 'free' || room.status === 'free');
+      if (!freeRoom) {
+        setDeskNotice('현재 빈 룸이 없습니다. Tiki Room에서 방 상태를 먼저 확인해 주세요.');
+        openDedicatedSurface('room');
+        return;
+      }
+      handleAssignRoom(visit.id, freeRoom.id);
+      return;
+    }
+    if (type === 'open_room') {
+      openDedicatedSurface('room');
+      return;
+    }
+    focusVisitRow(visit.id);
   }
 
   function handleGenerated(visitId, newLink) {
@@ -2073,6 +2300,7 @@ export default function MyTikiTab({ darkMode }) {
       v.id === visitId ? { ...v, link_status: 'active', link: newLink } : v
     ));
     setSummary(prev => ({ ...prev, activeLinks: prev.activeLinks + 1 }));
+    setDeskNotice('My Tiki 링크가 발급됐습니다.');
   }
 
   function handleCreated(rawVisit) {
@@ -2140,6 +2368,24 @@ export default function MyTikiTab({ darkMode }) {
     fetchEscalations();
   }
 
+  function openDedicatedSurface(target) {
+    if (target === 'room') {
+      window.open('/room', '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (target === 'csv_import') {
+      setShowCsvImport(true);
+      return;
+    }
+    if (target === 'quick_create') {
+      setShowQuickCreate(true);
+      return;
+    }
+    if (target === 'tiki_paste') {
+      window.location.assign('/app?tab=tiki_paste');
+    }
+  }
+
   return (
     <div className={`flex-1 flex flex-col overflow-y-auto ${bg}`} style={{ fontFamily: F.sans, minHeight: 0, WebkitOverflowScrolling: 'touch' }}>
 
@@ -2166,22 +2412,22 @@ export default function MyTikiTab({ darkMode }) {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowCsvImport(true)}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[14px] font-bold border transition-colors ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
+              onClick={() => openDedicatedSurface('csv_import')}
+              className={`flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[15px] font-black border transition-all hover:-translate-y-0.5 active:scale-[0.98] ${darkMode ? 'border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'border-[#D6E1EA] text-[#40515D] hover:bg-[#EDF1F5]'}`}
               title="CRM/EMR 환자·방문 가져오기"
             >
               CRM/EMR 가져오기
             </button>
             <button
-              onClick={() => setShowQuickCreate(true)}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl text-[14px] font-bold text-white"
+              onClick={() => openDedicatedSurface('quick_create')}
+              className="flex items-center gap-2 px-6 py-3.5 rounded-2xl text-[15px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.98]"
               style={{ background: TEAL, boxShadow: `0 12px 28px ${TEAL}28` }}
             >
               <Plus size={16} strokeWidth={2.6} /> 새 환자
             </button>
             <button
               onClick={fetchVisits}
-              className={`p-3 rounded-2xl transition-colors ${darkMode ? 'text-zinc-300 hover:bg-zinc-800' : 'text-[#6B7C88] hover:bg-[#EDF1F5]'}`}
+              className={`p-3.5 rounded-2xl transition-all hover:rotate-12 active:scale-[0.94] ${darkMode ? 'text-zinc-300 hover:bg-zinc-800' : 'text-[#6B7C88] hover:bg-[#EDF1F5]'}`}
               title="새로고침"
             >
               <RefreshCw size={18} />
@@ -2193,11 +2439,32 @@ export default function MyTikiTab({ darkMode }) {
           <TikiDeskCommandBoard
             flow={deskFlow}
             counts={deskCounts}
+            myTikiStatusGroups={myTikiStatusGroups}
+            selectedMyTikiGroup={selectedMyTikiGroup}
             roomSummary={roomSummary}
             loading={loading}
             darkMode={darkMode}
+            onOpenRoom={() => openDedicatedSurface('room')}
+            onQuickCreate={() => openDedicatedSurface('quick_create')}
+            onPrimaryAction={handleDeskPrimaryAction}
+            onSelectMyTikiGroup={setSelectedMyTikiGroup}
+            rooms={rooms}
+            busyVisitIds={new Set([...checkingInIds, ...assigningRoomIds])}
           />
         </div>
+
+        {deskNotice && (
+          <div className={`mt-4 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-[14px] font-black tiki-desk-rise ${darkMode ? 'border-sky-900 bg-sky-950/30 text-sky-100' : 'border-sky-100 bg-sky-50 text-[#10367D]'}`}>
+            <span>{deskNotice}</span>
+            <button
+              type="button"
+              onClick={() => setDeskNotice('')}
+              className={`rounded-xl px-3 py-1.5 text-[12px] font-black transition-all active:scale-[0.97] ${darkMode ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-[#40515D]'}`}
+            >
+              확인
+            </button>
+          </div>
+        )}
 
         {attentionItems.length > 0 && (
           <div className={`mt-4 rounded-xl border px-4 py-3 text-[13px] font-bold ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
@@ -2211,360 +2478,6 @@ export default function MyTikiTab({ darkMode }) {
           </div>
         )}
 
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <UserCheck size={14} style={{ color: '#10367D' }} />
-                <h2 className={`text-sm font-bold ${textP}`}>에스컬레이션</h2>
-              </div>
-              <p className={`text-[11px] mt-1 ${textS}`}>환자 질문이 운영 task로 전환된 항목</p>
-            </div>
-            <button onClick={fetchEscalations} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="Escalations 새로고침">
-              <RefreshCw size={13} className={loadingEscalations ? 'animate-spin' : ''} />
-            </button>
-          </div>
-
-        <div className="grid grid-cols-4 gap-2 mt-4">
-          <EscalationMiniCard label="처리 중" value={loadingEscalations ? '…' : escalationSummary.open} sub="진행 중 트리아지" color={TEAL} darkMode={darkMode} />
-          <EscalationMiniCard label="긴급" value={loadingEscalations ? '…' : escalationSummary.urgent} sub="즉시 검토 필요" color={escalationUrgentMeta.color} darkMode={darkMode} />
-          <EscalationMiniCard label="SLA 초과" value={loadingEscalations ? '…' : escalationSummary.overdue} sub="기한 초과" color="#DC2626" darkMode={darkMode} />
-          <EscalationMiniCard label="미응답" value={loadingEscalations ? '…' : escalationSummary.unanswered} sub="아직 확인 전" color={escalationHighMeta.color} darkMode={darkMode} />
-        </div>
-
-          <div className="mt-4 flex items-center gap-2 flex-wrap">
-            {[
-              ['status', '상태별'],
-              ['priority', '우선순위별'],
-              ['role', '담당 역할별'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setEscalationGroupBy(key)}
-                className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
-                style={escalationGroupBy === key
-                  ? { background: '#10367D', color: '#fff', borderColor: '#10367D' }
-                  : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
-              >
-                {label}
-              </button>
-            ))}
-
-            <select value={escalationStatusFilter} onChange={e => setEscalationStatusFilter(e.target.value)} className={`ml-auto rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
-              <option value="all">전체 상태</option>
-              {Object.entries(ESCALATION_STATUS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-            <select value={escalationPriorityFilter} onChange={e => setEscalationPriorityFilter(e.target.value)} className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
-              <option value="all">전체 우선순위</option>
-              {Object.entries(ESCALATION_PRIORITY_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-            </select>
-            <select value={escalationRoleFilter} onChange={e => setEscalationRoleFilter(e.target.value)} className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}>
-              <option value="all">전체 역할</option>
-              {Object.entries(ESCALATION_ROLE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-            </select>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {loadingEscalations ? (
-              <div className={`text-xs ${textS}`}>Escalation tasks 불러오는 중…</div>
-            ) : Object.keys(groupedEscalations).length === 0 ? (
-              <div className={`text-xs ${textS}`}>현재 조건에 맞는 escalation task가 없습니다.</div>
-            ) : (
-              Object.entries(groupedEscalations).map(([groupKey, items]) => (
-                <div key={groupKey}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[11px] font-bold ${textP}`}>
-                      {getEscalationGroupLabel(escalationGroupBy, groupKey)}
-                    </span>
-                    <span className={`text-[10px] ${textS}`}>{items.length}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {items.map(item => (
-                      <EscalationTaskCard key={item.id} item={item} darkMode={darkMode} onOpen={openEscalation} staffUsers={staffUsers} />
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <ClipboardCheck size={14} style={{ color: '#0145F2' }} />
-                <h2 className={`text-sm font-bold ${textP}`}>사후관리</h2>
-              </div>
-              <p className={`text-[11px] mt-1 ${textS}`}>사후관리 체크인, 위험 신호, 리턴 가능 상태를 운영 task로 확인합니다.</p>
-            </div>
-            <button onClick={fetchAftercare} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`} title="Aftercare 새로고침">
-              <RefreshCw size={13} className={loadingAftercare ? 'animate-spin' : ''} />
-            </button>
-          </div>
-
-          {aftercareScheduler?.status === 'degraded' && (
-            <div className={`mt-3 rounded-xl border px-3 py-2 text-[11px] ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              Aftercare scheduler degraded
-              {aftercareScheduler.reason ? ` — ${aftercareScheduler.reason.replaceAll('_', ' ')}` : ''}
-              {aftercareScheduler.fallback_mode ? ` · ${aftercareScheduler.fallback_mode}` : ''}
-            </div>
-          )}
-
-          <div className="grid grid-cols-5 gap-2 mt-4">
-            <EscalationMiniCard label="응답 대기" value={loadingAftercare ? '…' : aftercareSummary.due} sub="체크인 발송됨" color={aftercareDueMeta.color} darkMode={darkMode} />
-            <EscalationMiniCard label="응답 완료" value={loadingAftercare ? '…' : aftercareSummary.responded} sub="환자 응답 완료" color={SAGE} darkMode={darkMode} />
-            <EscalationMiniCard label="주의" value={loadingAftercare ? '…' : aftercareSummary.concern} sub="검토 필요" color={aftercareConcernMeta.color} darkMode={darkMode} />
-            <EscalationMiniCard label="긴급" value={loadingAftercare ? '…' : aftercareSummary.urgent} sub="긴급 신호" color={aftercareUrgentMeta.color} darkMode={darkMode} />
-            <EscalationMiniCard label="재방문 가능" value={loadingAftercare ? '…' : aftercareSummary.safe_for_return} sub="리턴 제안 가능" color={aftercareSafeReturnMeta.color} darkMode={darkMode} />
-          </div>
-
-          <div className="mt-4 flex items-center gap-2 flex-wrap">
-            {Object.entries(AFTERCARE_FILTER_LABELS).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setAftercareFilter(key)}
-                className="px-3 py-1 rounded-lg text-[11px] font-semibold border"
-                style={aftercareFilter === key
-                  ? { background: '#0145F2', color: '#fff', borderColor: '#0145F2' }
-                  : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowAftercareEditor((prev) => !prev)}
-              className="ml-auto px-3 py-1 rounded-lg text-[11px] font-semibold border"
-              style={showAftercareEditor
-                ? { background: '#0145F2', color: '#fff', borderColor: '#0145F2' }
-                : { background: 'transparent', color: darkMode ? '#A1A1AA' : '#6B7280', borderColor: darkMode ? '#3F3F46' : '#E5E7EB' }}
-            >
-              {showAftercareEditor ? '플랜 편집 닫기' : '플랜 편집'}
-            </button>
-          </div>
-
-          {showAftercareEditor && (
-            <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: darkMode ? '#3F3F46' : '#E5E7EB', background: darkMode ? '#0F172A' : '#F8FAFC' }}>
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div>
-                  <p className={`text-[11px] font-bold ${textP}`}>사후관리 플랜 편집</p>
-                  <p className={`text-[11px] mt-1 ${textS}`}>시술별 체크 시점, 안내 문구, 다음 액션을 작게 조정합니다.</p>
-                </div>
-                {!canEditAftercarePlans && (
-                  <div className={`text-[11px] ${textS}`}>관리자/원장만 수정 가능 · 현재는 읽기 전용</div>
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center gap-2 flex-wrap">
-                <select
-                  value={selectedAftercareProcedureId}
-                  onChange={(e) => setSelectedAftercareProcedureId(e.target.value)}
-                  className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
-                >
-                  {(aftercarePlanProcedures || []).map((procedure) => (
-                    <option key={procedure.id} value={procedure.id}>
-                      {procedure.name_ko || procedure.name_en || '시술 미지정'}
-                    </option>
-                  ))}
-                </select>
-                {canEditAftercarePlans && !selectedAftercarePlan && (
-                  <button
-                    onClick={handleEnsureAftercarePlan}
-                    disabled={!selectedAftercareProcedureId || ensuringAftercarePlan}
-                    className="px-3 py-1 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
-                    style={{ background: TEAL }}
-                  >
-                    {ensuringAftercarePlan ? '기본 플랜 생성 중…' : '기본 플랜 만들기'}
-                  </button>
-                )}
-                <button
-                  onClick={fetchAftercarePlans}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
-                >
-                  플랜 새로고침
-                </button>
-              </div>
-
-              {loadingAftercarePlans ? (
-                <div className={`mt-4 text-xs ${textS}`}>Aftercare plan 불러오는 중…</div>
-              ) : !selectedAftercarePlan ? (
-                <div className={`mt-4 text-xs ${textS}`}>선택한 시술에 아직 aftercare plan이 없습니다. 필요하면 기본 플랜을 먼저 만드세요.</div>
-              ) : (
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {(selectedAftercarePlan.steps || []).map((step) => (
-                    <div
-                      key={step.id}
-                      className="rounded-2xl border p-3"
-                      style={{ borderColor: darkMode ? '#3F3F46' : '#E5E7EB', background: darkMode ? '#111827' : '#FFFFFF' }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className={`text-[11px] font-bold ${textP}`}>{step.step_key}</p>
-                          <p className={`text-[10px] ${textS}`}>정렬 {step.sort_order}</p>
-                        </div>
-                        <span className={`text-[10px] ${textS}`}>Updated {fmtAgo(step.updated_at)}</span>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <label className="flex flex-col gap-1">
-                          <span className={`text-[10px] font-semibold ${textS}`}>발송 시점 (시간)</span>
-                          <input
-                            type="number"
-                            min="1"
-                            max="720"
-                            value={step.trigger_offset_hours ?? ''}
-                            disabled={!canEditAftercarePlans}
-                            onChange={(e) => handleAftercareStepDraftChange(step.id, 'trigger_offset_hours', e.target.value)}
-                            className={`rounded-lg border px-2 py-1 text-[11px] ${inputBg}`}
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1">
-                          <span className={`text-[10px] font-semibold ${textS}`}>다음 액션</span>
-                          <select
-                            value={step.next_action_type || 'continue_plan'}
-                            disabled={!canEditAftercarePlans}
-                            onChange={(e) => handleAftercareStepDraftChange(step.id, 'next_action_type', e.target.value)}
-                            className={`rounded-lg border px-2 py-1 text-[11px] ${darkMode ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-200 text-zinc-700'}`}
-                          >
-                            {['symptom_check', 'progress_check', 'return_prompt', 'extra_check', 'staff_review', 'continue_plan'].map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      <label className="mt-3 flex flex-col gap-1">
-                        <span className={`text-[10px] font-semibold ${textS}`}>메시지 내용</span>
-                        <textarea
-                          rows={4}
-                          value={step.content_template || ''}
-                          disabled={!canEditAftercarePlans}
-                          onChange={(e) => handleAftercareStepDraftChange(step.id, 'content_template', e.target.value)}
-                          className={`rounded-xl border px-3 py-2 text-[11px] resize-y ${inputBg}`}
-                        />
-                      </label>
-
-                      <div className={`mt-3 rounded-xl border px-3 py-2 text-[11px] ${darkMode ? 'border-zinc-700 bg-zinc-900 text-zinc-300' : 'border-sky-100 bg-sky-50 text-sky-900'}`}>
-                        <div className="font-bold mb-1">환자 미리보기</div>
-                        <div className="leading-relaxed">{step.content_template || '메시지 내용을 입력하세요.'}</div>
-                        <div className={`mt-2 ${textS}`}>
-                          사후관리 시작 후 {step.trigger_offset_hours || '—'}시간 뒤 발송 · 다음: {step.next_action_type || '—'}
-                        </div>
-                        {Number(step.trigger_offset_hours) !== Number(step.original_trigger_offset_hours) && (
-                          <div className="mt-2 font-bold text-amber-700">
-                            타이밍 변경됨. 저장 시 확인 요청됩니다.
-                          </div>
-                        )}
-                      </div>
-
-                      {canEditAftercarePlans && (
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            onClick={() => handleSaveAftercareStep(step)}
-                            disabled={savingAftercareStepIds.has(step.id)}
-                            className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white disabled:opacity-50"
-                            style={{ background: TEAL }}
-                          >
-                            {savingAftercareStepIds.has(step.id) ? '저장 중…' : 'Step 저장'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4 space-y-3">
-            {loadingAftercare ? (
-              <div className={`text-xs ${textS}`}>Aftercare items 불러오는 중…</div>
-            ) : Object.keys(groupedAftercare).length === 0 ? (
-              <div className={`text-xs ${textS}`}>현재 조건에 맞는 aftercare item이 없습니다.</div>
-            ) : (
-              Object.entries(groupedAftercare).map(([groupKey, items]) => (
-                <div key={groupKey}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[11px] font-bold ${textP}`}>
-                      {getAftercareGroupLabel(groupKey)}
-                    </span>
-                    <span className={`text-[10px] ${textS}`}>{items.length}</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {items.map((item) => (
-                      <AftercareTaskCard
-                        key={item.id}
-                        item={item}
-                        darkMode={darkMode}
-                        busy={reviewingAftercareIds.has(item.id)}
-                        onReview={handleReviewAftercare}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-3xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#0B1220' : '#F8FBFF' }}>
-          <div className="mb-4">
-            <p className={`text-[12px] font-black ${textP}`}>룸 요약</p>
-            <p className={`text-[11px] mt-1 ${textS}`}>Tiki Desk에서는 방 상태만 빠르게 확인하고, 상세 운영은 Tiki Room에서 이어갑니다.</p>
-          </div>
-
-          <div className="rounded-2xl border p-4" style={{ borderColor: darkMode ? '#27272A' : '#D6E1EA', background: darkMode ? '#111827' : '#FFFFFF' }}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <DoorOpen size={14} style={{ color: TEAL }} />
-                  <h2 className={`text-sm font-bold ${textP}`}>룸 배정 현황</h2>
-                </div>
-                <p className={`text-[11px] mt-1 ${textS}`}>빈 방, 사용 중인 방, 다음 배정 후보만 빠르게 확인합니다.</p>
-              </div>
-              <button
-                onClick={() => window.open('/room', '_blank', 'noopener,noreferrer')}
-                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold border ${darkMode ? 'border-zinc-700 text-zinc-300 hover:bg-zinc-800' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'}`}
-              >
-                Tiki Room 열기
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-[1fr_1fr_1fr_1.2fr] gap-2">
-              {[
-                ['전체 방', roomSummary.total, '등록된 방', TEAL],
-                ['빈 방', roomSummary.free, '즉시 배정', '#16A34A'],
-                ['사용 중', roomSummary.occupied, '현재 진행', '#DC2626'],
-                ['다음 후보', roomSummary.readyQueue, '룸 이동 가능', '#0F4C75'],
-              ].map(([label, value, sub, color]) => (
-                <div key={label} className="rounded-2xl border px-4 py-3" style={{ borderColor: `${color}32`, background: darkMode ? '#0F172A' : '#FFFFFF' }}>
-                  <p className={`text-[10px] font-black ${textS}`}>{label}</p>
-                  <div className="mt-1 flex items-end justify-between gap-2">
-                    <span style={{ fontSize: 32, lineHeight: 1, fontWeight: 950, color }}>{loading ? '…' : value}</span>
-                    <span className={`text-[10px] font-bold ${textS}`}>{sub}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-4 gap-2 mt-4">
-              {(rooms || []).map((room, index) => (
-                <RoomTrafficCard
-                  key={room.id}
-                  room={room}
-                  queueVisit={roomQueue[index] || null}
-                  darkMode={darkMode}
-                  busy={assigningRoomIds.has(room.current_visit?.id || roomQueue[index]?.id)}
-                  onAssignRoom={handleAssignRoom}
-                  onClearRoom={handleClearRoom}
-                />
-              ))}
-              {!loading && rooms.length === 0 && (
-                <div className={`col-span-4 text-xs ${textS}`}>등록된 방이 없습니다. Tiki Room에서 방을 먼저 설정하세요.</div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
@@ -2683,6 +2596,7 @@ export default function MyTikiTab({ darkMode }) {
           filtered.map(visit => (
             <VisitRow
               key={visit.id}
+              id={`visit-row-${visit.id}`}
               visit={visit}
               dateRange={dateRange}
               darkMode={darkMode}
@@ -2734,6 +2648,27 @@ export default function MyTikiTab({ darkMode }) {
           onAction={runEscalationAction}
         />
       )}
+      <style>{`
+        .tiki-desk-rise {
+          animation: tikiDeskRise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        }
+        .tiki-desk-rise button,
+        .tiki-desk-rise [role="button"] {
+          will-change: transform;
+        }
+        .tiki-desk-rise [style*="font-size: 34px"],
+        .tiki-desk-rise [style*="font-size:34px"] {
+          animation: tikiDeskNumberPop 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        }
+        @keyframes tikiDeskRise {
+          from { opacity: 0; transform: translateY(10px) scale(0.992); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes tikiDeskNumberPop {
+          0% { transform: translateY(4px) scale(0.94); opacity: 0.35; }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
