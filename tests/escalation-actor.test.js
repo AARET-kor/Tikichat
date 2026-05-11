@@ -48,3 +48,27 @@ test("buildEscalationUpdateForAction stamps actor fields for acknowledge/respond
   });
   assert.equal(closed.closed_by, "44444444-4444-4444-4444-444444444444");
 });
+
+test("buildEscalationUpdateForAction allows idempotent staff clicks for handled states", () => {
+  const acknowledgeHandled = buildEscalationUpdateForAction({
+    currentStatus: "resolved",
+    action: "acknowledge",
+    escalation_type: "billing_or_booking",
+    patientLang: "zh",
+    assigned_role: "coordinator",
+    assigned_user_id: null,
+    staff_user_id: "55555555-5555-5555-5555-555555555555",
+  });
+  assert.equal(acknowledgeHandled.status, "resolved");
+
+  const resolveHandled = buildEscalationUpdateForAction({
+    currentStatus: "resolved",
+    action: "resolve",
+    escalation_type: "billing_or_booking",
+    patientLang: "zh",
+    assigned_role: "coordinator",
+    assigned_user_id: null,
+    staff_user_id: "66666666-6666-6666-6666-666666666666",
+  });
+  assert.equal(resolveHandled.status, "resolved");
+});

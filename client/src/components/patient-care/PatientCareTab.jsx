@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -52,6 +53,7 @@ const DEFAULT_AFTERCARE_SUMMARY = {
 
 const CONFIRM_STATUS_LABELS = {
   all: '전체 상태',
+  active: '처리할 요청',
   requested: '확인 필요',
   assigned: '담당자 지정됨',
   acknowledged: '확인 중',
@@ -91,11 +93,19 @@ function formatElapsed(value) {
 }
 
 function patientName(row) {
-  return row?.patients?.name || row?.patient?.name || row?.patient_name || '환자명 없음';
+  return row?.patients?.name
+    || row?.patient_aftercare_runs?.patients?.name
+    || row?.patient?.name
+    || row?.patient_name
+    || '환자명 없음';
 }
 
 function patientLang(row) {
-  return row?.patients?.lang || row?.patient?.lang || row?.detected_language || '언어 미확인';
+  return row?.patients?.lang
+    || row?.patient_aftercare_runs?.patients?.lang
+    || row?.patient?.lang
+    || row?.detected_language
+    || '언어 미확인';
 }
 
 function compactText(value, fallback = '내용이 없습니다.') {
@@ -152,9 +162,12 @@ function ShellButton({ children, active = false, onClick, disabled = false }) {
   );
 }
 
-function SummaryCard({ icon: Icon, label, value, hint, tone = PRIMARY }) {
+function SummaryCard({ icon: Icon, label, value, hint, tone = PRIMARY, onClick, active = false }) {
+  const Component = onClick ? 'button' : 'div';
   return (
-    <div
+    <Component
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
       className="transition-all duration-200 hover:-translate-y-0.5"
       style={{
         border: `1px solid ${BORDER}`,
@@ -162,6 +175,11 @@ function SummaryCard({ icon: Icon, label, value, hint, tone = PRIMARY }) {
         background: '#fff',
         padding: 20,
         boxShadow: '0 16px 32px rgba(16, 54, 125, 0.055)',
+        cursor: onClick ? 'pointer' : 'default',
+        textAlign: 'left',
+        width: '100%',
+        outline: active ? `2px solid ${tone}` : 'none',
+        outlineOffset: active ? 2 : 0,
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -182,7 +200,7 @@ function SummaryCard({ icon: Icon, label, value, hint, tone = PRIMARY }) {
           <Icon size={23} strokeWidth={2.4} />
         </div>
       </div>
-    </div>
+    </Component>
   );
 }
 
@@ -203,11 +221,12 @@ function EmptyState({ children }) {
   );
 }
 
-function ConfirmRequestCard({ item, staffUsers, busy, onAction }) {
+function ConfirmRequestCard({ item, staffUsers, busy, onAction, onOpenPatient }) {
   const priority = getEscalationPriorityMeta(item.priority);
   const priorityLabel = item.priority === 'urgent' ? '긴급 확인' : (CONFIRM_PRIORITY_LABELS[item.priority] || priority.label);
   const isBusy = busy === item.id;
   const sourceText = item.source_message?.content || item.patient_visible_status_text || item.notes;
+  const handled = item.status === 'resolved' || item.status === 'closed';
 
   return (
     <article
@@ -223,12 +242,22 @@ function ConfirmRequestCard({ item, staffUsers, busy, onAction }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
+        <button
+          type="button"
+          onClick={() => onOpenPatient?.(item)}
+          style={{
+            border: 0,
+            background: 'transparent',
+            padding: 0,
+            textAlign: 'left',
+            cursor: 'pointer',
+          }}
+        >
           <div style={{ fontSize: 20, fontWeight: 950, color: TEXT }}>{patientName(item)}</div>
           <div style={{ marginTop: 7, color: MUTED, fontSize: 14, fontWeight: 850 }}>
             {patientLang(item)} · {ESCALATION_TYPE_LABELS[item.escalation_type] || '확인 요청'} · {formatElapsed(item.opened_at || item.created_at)}
           </div>
-        </div>
+        </button>
         <span style={{
           borderRadius: 999,
           padding: '8px 12px',
@@ -275,16 +304,24 @@ function ConfirmRequestCard({ item, staffUsers, busy, onAction }) {
       </div>
 
       <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <ShellButton disabled={isBusy} onClick={() => onAction(item, 'acknowledge')}>확인 시작</ShellButton>
-        <ShellButton disabled={isBusy} onClick={() => onAction(item, 'assign')}>담당자 지정</ShellButton>
-        <ShellButton disabled={isBusy} onClick={() => onAction(item, 'responded')}>답변 완료</ShellButton>
-        <ShellButton active disabled={isBusy} onClick={() => onAction(item, 'resolve')}>처리 완료</ShellButton>
+        {handled ? (
+          item.status === 'resolved'
+            ? <ShellButton active disabled={isBusy} onClick={() => onAction(item, 'close')}>종료 처리</ShellButton>
+            : <ShellButton disabled>종료됨</ShellButton>
+        ) : (
+          <>
+            <ShellButton disabled={isBusy} onClick={() => onAction(item, 'acknowledge')}>확인 시작</ShellButton>
+            <ShellButton disabled={isBusy} onClick={() => onAction(item, 'assign')}>담당자 지정</ShellButton>
+            <ShellButton disabled={isBusy} onClick={() => onAction(item, 'responded')}>답변 완료</ShellButton>
+            <ShellButton active disabled={isBusy} onClick={() => onAction(item, 'resolve')}>처리 완료</ShellButton>
+          </>
+        )}
       </div>
     </article>
   );
 }
 
-function AftercareCard({ item, busy, onReview }) {
+function AftercareCard({ item, busy, onReview, onOpenPatient }) {
   const state = aftercareState(item);
   const riskMeta = getAftercareRiskMeta(item.risk_level);
   const template = item.aftercare_steps?.content_template || item.step_content || item.notes;
@@ -308,12 +345,22 @@ function AftercareCard({ item, busy, onReview }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-        <div>
+        <button
+          type="button"
+          onClick={() => onOpenPatient?.(item)}
+          style={{
+            border: 0,
+            background: 'transparent',
+            padding: 0,
+            textAlign: 'left',
+            cursor: 'pointer',
+          }}
+        >
           <div style={{ fontSize: 20, fontWeight: 950, color: TEXT }}>{patientName(item)}</div>
           <div style={{ marginTop: 7, color: MUTED, fontSize: 14, fontWeight: 850 }}>
             {patientLang(item)} · {formatElapsed(item.responded_at || item.sent_at || item.scheduled_for || item.created_at)}
           </div>
-        </div>
+        </button>
         <span style={{
           borderRadius: 999,
           padding: '8px 12px',
@@ -358,6 +405,8 @@ function AftercareCard({ item, busy, onReview }) {
 
 export default function PatientCareTab({ darkMode = false }) {
   const { session } = useAuth();
+  const navigate = useNavigate();
+  const listTopRef = useRef(null);
   const clinicId = session?.clinic?.id;
   const [activeTab, setActiveTab] = useState('requests');
   const [confirmItems, setConfirmItems] = useState([]);
@@ -365,7 +414,8 @@ export default function PatientCareTab({ darkMode = false }) {
   const [aftercareItems, setAftercareItems] = useState([]);
   const [aftercareSummary, setAftercareSummary] = useState(DEFAULT_AFTERCARE_SUMMARY);
   const [staffUsers, setStaffUsers] = useState([]);
-  const [filters, setFilters] = useState({ status: 'all', priority: 'all', role: 'all', aftercare: 'all' });
+  const [filters, setFilters] = useState({ status: 'active', priority: 'all', role: 'all', aftercare: 'all' });
+  const [quickFilter, setQuickFilter] = useState('none');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
@@ -454,11 +504,24 @@ export default function PatientCareTab({ darkMode = false }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (data.item) {
+        setConfirmItems(prev => prev.map(row => (
+          row.id === item.id
+            ? { ...row, ...data.item, patients: row.patients, visits: row.visits }
+            : row
+        )));
+      }
       setNotice(action === 'resolve' ? '처리 완료로 기록했습니다.' : '확인 요청 상태를 업데이트했습니다.');
       await fetchConfirmRequests();
     } catch (error) {
       console.error('[patient-care-confirm-action]', error);
-      setNotice(error.message || '확인 요청을 처리하지 못했습니다.');
+      const message = String(error.message || '');
+      if (message.toLowerCase().includes('invalid transition')) {
+        setNotice('이미 처리된 요청입니다. 목록을 새로고침합니다.');
+        await fetchConfirmRequests();
+      } else {
+        setNotice(message || '확인 요청을 처리하지 못했습니다.');
+      }
     } finally {
       setBusy('');
     }
@@ -489,6 +552,70 @@ export default function PatientCareTab({ darkMode = false }) {
   const urgentConfirmCount = useMemo(() => {
     return Number(confirmSummary.urgent || 0);
   }, [confirmSummary.urgent]);
+
+  const visibleConfirmItems = useMemo(() => {
+    if (quickFilter === 'overdue') {
+      return confirmItems.filter(item => item.sla_state?.status === 'overdue' || item.sla_state === 'overdue');
+    }
+    return confirmItems;
+  }, [confirmItems, quickFilter]);
+
+  function resolvePatientId(item = {}) {
+    return item.patient_id
+      || item.patients?.id
+      || item.patient?.id
+      || item.patient_aftercare_runs?.patient_id
+      || item.patient_aftercare_runs?.patients?.id
+      || null;
+  }
+
+  function openPatientMemory(item) {
+    const patientId = resolvePatientId(item);
+    if (!patientId) {
+      setNotice('환자 기록이 아직 연결되지 않았습니다.');
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', 'tiki_memory');
+    params.set('patient_id', patientId);
+    navigate(`/app?${params.toString()}`);
+  }
+
+  function scrollToList() {
+    window.requestAnimationFrame(() => {
+      listTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  function handleSummaryClick(target) {
+    setNotice('');
+    if (target === 'needs_attention') {
+      setActiveTab('requests');
+      setQuickFilter('none');
+      setFilters(prev => ({ ...prev, status: 'active', priority: 'all', role: 'all' }));
+    }
+    if (target === 'urgent') {
+      setActiveTab('requests');
+      setQuickFilter('none');
+      setFilters(prev => ({ ...prev, status: 'active', priority: 'urgent', role: 'all' }));
+    }
+    if (target === 'overdue') {
+      setActiveTab('requests');
+      setQuickFilter('overdue');
+      setFilters(prev => ({ ...prev, status: 'active', priority: 'all', role: 'all' }));
+    }
+    if (target === 'aftercare_responded') {
+      setActiveTab('aftercare');
+      setQuickFilter('none');
+      setFilters(prev => ({ ...prev, aftercare: 'responded' }));
+    }
+    if (target === 'safe_for_return') {
+      setActiveTab('aftercare');
+      setQuickFilter('none');
+      setFilters(prev => ({ ...prev, aftercare: 'safe_for_return' }));
+    }
+    scrollToList();
+  }
 
   const bg = darkMode ? '#09090B' : '#F7FAFE';
   const cardBg = darkMode ? '#18181B' : '#fff';
@@ -547,11 +674,11 @@ export default function PatientCareTab({ darkMode = false }) {
         </header>
 
         <section style={{ marginTop: 34, display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 16 }}>
-          <SummaryCard icon={UserCheck} label="확인 필요" value={confirmSummary.unanswered || confirmSummary.requested} hint="직원 확인 요청" tone={PRIMARY} />
-          <SummaryCard icon={ShieldAlert} label="긴급" value={urgentConfirmCount + Number(aftercareSummary.urgent || 0)} hint="먼저 볼 항목" tone="#DC2626" />
-          <SummaryCard icon={Clock3} label="지연" value={confirmSummary.overdue} hint="지연된 확인 요청" tone="#B45309" />
-          <SummaryCard icon={Send} label="사후관리 응답" value={aftercareSummary.responded} hint="환자 응답 도착" tone={PRIMARY_DARK} />
-          <SummaryCard icon={CheckCircle2} label="재방문 가능" value={aftercareSummary.safe_for_return} hint="리턴 제안 가능" tone="#16A34A" />
+          <SummaryCard icon={UserCheck} label="확인 필요" value={confirmSummary.unanswered || confirmSummary.requested} hint="직원 확인 요청" tone={PRIMARY} active={activeTab === 'requests' && filters.status === 'active' && filters.priority === 'all' && quickFilter === 'none'} onClick={() => handleSummaryClick('needs_attention')} />
+          <SummaryCard icon={ShieldAlert} label="긴급" value={urgentConfirmCount + Number(aftercareSummary.urgent || 0)} hint="먼저 볼 항목" tone="#DC2626" active={activeTab === 'requests' && filters.priority === 'urgent'} onClick={() => handleSummaryClick('urgent')} />
+          <SummaryCard icon={Clock3} label="지연" value={confirmSummary.overdue} hint="지연된 확인 요청" tone="#B45309" active={quickFilter === 'overdue'} onClick={() => handleSummaryClick('overdue')} />
+          <SummaryCard icon={Send} label="사후관리 응답" value={aftercareSummary.responded} hint="환자 응답 도착" tone={PRIMARY_DARK} active={activeTab === 'aftercare' && filters.aftercare === 'responded'} onClick={() => handleSummaryClick('aftercare_responded')} />
+          <SummaryCard icon={CheckCircle2} label="재방문 가능" value={aftercareSummary.safe_for_return} hint="리턴 제안 가능" tone="#16A34A" active={activeTab === 'aftercare' && filters.aftercare === 'safe_for_return'} onClick={() => handleSummaryClick('safe_for_return')} />
         </section>
 
         {notice && (
@@ -588,19 +715,20 @@ export default function PatientCareTab({ darkMode = false }) {
           </div>
 
           {activeTab === 'requests' && (
-            <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18 }}>
+            <div ref={listTopRef} style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: '-0.04em' }}>오늘 먼저 볼 확인 요청</h2>
                 <p style={{ marginTop: 8, color: MUTED, fontSize: 15, fontWeight: 780 }}>긴급, 지연, 미응답 요청을 직원이 바로 처리합니다.</p>
                 <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
-                  {confirmItems.length === 0 && <EmptyState>지금 확인할 요청이 없습니다.</EmptyState>}
-                  {confirmItems.map(item => (
+                  {visibleConfirmItems.length === 0 && <EmptyState>지금 확인할 요청이 없습니다.</EmptyState>}
+                  {visibleConfirmItems.map(item => (
                     <ConfirmRequestCard
                       key={item.id}
                       item={item}
                       staffUsers={staffUsers}
                       busy={busy}
                       onAction={runConfirmAction}
+                      onOpenPatient={openPatientMemory}
                     />
                   ))}
                 </div>
@@ -618,13 +746,13 @@ export default function PatientCareTab({ darkMode = false }) {
                 <h3 style={{ margin: 0, fontSize: 19, fontWeight: 950 }}>보기 기준</h3>
                 <p style={{ marginTop: 8, color: MUTED, fontSize: 14, fontWeight: 760 }}>처리 완료, 보류, 담당자별로 좁혀봅니다.</p>
                 <div style={{ marginTop: 18, display: 'grid', gap: 12 }}>
-                  <select value={filters.status} onChange={e => setFilters(prev => ({ ...prev, status: e.target.value }))} style={selectStyle}>
+                  <select value={filters.status} onChange={e => { setQuickFilter('none'); setFilters(prev => ({ ...prev, status: e.target.value })); }} style={selectStyle}>
                     {Object.entries(CONFIRM_STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
-                  <select value={filters.priority} onChange={e => setFilters(prev => ({ ...prev, priority: e.target.value }))} style={selectStyle}>
+                  <select value={filters.priority} onChange={e => { setQuickFilter('none'); setFilters(prev => ({ ...prev, priority: e.target.value })); }} style={selectStyle}>
                     {Object.entries(CONFIRM_PRIORITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
-                  <select value={filters.role} onChange={e => setFilters(prev => ({ ...prev, role: e.target.value }))} style={selectStyle}>
+                  <select value={filters.role} onChange={e => { setQuickFilter('none'); setFilters(prev => ({ ...prev, role: e.target.value })); }} style={selectStyle}>
                     <option value="all">전체 담당자</option>
                     {Object.entries(ESCALATION_ROLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
@@ -634,7 +762,7 @@ export default function PatientCareTab({ darkMode = false }) {
           )}
 
           {activeTab === 'aftercare' && (
-            <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18 }}>
+            <div ref={listTopRef} style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: '-0.04em' }}>오늘 먼저 볼 사후관리</h2>
                 <p style={{ marginTop: 8, color: MUTED, fontSize: 15, fontWeight: 780 }}>회복 상태, 주의 신호, 재방문 가능 여부를 빠르게 확인합니다.</p>
@@ -646,6 +774,7 @@ export default function PatientCareTab({ darkMode = false }) {
                       item={item}
                       busy={busy}
                       onReview={reviewAftercare}
+                      onOpenPatient={openPatientMemory}
                     />
                   ))}
                 </div>

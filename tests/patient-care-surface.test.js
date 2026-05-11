@@ -30,3 +30,17 @@ test("Patient Care uses staff-friendly Korean labels instead of escalation jargo
   assert.match(patientCareSource, /처리 완료/);
   assert.doesNotMatch(patientCareSource, />에스컬레이션</);
 });
+
+test("Patient Care defaults to actionable requests and summary cards drive filters", () => {
+  assert.match(patientCareSource, /status:\s*'active'/);
+  assert.match(patientCareSource, /function handleSummaryClick/);
+  assert.match(patientCareSource, /onClick=\{\(\)\s*=>\s*handleSummaryClick\('needs_attention'\)\}/);
+  assert.match(patientCareSource, /onClick=\{\(\)\s*=>\s*handleSummaryClick\('aftercare_responded'\)\}/);
+});
+
+test("Patient Care cards can jump to the patient Memory record", () => {
+  assert.match(patientCareSource, /function openPatientMemory/);
+  assert.match(patientCareSource, /tab',\s*'tiki_memory'/);
+  assert.match(patientCareSource, /patient_id/);
+  assert.match(patientCareSource, /onOpenPatient/);
+});

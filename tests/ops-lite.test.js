@@ -7,7 +7,8 @@ import {
   shouldPollOpsBoard,
 } from "../client/src/lib/opsLite.js";
 
-test("shouldPollOpsBoard only enables lightweight polling for today view", () => {
+test("shouldPollOpsBoard enables lightweight polling for active and today views", () => {
+  assert.equal(shouldPollOpsBoard("active"), true);
   assert.equal(shouldPollOpsBoard("today"), true);
   assert.equal(shouldPollOpsBoard("week"), false);
   assert.equal(shouldPollOpsBoard("all"), false);

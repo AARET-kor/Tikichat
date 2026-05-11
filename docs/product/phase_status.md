@@ -35,7 +35,7 @@ Status meanings:
 | My Tiki link validity | stable after deploy smoke test | Generated links now use encoded tokens and patient-token auth requires only required `patient_links` fields. Must be retested with a newly generated link after deploy. |
 | Tiki Desk scroll | stable after deploy smoke test | Global document scroll and Tiki Desk internal scrolling are restored. Must be checked on actual staff screen sizes. |
 | New visit visibility | stable after deploy smoke test | New visits are inserted optimistically and date filters move to `today`, `tomorrow`, `week`, or `all` based on visit date. |
-| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. It now extracts patient/visit candidates, shows conservative existing-patient matches, and supports staff-confirmed existing/new patient conversion into patient + visit + My Tiki link + Memory. Chrome extension, DOM-reading behavior, silent auto-match, and CRM/EMR bulk import ownership are paused/excluded. |
+| TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. It now extracts patient/visit candidates, shows conservative existing-patient matches, and supports staff-confirmed existing/new patient conversion into patient + visit + My Tiki link + Memory. Chrome extension code has been removed; DOM-reading behavior, silent auto-match, and CRM/EMR bulk import ownership remain excluded. |
 | Design-system pass | implemented / validating | Landing, staff shell, Tiki Desk, Protocol, Procedure Management, and My Tiki UI kit direction are standardized. More manual visual QA remains. |
 
 ## Batch Status

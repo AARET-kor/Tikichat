@@ -98,9 +98,9 @@ export function getDeskPrimaryCta(action = {}, visit = {}) {
       helper: "체크인으로 처리합니다",
     },
     complete_forms: {
-      type: "focus_visit",
+      type: "confirm_forms",
       label: "서류 확인",
-      helper: "방문 행에서 문진·동의 상태를 확인합니다",
+      helper: "직원이 문진·동의 확인을 완료 처리합니다",
     },
     send_to_room: {
       type: "assign_room",

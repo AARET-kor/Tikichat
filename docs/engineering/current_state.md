@@ -1,6 +1,6 @@
 # Current Engineering State
 
-Last updated: 2026-05-05
+Last updated: 2026-05-11
 
 This document is the short engineering truth snapshot for TikiDoc after hardening, Batch 6A / 6B / 6C / 6D, the design-system pass, TikiPaste web-sidecar pivot, auth fixes, and Quick Visit / My Tiki link stabilization.
 
@@ -49,6 +49,11 @@ Stable:
 - Scheduler health/degraded visibility for aftercare.
 - Light audit/actor tracking for key escalation, room, and aftercare transitions.
 - Tiki Desk operational visibility: urgency markers, escalation owner/latest actor line, SLA-derived markers, scheduler notice, and recent audit/history browse.
+- Patient Care operational screen:
+  - confirmation-request action buttons now persist state transitions instead of behaving like passive UI
+  - the default request list shows actionable active requests, not already resolved/closed history
+  - top summary cards act as operational filters for confirmation-needed, urgent, delayed, aftercare response, and return-ready patients
+  - confirmation/aftercare patient cards can jump directly into that patient's Tiki Memory context
 - Tiki Desk UX reset Phase 1: the first screen now emphasizes today's booked order, actual arrival order, and operational next-action order with larger staff-readable metrics and patient flow cards.
 - Dashboard shell UX reset Phase 2: the staff sidebar is now a wider readable operations nav with larger icons, labels, sublabels, and clearer product/management grouping. The top bar now uses larger clinic/staff identity treatments.
 - Protocol UX reset Phase 3: the staff protocol surface now reads as an operational standards board with larger Korean copy, clear response standards, prohibited phrases, approved wording, and a visible improvement checklist.
@@ -58,7 +63,7 @@ Stable:
   - staff/product surfaces use larger type, stronger spacing, consistent radii, status tones, and bright/warm clinical surfaces
   - `/landing` has its own landing-only app target and refreshed structure for `tikidoc.xyz`
 - TikiPaste web-sidecar:
-  - the Chrome extension direction is paused
+  - the Chrome extension project has been dropped and removed from the repository
   - staff can paste conversation text or screenshot fallback into the web app
   - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
   - TikiPaste now extracts conservative patient/visit candidates from pasted text or staff-provided screenshots
@@ -115,7 +120,7 @@ Intentionally deferred:
 - Full CMS/no-code editor for aftercare or Ask.
 - Generic rules engine.
 - Schema-first redesign of workflow state.
-- Chrome extension / desktop overlay version of TikiPaste.
+- Chrome extension / desktop overlay version of TikiPaste. The repository-level `extension/` app has been removed; do not restart it without a new explicit product decision.
 - Automatic arbitrary browser DOM reading.
 - Backend OCR platform.
 - Full omnichannel inbox or message sync.
@@ -280,7 +285,7 @@ Later expansion only:
 - Assignment rules engine.
 - Analytics/reporting dashboards.
 - Dedicated incident management or job dashboard.
-- Chrome extension or native overlay re-entry, only if the web-sidecar workflow proves insufficient.
+- Chrome extension or native overlay re-entry is not part of the active roadmap. Reintroduce only with an explicit new product decision.
 - Backend STT/TTS pipeline.
 - Backend OCR platform.
 
@@ -307,11 +312,9 @@ Prefer:
 
 ## Current Dirty-Worktree Note
 
-Recent work has touched product files, docs, tests, and build artifacts. There is also an unrelated dirty file:
+Recent work has touched product files, docs, tests, and build artifacts. The former Chrome extension project has now been intentionally removed, so there is no longer an extension dirty-file exception to preserve.
 
-- `/Users/a0000/Desktop/LCAUDE/clinic-chatbot/extension/src/SidePanel.jsx`
-
-Do not revert or include unrelated changes unless explicitly instructed.
+Continue to inspect `git status --short` before commits and avoid reverting unrelated user work.
 
 ## Safest Next Step
 

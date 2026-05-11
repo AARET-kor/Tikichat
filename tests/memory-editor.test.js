@@ -107,3 +107,13 @@ test("Tiki Memory timeline correction adds staff notes without mutating timeline
   assert.doesNotMatch(memoryUiSource, /session\.summary\s*=/);
   assert.doesNotMatch(memoryUiSource, /sessions:\s*splitLines/);
 });
+
+test("Tiki Memory does not flash mock patients while real Memory is loading", () => {
+  assert.doesNotMatch(memoryUiSource, /memoryItems\.length\s*>\s*0\s*\?\s*memoryItems\s*:\s*MEMORY_RECORDS/);
+  assert.doesNotMatch(memoryUiSource, /예시 기록을 표시합니다/);
+});
+
+test("staff Memory patch does not require optional last_edited columns in deployed schema", () => {
+  assert.match(serverSource, /includeActorColumns:\s*false/);
+  assert.doesNotMatch(serverSource, /\.from\("patient_interactions"\)[\s\S]{0,800}last_edited_at/);
+});

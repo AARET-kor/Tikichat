@@ -4,8 +4,8 @@
  * Tiki Desk — staff operations surface.
  *
  * Columns: patient + time | procedure | stage | forms | room | link | actions
- * Default view: Today, sorted by visit_date ASC (earliest first).
- * Date tabs: 오늘 / 내일 / 이번주 / 전체
+ * Default view: active operational work, sorted by visit_date ASC (earliest first).
+ * Date tabs: 운영중 / 오늘 / 내일 / 이번주 / 전체
  *
  * Actions per row:
  *   - 체크인     → POST /api/my-tiki/visits/:id/check-in
@@ -66,6 +66,7 @@ const LINK_META = {
 
 // ── Date range tabs ──────────────────────────────────────────────────────────
 const DATE_RANGES = [
+  { key: 'active',   label: '운영중' },
   { key: 'today',    label: '오늘' },
   { key: 'tomorrow', label: '내일' },
   { key: 'week',     label: '이번주' },
@@ -1795,7 +1796,7 @@ export default function MyTikiTab({ darkMode }) {
   const [fetchError,      setFetchError]      = useState(null);
   const [search,          setSearch]          = useState('');
   const [stageFilter,     setStageFilter]     = useState('all');
-  const [dateRange,       setDateRange]       = useState('today');
+  const [dateRange,       setDateRange]       = useState('active');
   const [escalationGroupBy, setEscalationGroupBy] = useState('status');
   const [escalationStatusFilter, setEscalationStatusFilter] = useState('all');
   const [escalationPriorityFilter, setEscalationPriorityFilter] = useState('all');
@@ -1828,7 +1829,6 @@ export default function MyTikiTab({ darkMode }) {
 
   // ── Fetch visits ───────────────────────────────────────────────────────────
   const fetchVisits = useCallback(async () => {
-    if (!clinicId) return;
     setLoading(true);
     setFetchError(null);
     try {
@@ -1851,7 +1851,7 @@ export default function MyTikiTab({ darkMode }) {
     } finally {
       setLoading(false);
     }
-  }, [clinicId, dateRange, stageFilter]);
+  }, [dateRange, stageFilter]);
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
 
@@ -2057,6 +2057,27 @@ export default function MyTikiTab({ darkMode }) {
         next.delete(visitId);
         return next;
       });
+    }
+  }
+
+  async function handleConfirmForms(visitId) {
+    if (checkingInIds.has(visitId)) return;
+    setCheckingInIds(prev => new Set([...prev, visitId]));
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`/api/staff/visits/${visitId}/confirm-forms`, {
+        method: 'POST',
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchVisits();
+      setDeskNotice('문진·동의 확인이 완료 처리됐습니다.');
+    } catch (err) {
+      console.error('[confirm-forms]', err.message);
+      setDeskNotice('서류 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setCheckingInIds(prev => { const next = new Set(prev); next.delete(visitId); return next; });
     }
   }
 
@@ -2288,6 +2309,10 @@ export default function MyTikiTab({ darkMode }) {
       handleAssignRoom(visit.id, freeRoom.id);
       return;
     }
+    if (type === 'confirm_forms') {
+      handleConfirmForms(visit.id);
+      return;
+    }
     if (type === 'open_room') {
       openDedicatedSurface('room');
       return;
@@ -2301,6 +2326,7 @@ export default function MyTikiTab({ darkMode }) {
     ));
     setSummary(prev => ({ ...prev, activeLinks: prev.activeLinks + 1 }));
     setDeskNotice('My Tiki 링크가 발급됐습니다.');
+    fetchVisits();
   }
 
   function handleCreated(rawVisit) {
@@ -2407,7 +2433,9 @@ export default function MyTikiTab({ darkMode }) {
             </div>
             <p className={`text-[16px] mt-5 font-bold leading-relaxed ${textS}`}>예약 순서, 실제 도착 순서, 지금 처리할 일을 한 화면에서 봅니다.</p>
             {shouldPollOpsBoard(dateRange) && (
-              <p className={`text-[13px] mt-1.5 font-semibold ${textS}`}>오늘 보기는 20초마다 자동 새로고침됩니다.</p>
+              <p className={`text-[13px] mt-1.5 font-semibold ${textS}`}>
+                {dateRange === 'today' ? '오늘 보기' : '운영 보기'}는 20초마다 자동 새로고침됩니다.
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">

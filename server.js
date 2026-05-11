@@ -127,7 +127,6 @@ const app = express();
 // ALLOWED_ORIGINS 미설정 → 모든 origin 허용 (개발/데모)
 // ALLOWED_ORIGINS 설정  → 화이트리스트 (프로덕션)
 //   예: ALLOWED_ORIGINS=https://app.tikidoc.xyz,https://tikidoc.xyz
-// chrome-extension://* 는 항상 허용 (브라우저 확장 호환)
 const _allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
   : null;
@@ -135,8 +134,8 @@ const _allowedOrigins = process.env.ALLOWED_ORIGINS
 const corsOptions = {
   origin: _allowedOrigins
     ? (origin, cb) => {
-        // No origin (server-to-server, curl) or chrome-extension always pass
-        if (!origin || origin.startsWith("chrome-extension://")) return cb(null, true);
+        // No origin covers server-to-server and curl-style requests.
+        if (!origin) return cb(null, true);
         if (_allowedOrigins.includes(origin)) return cb(null, true);
         cb(new Error(`CORS: ${origin} is not allowed`));
       }
@@ -3239,6 +3238,66 @@ app.post("/api/my-tiki/visits/:id/check-in", requireStaffAuth, async (req, res) 
   }
 });
 
+// ── POST /api/staff/visits/:id/confirm-forms — staff confirms intake/consent review
+// Small operational close action for Tiki Desk. It does not edit form content; it only
+// records that staff verified the required documents for this visit.
+app.post("/api/staff/visits/:id/confirm-forms", requireStaffAuth, async (req, res) => {
+  const { id } = req.params;
+  const clinic_id = req.clinic_id;
+  const sb = getSbAdmin();
+  if (!sb) return res.status(503).json({ error: "Database unavailable" });
+
+  try {
+    const { data: existing, error: existingErr } = await sb
+      .from("visits")
+      .select("id, patient_id, intake_done, consent_done")
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+    if (!existing) return res.status(404).json({ error: "Visit not found" });
+
+    const update = {
+      intake_done: true,
+      consent_done: true,
+    };
+
+    const { data, error } = await sb
+      .from("visits")
+      .update(update)
+      .eq("id", id)
+      .eq("clinic_id", clinic_id)
+      .select("id, patient_id, intake_done, consent_done, updated_at")
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Visit not found" });
+
+    await sb.from("patient_journey_events").insert(
+      buildJourneyEventInsert({
+        clinic_id,
+        patient_id: existing.patient_id || null,
+        visit_id: id,
+        event_type: "form_reviewed",
+        actor_type: "staff",
+        actor_id: req.staff_user_id || null,
+        payload: {
+          previous_intake_done: Boolean(existing.intake_done),
+          previous_consent_done: Boolean(existing.consent_done),
+          intake_done: true,
+          consent_done: true,
+        },
+      }),
+    );
+
+    res.json({ ok: true, visit: data });
+  } catch (err) {
+    console.error("[Staff/visits/confirm-forms]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── PATCH /api/my-tiki/visits/:id/room  — 방 배정 / 변경 / 해제
 // body: { room: "1호실" | null }
 app.patch("/api/my-tiki/visits/:id/room", requireStaffAuth, async (req, res) => {
@@ -4027,6 +4086,9 @@ app.patch("/api/staff/memory/:patientId", requireStaffAuth, requireRole("owner",
     const { update, changedFields } = buildMemoryPatchUpdate({
       patch: req.body || {},
       actorId: req.staff_user_id,
+      // Deployed pilot schemas may not have last_edited_by/last_edited_at yet.
+      // Actor evidence is still captured in journey/audit logs below.
+      includeActorColumns: false,
     });
     if (changedFields.length === 0) {
       return res.status(400).json({ error: "No editable Memory fields provided" });
@@ -5456,7 +5518,11 @@ app.get("/api/staff/escalations", requireStaffAuth, async (req, res) => {
       .order("opened_at", { ascending: false })
       .limit(200);
 
-    if (status) q = q.eq("status", status);
+    if (status === "active") {
+      q = q.in("status", ["requested", "assigned", "acknowledged", "responded"]);
+    } else if (status) {
+      q = q.eq("status", status);
+    }
     if (priority) q = q.eq("priority", priority);
     if (assigned_role) q = q.eq("assigned_role", assigned_role);
     if (assigned_user_id) q = q.eq("assigned_user_id", assigned_user_id);

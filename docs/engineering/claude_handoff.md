@@ -17,12 +17,7 @@ First:
 - read `docs/product/phase_gap_register.md`
 - inspect `git status --short`
 - preserve unrelated dirty files
-
-Known unrelated dirty file:
-
-- `/Users/a0000/Desktop/LCAUDE/clinic-chatbot/extension/src/SidePanel.jsx`
-
-Do not revert it unless explicitly asked.
+- note that the previous Chrome extension app has been intentionally removed
 
 ## Product Surface Model
 
@@ -79,7 +74,7 @@ Design-system / UX reset:
 TikiPaste pivot:
 
 - Status: usable / pilot-ready.
-- Chrome extension direction is paused.
+- Chrome extension direction has been dropped and the `extension/` app has been removed from the repository.
 - TikiPaste is now a web-only sidecar workspace:
   - paste conversation text
   - paste selected chat text
@@ -118,7 +113,7 @@ TikiPaste pivot:
   - updates are scoped to the authenticated clinic and stamp `last_edited_by` / `last_edited_at`
   - each edit writes a lightweight `note_added` journey event with the staff actor and a non-blocking audit log
   - do not turn this into raw CRM/EMR storage or full transcript storage
-- Do not rebuild extension/overlay behavior unless explicitly approved.
+- Do not rebuild extension/overlay behavior unless a new explicit product decision reopens that path.
 
 Runtime auth / Quick Visit fixes:
 
@@ -215,7 +210,7 @@ Later expansion only:
 - Job dashboard.
 - Assignment rules engine.
 - Analytics/reporting layer.
-- Chrome extension / native overlay for TikiPaste.
+- Chrome extension / native overlay for TikiPaste. This is not active roadmap work and the old extension app has been removed.
 - Automatic chat DOM reader.
 - Backend OCR platform.
 

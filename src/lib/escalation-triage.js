@@ -17,10 +17,10 @@ const TYPE_TO_PRIORITY = {
 };
 
 const ACTION_TRANSITIONS = {
-  acknowledge: { requested: "acknowledged", assigned: "acknowledged", acknowledged: "acknowledged" },
+  acknowledge: { requested: "acknowledged", assigned: "acknowledged", acknowledged: "acknowledged", responded: "responded", resolved: "resolved", closed: "closed" },
   assign: { requested: "assigned", assigned: "assigned", acknowledged: "assigned", responded: "assigned" },
-  respond: { requested: "responded", assigned: "responded", acknowledged: "responded", responded: "responded" },
-  resolve: { requested: "resolved", assigned: "resolved", acknowledged: "resolved", responded: "resolved" },
+  respond: { requested: "responded", assigned: "responded", acknowledged: "responded", responded: "responded", resolved: "resolved", closed: "closed" },
+  resolve: { requested: "resolved", assigned: "resolved", acknowledged: "resolved", responded: "resolved", resolved: "resolved", closed: "closed" },
   close: { resolved: "closed", responded: "closed" },
 };
 

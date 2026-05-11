@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search, X, Brain, Globe, Stethoscope, AlertTriangle,
   Clock, Calendar, ChevronDown, ChevronRight, Sparkles,
@@ -1655,6 +1656,8 @@ function EmptyDetail() {
 
 // ── InsightsTab (TikiMemory) ──────────────────────────────────────────────────
 export default function InsightsTab({ darkMode }) {
+  const [searchParams] = useSearchParams();
+  const requestedPatientId = searchParams.get('patient_id');
   // Inject CSS
   const [cssInjected] = useState(() => {
     if (typeof document !== 'undefined') {
@@ -1700,7 +1703,16 @@ export default function InsightsTab({ darkMode }) {
     return () => { active = false; };
   }, []);
 
-  const records = memoryItems.length > 0 ? memoryItems : MEMORY_RECORDS;
+  const records = memoryItems;
+
+  useEffect(() => {
+    if (!requestedPatientId || records.length === 0) return;
+    const found = records.find(record => record.patient_id === requestedPatientId || record.id === requestedPatientId);
+    if (!found || selected?.id === found.id) return;
+    setSelected(found);
+    setQuery('');
+    setLangFilter('all');
+  }, [records, requestedPatientId, selected?.id]);
 
   const langs = useMemo(() => {
     const seen = new Set();
@@ -1783,7 +1795,7 @@ export default function InsightsTab({ darkMode }) {
               fontSize: 11,
               fontWeight: 700,
             }}>
-              실제 Memory를 불러오지 못해 예시 기록을 표시합니다: {loadError}
+              실제 Memory를 불러오지 못했습니다: {loadError}
             </div>
           )}
 
@@ -1853,7 +1865,7 @@ export default function InsightsTab({ darkMode }) {
             }}>
               <User size={24} color={C.textLight} strokeWidth={1.4} />
               <p style={{ fontSize: 12, color: C.textMid, margin: 0 }}>
-                {query ? '검색 결과 없음' : '기록 없음'}
+                {loading ? '불러오는 중' : query ? '검색 결과 없음' : '기록 없음'}
               </p>
             </div>
           ) : (

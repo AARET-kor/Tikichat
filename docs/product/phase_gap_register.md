@@ -88,7 +88,7 @@ Implemented:
 Partial:
 
 - Knowledge hygiene and content review remain broader product concerns.
-- TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior.
+- TikiPaste does not automatically read arbitrary browser DOM and does not provide extension overlay behavior. The former Chrome extension app has been removed.
 - Patient matching is now assisted by conservative candidate ranking, but still requires explicit staff confirmation. No automatic CRM/EMR matching or inbox-style queue management exists.
 - CRM/EMR import UI is stronger than the first lightweight pass, but still has no saved column-mapping preset or API connector.
 - CRM/EMR presets are static alias helpers and may still need field tuning from real exports.
@@ -98,7 +98,7 @@ Partial:
 Deferred:
 
 - Generic knowledge CMS.
-- Chrome extension direction.
+- Chrome extension direction. This is no longer paused code; the `extension/` app has been intentionally deleted and should only return after a new explicit product decision.
 - Desktop/native overlay.
 - Large OCR platform.
 - Full omnichannel inbox, channel sync, and automatic channel sending.

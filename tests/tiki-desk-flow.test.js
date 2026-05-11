@@ -127,6 +127,11 @@ test("Tiki Desk next-action cards expose a concrete primary CTA per operational 
     label: "도착 확인",
     helper: "체크인으로 처리합니다",
   });
+  assert.deepEqual(getDeskPrimaryCta({ key: "complete_forms" }), {
+    type: "confirm_forms",
+    label: "서류 확인",
+    helper: "직원이 문진·동의 확인을 완료 처리합니다",
+  });
   assert.deepEqual(getDeskPrimaryCta({ key: "send_to_room" }), {
     type: "assign_room",
     label: "빈 룸 배정",
@@ -138,7 +143,26 @@ test("Tiki Desk today cards wire direct actions instead of passive-only rows", (
   assert.match(tikiDeskSource, /onPrimaryAction/);
   assert.match(tikiDeskSource, /handleDeskPrimaryAction/);
   assert.match(tikiDeskSource, /copy_my_tiki_link/);
+  assert.match(tikiDeskSource, /confirm_forms/);
+  assert.match(tikiDeskSource, /\/api\/staff\/visits\/\$\{visitId\}\/confirm-forms/);
   assert.match(tikiDeskSource, /assign_room/);
+});
+
+test("Tiki Desk initial load is not blocked by client-side clinicId state", () => {
+  const fetchVisitsBlock = tikiDeskSource.match(/const fetchVisits = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[[^\]]*\]\);/)?.[0] || "";
+
+  assert.ok(fetchVisitsBlock, "fetchVisits block should be present");
+  assert.doesNotMatch(fetchVisitsBlock, /if \(!clinicId\) return/);
+  assert.match(tikiDeskSource, /useState\('active'\)/);
+});
+
+test("Tiki Desk has a staff-auth persisted forms-confirm route", () => {
+  const serverSource = readFileSync(new URL("../server.js", import.meta.url), "utf8");
+
+  assert.match(serverSource, /app\.post\("\/api\/staff\/visits\/:id\/confirm-forms", requireStaffAuth/);
+  assert.match(serverSource, /intake_done: true/);
+  assert.match(serverSource, /consent_done: true/);
+  assert.match(serverSource, /event_type: "form_reviewed"/);
 });
 
 test("buildMyTikiStatusSummary groups patients by link and form state", () => {

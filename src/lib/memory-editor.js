@@ -73,14 +73,19 @@ export function normalizeMemoryPatch(input = {}) {
   return normalized;
 }
 
-export function buildMemoryPatchUpdate({ patch = {}, actorId = null } = {}) {
+export function buildMemoryPatchUpdate({ patch = {}, actorId = null, includeActorColumns = true } = {}) {
   const normalized = normalizeMemoryPatch(patch);
   const changedFields = ALLOWED_FIELDS.filter(field => Object.hasOwn(normalized, field));
+  const actorUpdate = includeActorColumns
+    ? {
+        last_edited_by: actorId || null,
+        last_edited_at: new Date().toISOString(),
+      }
+    : {};
   return {
     update: {
       ...Object.fromEntries(changedFields.map(field => [field, normalized[field]])),
-      last_edited_by: actorId || null,
-      last_edited_at: new Date().toISOString(),
+      ...actorUpdate,
     },
     changedFields,
   };

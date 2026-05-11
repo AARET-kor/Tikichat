@@ -1,5 +1,5 @@
 export function shouldPollOpsBoard(dateRange = "today") {
-  return dateRange === "today";
+  return dateRange === "today" || dateRange === "active";
 }
 
 export function buildQrImageUrl(url = "") {

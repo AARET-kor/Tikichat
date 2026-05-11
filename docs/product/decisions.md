@@ -1,6 +1,6 @@
 # TikiDoc Product Decisions
 
-Last updated: 2026-05-05
+Last updated: 2026-05-11
 
 ## Product Surface Naming
 
@@ -28,7 +28,7 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 ### Tiki Paste
 
 - Tiki Paste remains the staff-facing paste/extraction workflow.
-- The Chrome extension direction is paused for now.
+- The Chrome extension direction has been dropped. The repository-level extension app has been removed, and Tiki Paste is web-sidecar only unless a future explicit decision reopens the extension path.
 - The current product direction is a web-only sidecar workspace that staff keep open next to KakaoTalk, WhatsApp, Instagram DM, or another chat tool.
 - Tiki Paste may support:
   - pasted conversation text
@@ -146,6 +146,15 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 - SLA markers are currently derived in code for staff visibility.
 - External SLA notifications are intentionally not built yet.
 - “Created” is not enough. It is only operationally useful if it becomes a tracked staff task.
+
+### Patient Care
+
+- Staff-facing copy should use `환자 케어`, `확인 요청`, `사후관리`, `긴급`, `지연`, and `재방문 가능` rather than developer terms such as escalation.
+- Patient Care is the dedicated staff surface for patient-side confirmation requests and aftercare/recovery signals.
+- The five summary cards at the top are operational filters, not passive metrics.
+- Confirmation-request action buttons must persist status transitions and remove completed items from the default actionable view.
+- Patient rows should allow staff to jump into the patient Memory/context record when a patient is linked.
+- Patient Care is not a notification center, inbox, SLA rules engine, or audit dashboard.
 
 ### Room Assignment
 

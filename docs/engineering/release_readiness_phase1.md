@@ -23,9 +23,7 @@ git status --short
 Result:
 
 - Worktree is dirty with intended product/docs/tests/build changes.
-- One known unrelated dirty file remains:
-  - `extension/src/SidePanel.jsx`
-- Do not include `extension/src/SidePanel.jsx` in the release commit unless explicitly approved.
+- Previous note about `extension/src/SidePanel.jsx` is obsolete. The Chrome extension project has since been intentionally dropped and removed.
 
 ### Route / Auth / QR Assumption Search
 
@@ -127,9 +125,7 @@ Product/code changes expected in the release set:
 - matching tests under `tests/`
 - tracking docs under `docs/`
 
-Explicitly exclude unless separately reviewed:
-
-- `extension/src/SidePanel.jsx`
+Explicit extension exclusion is no longer needed because the repository-level Chrome extension app has been removed.
 
 ## Manual QA Status
 
@@ -151,7 +147,7 @@ Code/test/build blockers:
 Release hygiene blockers:
 
 - Dirty worktree must be staged carefully.
-- `extension/src/SidePanel.jsx` must remain excluded unless intentionally included.
+- No extension dirty-file exception remains; extension deletion is intentional.
 
 Operational blockers before calling this `clinic-ready`:
 
