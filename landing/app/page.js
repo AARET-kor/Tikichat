@@ -28,26 +28,99 @@ const journeySteps = [
   },
 ];
 
+const problemMoments = [
+  {
+    label: "상담 이후",
+    title: "통역은 있었지만, 설명은 이어지지 않습니다",
+    body: "상담할 때는 통역이 붙어 있어도 접수, 이동, 시술, 회복으로 넘어가면 환자 혼자 눈치로 버텨야 하는 순간이 많습니다.",
+  },
+  {
+    label: "시술 전후",
+    title: "지금 받는 시술과 다음 순서를 모릅니다",
+    body: "내가 받는 시술이 무엇인지, 이 통증이 괜찮은 건지, 지금 어떤 순서로 진행되는지 정확히 이해하지 못한 채 지나갑니다.",
+  },
+  {
+    label: "퇴원 후",
+    title: "호텔로 돌아간 뒤가 더 불안합니다",
+    body: "무엇을 조심해야 하는지, 어떤 증상이 정상인지, 언제 병원에 다시 알려야 하는지 설명이 끊기면 불안은 커집니다.",
+  },
+  {
+    label: "병원 운영",
+    title: "모든 환자에게 전담 코디를 끝까지 붙일 수는 없습니다",
+    body: "그래서 필요한 것은 단순 번역기가 아니라, 환자의 여정을 따라다니며 병원과 환자의 소통을 이어주는 TikiDoc입니다.",
+  },
+];
+
 const productSurfaces = [
   {
     name: "Tiki Paste",
     label: "상담 정리",
     title: "복사한 상담을 환자 흐름으로 바꿉니다",
     body: "기존 CRM이나 메신저를 바꾸지 않아도 됩니다. 상담 내용을 붙여 넣으면 환자 후보, 방문 후보, 의도, 위험 신호, 추천 답변을 정리합니다.",
+    demo: "paste",
   },
   {
     name: "My Tiki + TikiBell",
     label: "환자 포털",
     title: "환자가 혼자 눈치 보지 않게 합니다",
     body: "My Tiki는 환자 전용 링크입니다. TikiBell은 그 안에서 문진, 동의, 오늘 할 일, 사후관리 질문을 차분하게 안내합니다.",
+    demo: "my-tiki",
   },
   {
     name: "Tiki Room",
     label: "시술실 소통",
     title: "의료진 통제 아래 소통을 이어갑니다",
     body: "환자의 말을 요약하고, 의료진이 선택한 표현만 환자 언어로 전달합니다. 자동 답변이 아니라 통제된 커뮤니케이션입니다.",
+    demo: "room",
   },
 ];
+
+function SurfaceDemo({ type }) {
+  if (type === "paste") {
+    return (
+      <div className="surface-demo paste-demo" aria-label="Tiki Paste 작동 예시">
+        <div className="demo-chat">
+          <span>중국인 환자 메시지</span>
+          <p>韩国产的有比较不好吗？流程大概是怎样？</p>
+        </div>
+        <div className="demo-action">복사한 상담 붙여넣기</div>
+        <div className="demo-result">
+          <strong>분석 완료</strong>
+          <span>의도: 필러 가격·시술 과정 확인</span>
+          <span>환자 후보: 王玉琳 · 기존 기록 가능성 82%</span>
+          <em>답변 추천 준비</em>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "my-tiki") {
+    return (
+      <div className="surface-demo mytiki-demo" aria-label="My Tiki와 TikiBell 작동 예시">
+        <div className="demo-link">My Tiki 링크 발급</div>
+        <div className="demo-phone">
+          <div className="demo-status-row"><span>상담</span><b>완료</b></div>
+          <div className="demo-status-row active"><span>문진</span><b>작성 중</b></div>
+          <div className="demo-status-row"><span>동의</span><b>대기</b></div>
+          <div className="demo-bell">TikiBell: “회복 기간이 궁금하신가요?”</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="surface-demo room-demo" aria-label="Tiki Room 작동 예시">
+      <div className="demo-mic">발화 버튼</div>
+      <div className="demo-utterance">患者: 会很痛吗？</div>
+      <div className="demo-summary">
+        <strong>AI 요약</strong>
+        <span>환자가 통증 정도를 걱정합니다.</span>
+      </div>
+      <div className="demo-doctor">의료진 선택: “마취 후 진행해서 통증은 줄어듭니다.”</div>
+      <div className="demo-output">중국어로 전달</div>
+    </div>
+  );
+}
 
 const valueCards = [
   {
@@ -91,13 +164,6 @@ const plans = [
     body: "여러 역할, 여러 지점, 여러 언어권 환자 흐름을 단계적으로 확장합니다.",
     features: ["지점별 운영 설계", "고급 설정 협의", "직원 온보딩", "확장 로드맵 정리"],
   },
-];
-
-const signalCopies = [
-  "외국인 환자 응대, 상담실에서만 끝내지 마세요",
-  "통역이 사라진 뒤의 공백을 메우는 AI",
-  "설명은 끝까지 이어져야 합니다",
-  "병원은 더 효율적으로, 환자는 덜 불안하게",
 ];
 
 export default function LandingPage() {
@@ -153,36 +219,27 @@ export default function LandingPage() {
                 <strong>외국인 환자와 병원의 신뢰와 존중을 처음부터 끝까지 연결합니다.</strong>
                 <p>예약 · 내원 · 시술 · 회복 · follow-up</p>
               </div>
-              <div className="rotator" aria-hidden="true">
-                {signalCopies.map((copy, index) => (
-                  <div className="rotator-chip" key={copy} style={{ "--n": index }}>{copy}</div>
-                ))}
-              </div>
             </div>
           </div>
         </section>
 
         <section className="section problem-section" id="problem">
-          <div className="wrap split">
-            <div className="section-copy reveal">
+          <div className="wrap problem-layout">
+            <div className="section-copy problem-sticky reveal">
               <p className="eyebrow"><span />Problem</p>
               <h2>외국인 환자는 병원이 무섭습니다</h2>
+              <p>
+                문제는 통역 한 번이 아닙니다. 환자가 병원 안팎을 이동하는 동안 설명과 안심이 계속 이어지느냐입니다.
+              </p>
             </div>
-            <div className="long-copy reveal" style={{ "--i": 1 }}>
-              <p>
-                상담할 때는 통역이 붙어 있어도, 막상 접수하고, 이동하고, 시술을 받고,
-                회복실에 누워 있을 때는 환자 혼자 손짓과 눈치로 버텨야 하는 순간이 많습니다.
-              </p>
-              <p>
-                지금 내가 받는 시술이 무엇인지, 이 통증이 괜찮은 건지, 지금 어떤 순서로
-                진행되는지, 호텔로 돌아간 뒤 무엇을 조심해야 하는지. 정확히 이해하지 못한 채
-                지나가는 순간이 너무 많습니다.
-              </p>
-              <p>
-                병원은 환자 한 명 한 명에게 전담 코디를 끝까지 붙여줄 수 없으니까요.
-                그래서 필요한 것은 단순 번역기가 아니라, 환자의 여정을 따라다니는 AI 비서,
-                TikiDoc입니다.
-              </p>
+            <div className="problem-moments">
+              {problemMoments.map((moment, index) => (
+                <article className="problem-moment reveal" key={moment.title} style={{ "--i": index }}>
+                  <span>{moment.label}</span>
+                  <h3>{moment.title}</h3>
+                  <p>{moment.body}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -200,13 +257,15 @@ export default function LandingPage() {
               </p>
             </div>
 
-            <div className="journey-track">
+            <div className="journey-scroll">
               {journeySteps.map((item, index) => (
                 <article className="journey-card reveal" key={item.step} style={{ "--i": index }}>
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <strong>{item.step}</strong>
-                  <h3>{item.title}</h3>
-                  <p>{item.body}</p>
+                  <div className="journey-number">{String(index + 1).padStart(2, "0")}</div>
+                  <div>
+                    <strong>{item.step}</strong>
+                    <h3>{item.title}</h3>
+                    <p>{item.body}</p>
+                  </div>
                 </article>
               ))}
             </div>
@@ -235,6 +294,7 @@ export default function LandingPage() {
                   <h3>{surface.name}</h3>
                   <h4>{surface.title}</h4>
                   <p>{surface.body}</p>
+                  <SurfaceDemo type={surface.demo} />
                 </article>
               ))}
             </div>
@@ -247,12 +307,14 @@ export default function LandingPage() {
               <p className="eyebrow"><span />Operational value</p>
               <h2>기존 운영을 갈아엎지 않고, 외국인 환자 응대의 기준을 세웁니다</h2>
             </div>
-            <div className="value-grid">
+            <div className="value-sequence">
               {valueCards.map((card, index) => (
                 <article className="value-card reveal" key={card.title} style={{ "--i": index }}>
                   <span>{index + 1}</span>
-                  <h3>{card.title}</h3>
-                  <p>{card.body}</p>
+                  <div>
+                    <h3>{card.title}</h3>
+                    <p>{card.body}</p>
+                  </div>
                 </article>
               ))}
             </div>

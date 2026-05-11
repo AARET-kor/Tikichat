@@ -46,6 +46,13 @@ test("/api/tiki-paste accepts either pasted text or uploaded screenshot data", (
   assert.match(serverSource, /missing_fields/);
 });
 
+test("/api/tiki-paste enforces patient-language replies and foreign-name display format", () => {
+  assert.match(serverSource, /ensurePatientLanguageReplies/);
+  assert.match(serverSource, /formatForeignPatientDisplayName/);
+  assert.match(serverSource, /"name_ko"/);
+  assert.match(serverSource, /reply 필드에 절대 한국어 사용 금지/);
+});
+
 test("TikiPaste patient matching is staff-gated and clinic-scoped", () => {
   assert.match(serverSource, /app\.post\("\/api\/patients\/match-candidates", requireStaffAuth,/);
   assert.match(serverSource, /buildPatientMatchSignals/);

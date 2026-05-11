@@ -1,3 +1,8 @@
+import {
+  formatForeignPatientDisplayName,
+  normalizeTikiPasteLanguage,
+} from "./tiki-paste-language.js";
+
 const ALLOWED_STATUSES = new Set(["draft", "pending_review", "converted", "linked", "dismissed", "failed"]);
 const RISK_STORAGE_MAP = {
   none: "normal",
@@ -145,7 +150,13 @@ export function buildConversationIntakeConversionPlan({ intake = {}, payload = {
   const visitCandidate = cleanObject(intake.visit_candidate);
   const payloadPatient = cleanObject(payload.patient);
   const payloadVisit = cleanObject(payload.visit);
-  const languageCode = cleanString(payloadPatient.lang || patientCandidate.lang || LANGUAGE_TO_CODE[intakeLanguage(intake)], 20) || null;
+  const languageCode = cleanString(
+    payloadPatient.lang
+      || patientCandidate.lang
+      || normalizeTikiPasteLanguage(intakeLanguage(intake))
+      || LANGUAGE_TO_CODE[intakeLanguage(intake)],
+    20,
+  ) || null;
   const visitDate = cleanString(payloadVisit.visitDate || payloadVisit.visit_date || visitCandidate.visit_date, 80) || null;
   const procedureInterests = cleanArray(
     payloadVisit.procedure_interests || visitCandidate.procedure_interests || intakeProcedureInterests(intake),
@@ -168,7 +179,11 @@ export function buildConversationIntakeConversionPlan({ intake = {}, payload = {
     };
   }
 
-  const name = cleanString(payloadPatient.name || patientCandidate.name, 160);
+  const name = cleanString(formatForeignPatientDisplayName({
+    name: payloadPatient.name || patientCandidate.name,
+    name_ko: payloadPatient.name_ko || patientCandidate.name_ko || patientCandidate.korean_name,
+    lang: payloadPatient.lang || patientCandidate.lang || languageCode || intakeLanguage(intake),
+  }) || payloadPatient.name || patientCandidate.name, 160);
   if (!name) throw new Error("patient.name required");
 
   return {

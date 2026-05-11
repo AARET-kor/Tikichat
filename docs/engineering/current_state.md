@@ -62,10 +62,15 @@ Stable:
   - mocha remains the narrow signature accent
   - staff/product surfaces use larger type, stronger spacing, consistent radii, status tones, and bright/warm clinical surfaces
   - `/landing` has its own landing-only app target and refreshed structure for `tikidoc.xyz`
+  - landing hero/problem/journey sections now avoid decorative clutter and use cleaner scroll-reveal storytelling for the problem and patient journey narrative
+  - landing product-surface cards now remove abstract placeholder tiles and show compact animated workflow examples for Tiki Paste, My Tiki + TikiBell, and Tiki Room
+  - landing operational-value section now uses a sequential scroll-reveal flow instead of a static 2x2 value-card grid
 - TikiPaste web-sidecar:
   - the Chrome extension project has been dropped and removed from the repository
   - staff can paste conversation text or screenshot fallback into the web app
   - TikiPaste returns summary, patient intent, urgency/risk signal, recommended replies, copy actions, and handoff actions
+  - patient-facing TikiPaste replies are now server-guarded to stay in the detected patient language; Korean is kept only as staff reference translation
+  - foreign patient candidate names are normalized as original display name plus Korean reading when available, for example `黃玉琳 (황옥림)`
   - TikiPaste now extracts conservative patient/visit candidates from pasted text or staff-provided screenshots
   - TikiPaste now shows existing-patient match candidates from authenticated clinic data and lets staff explicitly choose existing patient vs new patient
   - Staff-confirmed TikiPaste save can create/link patient, create visit, generate a My Tiki link, and write the conversation summary into patient Memory

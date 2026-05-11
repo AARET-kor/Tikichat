@@ -108,6 +108,11 @@ import { buildImportBatchInsert, buildImportRowInserts, buildIntakeQueueResponse
 import { buildMemoryPatchUpdate, mapMemoryRowsForStaff } from "./src/lib/memory-editor.js";
 import { buildPatientMatchSignals, rankPatientMatches } from "./src/lib/patient-matching.js";
 import {
+  ensurePatientLanguageReplies,
+  formatForeignPatientDisplayName,
+  normalizeTikiPasteLanguage,
+} from "./src/lib/tiki-paste-language.js";
+import {
   attachEscalationSla,
   buildEscalationUpdateForAction,
   createEscalationInsert,
@@ -1019,7 +1024,8 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
   "procedure_interests": ["<언급된 시술명만, 예: 보톡스, 필러, 리프팅. 없으면 []>"],
   "concerns": ["<환자가 표현한 우려·걱정 키워드, 예: 붓기, 통증, 자연스러움. 없으면 []>"],
   "patient_candidate": {
-    "name": "<명확히 보이는 환자 이름. 불명확하면 null>",
+    "name": "<명확히 보이는 환자 원문 이름. 중국어/일본어/영문이면 원문 표기를 보존. 불명확하면 null>",
+    "name_ko": "<외국어 이름이면 가능한 한국어 발음 표기. 예: 黃玉琳 → 황옥림. 불명확하면 null>",
     "nationality": "<명확히 언급된 국적. 불명확하면 null>",
     "lang": "<ko|en|ja|zh|vi|th|ar|ru 중 명확할 때만. 불명확하면 null>",
     "phone": "<명확히 보이는 전화번호. 없으면 null>",
@@ -1119,6 +1125,18 @@ ${ragContext ? `━━━ 참고 지식 베이스 ━━━\n${ragContext}\n` : 
     parsed.options.kind    = normalize(parsed.options.kind);
     parsed.options.firm    = normalize(parsed.options.firm);
     parsed.options.booking = normalize(parsed.options.booking);
+
+    const detectedLang = normalizeTikiPasteLanguage(parsed.patient_candidate.lang || parsed.detected_language);
+    parsed.patient_candidate.lang = parsed.patient_candidate.lang || detectedLang || null;
+    parsed.patient_candidate.name = formatForeignPatientDisplayName({
+      name: parsed.patient_candidate.name,
+      name_ko: parsed.patient_candidate.name_ko || parsed.patient_candidate.korean_name,
+      lang: parsed.patient_candidate.lang || detectedLang,
+    }) || parsed.patient_candidate.name;
+    parsed = ensurePatientLanguageReplies(parsed, {
+      appBaseUrl: APP_BASE_URL,
+      clinicName: resolvedClinicName,
+    });
 
     console.log(`[TikiPaste] clinic="${resolvedClinicName}" lang="${parsed.detected_language}" intent="${parsed.intent}"`);
     res.json(parsed);

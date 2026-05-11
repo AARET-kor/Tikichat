@@ -41,6 +41,9 @@ Display copy should use these names. Internal routes, schema fields, metadata va
   - copy actions
   - Quick Visit / My Tiki link / Tiki Desk handoff actions
 - Tiki Paste may produce conservative patient and visit candidates from pasted text or staff-provided screenshots.
+- Patient-facing reply text from Tiki Paste must stay in the detected patient language. Korean belongs only in staff-facing translation/reference fields.
+- If the model leaks Korean into a non-Korean patient reply, the server should replace it with a conservative same-language fallback rather than exposing the mixed-language reply.
+- Foreign patient candidate names should preserve the original visible name and append a Korean reading when confidently available, for example `黃玉琳 (황옥림)`. Do not replace the original foreign name with Korean only.
 - Existing-patient matching must be clinic-scoped and staff-authenticated.
 - Matching suggestions are allowed, but staff must explicitly choose:
   - existing patient
