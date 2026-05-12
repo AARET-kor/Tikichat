@@ -139,6 +139,26 @@ test("Tiki Desk next-action cards expose a concrete primary CTA per operational 
   });
 });
 
+test("Tiki Desk treats active My Tiki links as issued even when raw token URL is not recoverable", () => {
+  const visit = {
+    ...base,
+    link_status: "active",
+    link: { id: "link-1", status: "active" },
+  };
+
+  assert.equal(getDeskNextAction(visit).key, "wait_booking");
+  assert.deepEqual(getDeskPrimaryCta(getDeskNextAction(visit), visit), {
+    type: "focus_visit",
+    label: "링크 발급됨",
+    helper: "이미 My Tiki 링크가 있습니다. 새로 필요할 때만 재발급합니다",
+  });
+});
+
+test("Tiki Desk normalizes patient data from flattened and nested API payloads", () => {
+  assert.match(tikiDeskSource, /patient\.name \|\| v\.patient_name \|\| v\.patientName/);
+  assert.match(tikiDeskSource, /procedure\.name_ko \|\| procedure\.name_en \|\| v\.procedure_name \|\| v\.procedureName/);
+});
+
 test("Tiki Desk today cards wire direct actions instead of passive-only rows", () => {
   assert.match(tikiDeskSource, /onPrimaryAction/);
   assert.match(tikiDeskSource, /handleDeskPrimaryAction/);
@@ -163,6 +183,13 @@ test("Tiki Desk has a staff-auth persisted forms-confirm route", () => {
   assert.match(serverSource, /intake_done: true/);
   assert.match(serverSource, /consent_done: true/);
   assert.match(serverSource, /event_type: "form_reviewed"/);
+});
+
+test("Tiki Desk ops-board includes active undated visits in today and week views", () => {
+  const serverSource = readFileSync(new URL("../server.js", import.meta.url), "utf8");
+
+  assert.match(serverSource, /activeUndatedVisitFilter/);
+  assert.match(serverSource, /visit_date\.is\.null,stage\.in\.\(booked,pre_visit,treatment\)/);
 });
 
 test("buildMyTikiStatusSummary groups patients by link and form state", () => {

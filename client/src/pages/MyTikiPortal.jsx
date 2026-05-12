@@ -214,6 +214,11 @@ const I18N = {
     quickQuestions: '빠른 질문',
     recentMessages: '최근 대화',
     escalation:     '직접 확인 요청',
+    escalationHelp: '간단한 질문은 위에서 먼저 물어보고, 직원 확인이 꼭 필요할 때만 호출해 주세요.',
+    escalationConfirmTitle: '직원을 호출할까요?',
+    escalationConfirmBody:  (label) => `${label} 요청을 병원에 보냅니다. 잘못 누른 것이 아니라면 아래 버튼을 눌러 호출해 주세요.`,
+    escalationConfirmCancel:'취소',
+    escalationConfirmSubmit:'네, 호출할게요',
     askCoordinator: '코디네이터에게 문의',
     askNurse:       '간호팀에 문의',
     doctorConfirm:  '의료진 확인 필요',
@@ -299,6 +304,11 @@ const I18N = {
     quickQuestions: 'Quick Questions',
     recentMessages: 'Recent Messages',
     escalation:     'Request Human Help',
+    escalationHelp: 'Ask simple questions above first. Request staff help only when clinic confirmation is needed.',
+    escalationConfirmTitle: 'Request staff help?',
+    escalationConfirmBody:  (label) => `This will send a ${label} request to the clinic. If this was intentional, confirm below.`,
+    escalationConfirmCancel:'Cancel',
+    escalationConfirmSubmit:'Yes, request help',
     askCoordinator: 'Ask coordinator',
     askNurse:       'Ask nurse',
     doctorConfirm:  'Doctor confirmation needed',
@@ -384,6 +394,11 @@ const I18N = {
     quickQuestions: 'クイック質問',
     recentMessages: '最近のやり取り',
     escalation:     'スタッフ確認を依頼',
+    escalationHelp: '簡単な質問は上で先に確認し、クリニックの確認が必要な場合だけスタッフを呼び出してください。',
+    escalationConfirmTitle: 'スタッフを呼び出しますか？',
+    escalationConfirmBody:  (label) => `${label}の依頼をクリニックに送信します。意図した操作であれば、下のボタンで確定してください。`,
+    escalationConfirmCancel:'キャンセル',
+    escalationConfirmSubmit:'はい、依頼します',
     askCoordinator: 'コーディネーターに確認',
     askNurse:       '看護チームに確認',
     doctorConfirm:  '医師確認が必要',
@@ -469,6 +484,11 @@ const I18N = {
     quickQuestions: '快捷问题',
     recentMessages: '最近消息',
     escalation:     '请求人工协助',
+    escalationHelp: '请先在上方咨询简单问题。只有需要诊所确认时，再请求人工协助。',
+    escalationConfirmTitle: '要请求人工协助吗？',
+    escalationConfirmBody:  (label) => `这会向诊所发送“${label}”请求。如果不是误触，请点击下方按钮确认。`,
+    escalationConfirmCancel:'取消',
+    escalationConfirmSubmit:'确认请求协助',
     askCoordinator: '联系协调员',
     askNurse:       '联系护士',
     doctorConfirm:  '需要医生确认',
@@ -644,6 +664,149 @@ function optionLabel(opt, lang) {
 // ── Stage ordering ────────────────────────────────────────────
 const STAGES = ['booked', 'pre_visit', 'treatment', 'post_care', 'followup', 'closed'];
 
+const TIKIBELL_ASSETS = {
+  main: '/assets/tikibell/tikibell-main.png',
+  document: '/assets/tikibell/tikibell-document.png',
+  numbing: '/assets/tikibell/tikibell-numbing.png',
+  aftercare: '/assets/tikibell/tikibell-aftercare.png',
+  sparkle: '/assets/tikibell/tikibell-sparkle.png',
+  hero: '/assets/tikibell/tikibell-hero.mp4',
+};
+
+function tikibellGuideCopy(lang, mode) {
+  const copy = {
+    main: {
+      ko: ['TikiBell이 함께 안내해요', '오늘 해야 할 일과 다음 단계를 차분히 알려드릴게요.'],
+      en: ['TikiBell is here to guide you', 'I will help you see what to do next today.'],
+      ja: ['TikiBellがご案内します', '今日やることと次の流れをわかりやすくお伝えします。'],
+      zh: ['TikiBell 会陪您完成流程', '我会帮您确认今天要做的事和下一步。'],
+    },
+    document: {
+      ko: ['서류 작성 단계예요', '문진표와 동의서를 먼저 작성하면 내원 흐름이 더 빨라집니다.'],
+      en: ['It is time to complete forms', 'Please finish your intake and consent forms first.'],
+      ja: ['書類記入の段階です', '問診票と同意書を先に記入すると流れがスムーズです。'],
+      zh: ['现在需要填写资料', '请先填写问诊表和同意书，流程会更顺利。'],
+    },
+    numbing: {
+      ko: ['마취크림 후 대기 단계예요', '직원이 안내할 때까지 편하게 기다리시면 됩니다.'],
+      en: ['You may be waiting after numbing cream', 'Please wait comfortably until staff guide you.'],
+      ja: ['麻酔クリーム後の待機段階です', 'スタッフの案内まで楽にお待ちください。'],
+      zh: ['现在可能是敷麻药等待阶段', '请放松等待工作人员引导。'],
+    },
+    aftercare: {
+      ko: ['사후관리 단계예요', '회복 상태와 주의사항을 확인하고, 이상 신호가 있으면 병원에 전달할게요.'],
+      en: ['This is your aftercare stage', 'Check your recovery guidance, and I can flag concerns for the clinic.'],
+      ja: ['アフターケアの段階です', '回復状態と注意事項を確認し、気になる症状はクリニックへつなぎます。'],
+      zh: ['现在是术后护理阶段', '请确认恢复说明。如有异常信号，我会转交给诊所。'],
+    },
+  };
+  return copy[mode]?.[lang] || copy[mode]?.en || copy.main.en;
+}
+
+function getTikibellGuideMode({ visit, formsStatus, aftercareState }) {
+  const dueAftercare = (aftercareState?.due_items || []).length > 0 || aftercareState?.acknowledgement;
+  if (dueAftercare || ['post_care', 'followup', 'closed'].includes(visit?.stage)) return 'aftercare';
+  if ((formsStatus?.hasIntake && !visit?.intake_done) || (formsStatus?.hasConsent && !visit?.consent_done)) return 'document';
+  if (visit?.stage === 'treatment') return 'numbing';
+  return 'main';
+}
+
+function TikibellStageGuide({ lang, visit, formsStatus, aftercareState }) {
+  const mode = getTikibellGuideMode({ visit, formsStatus, aftercareState });
+  const [title, body] = tikibellGuideCopy(lang, mode);
+  return (
+    <PatientCard tone="brand" style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 14,
+      overflow: 'hidden',
+      position: 'relative',
+      padding: '16px 18px',
+    }}>
+      <img
+        src={TIKIBELL_ASSETS[mode]}
+        alt=""
+        style={{
+          width: 92,
+          height: 92,
+          objectFit: 'contain',
+          flexShrink: 0,
+          filter: mode === 'main' ? 'saturate(0.95)' : 'none',
+          animation: 'tikibellFloat 4.5s ease-in-out infinite',
+        }}
+      />
+      <div style={{ minWidth: 0 }}>
+        <p style={{ fontSize: 18, fontWeight: 950, color: C.text, letterSpacing: '-0.04em', lineHeight: 1.2 }}>
+          {title}
+        </p>
+        <p style={{ fontSize: 14, fontWeight: 700, color: C.textSub, lineHeight: 1.55, marginTop: 6, wordBreak: 'keep-all' }}>
+          {body}
+        </p>
+      </div>
+      <style>{`
+        @keyframes tikibellFloat {
+          0%, 100% { transform: translateY(0) rotate(-1deg); }
+          50% { transform: translateY(-5px) rotate(1deg); }
+        }
+      `}</style>
+    </PatientCard>
+  );
+}
+
+function TikibellSparkleOverlay({ sparkleKey }) {
+  if (!sparkleKey) return null;
+  return (
+    <div
+      key={sparkleKey}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 80,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none',
+        animation: 'tikibellOverlay 1s ease-out forwards',
+      }}
+      aria-hidden="true"
+    >
+      <div style={{
+        position: 'relative',
+        width: 180,
+        height: 180,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'tikibellPop 1s cubic-bezier(.2,.9,.2,1) forwards',
+      }}>
+        <span style={{ position: 'absolute', inset: 18, borderRadius: '50%', background: 'rgba(255,255,255,0.72)', filter: 'blur(10px)' }} />
+        <span style={{ position: 'absolute', top: 20, right: 22, color: '#F9D75C', fontSize: 22, animation: 'tikibellStar 1s ease-out forwards' }}>✦</span>
+        <span style={{ position: 'absolute', left: 16, bottom: 34, color: '#F9D75C', fontSize: 18, animation: 'tikibellStar 1s ease-out forwards' }}>✦</span>
+        <img src={TIKIBELL_ASSETS.sparkle} alt="" style={{ position: 'relative', width: 150, height: 150, objectFit: 'contain' }} />
+      </div>
+      <style>{`
+        @keyframes tikibellOverlay {
+          0% { opacity: 0; }
+          16% { opacity: 1; }
+          82% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes tikibellPop {
+          0% { transform: scale(.78) translateY(10px); }
+          22% { transform: scale(1.04) translateY(0); }
+          70% { transform: scale(1) translateY(-4px); }
+          100% { transform: scale(.92) translateY(-10px); }
+        }
+        @keyframes tikibellStar {
+          0% { transform: scale(.2) rotate(0); opacity: 0; }
+          35% { transform: scale(1.2) rotate(22deg); opacity: 1; }
+          100% { transform: scale(.65) rotate(70deg); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ── API helper: all patient API calls carry X-Patient-Token ──
 function patientApi(token) {
   const headers = { 'Content-Type': 'application/json', 'X-Patient-Token': token };
@@ -721,7 +884,7 @@ const ARRIVAL_PHRASES = [
   { flag: '🇨🇳', lang: 'zh', text: '我来了，我有预约。' },
 ];
 
-function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
+function ArrivalCard({ lang, token, arrivedAt, onArrived, onCelebrate = null }) {
   const [phase, setPhase] = useState('idle'); // idle | sending | done | error
   const api = patientApi(token);
 
@@ -737,6 +900,7 @@ function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
         const ts = resp.data?.patient_arrived_at || new Date().toISOString();
         setPhase('done');
         onArrived(ts);
+        onCelebrate?.();
       } else {
         setPhase('error');
       }
@@ -885,7 +1049,7 @@ function ArrivalCard({ lang, token, arrivedAt, onArrived }) {
 // ═══════════════════════════════════════════════════════════════
 // Journey Tab
 // ═══════════════════════════════════════════════════════════════
-function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare, formsStatus, aftercareState, clinicRuleConfig, arrivedAt, onArrived, token }) {
+function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare, formsStatus, aftercareState, clinicRuleConfig, arrivedAt, onArrived, token, onCelebrate = null }) {
   const stage       = visit?.stage || 'booked';
   const stageIdx    = STAGES.indexOf(stage);
   const patientName = patient?.name || '';
@@ -1008,8 +1172,16 @@ function JourneyTab({ patient, visit, clinic, lang, onGoToForms, onGoToAftercare
           token={token}
           arrivedAt={arrivedAt}
           onArrived={onArrived}
+          onCelebrate={onCelebrate}
         />
       )}
+
+      <TikibellStageGuide
+        lang={lang}
+        visit={visit}
+        formsStatus={formsStatus}
+        aftercareState={aftercareState}
+      />
 
       {/* Today / next actions */}
       <PatientCard style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1577,11 +1749,12 @@ function FormDetail({ form, lang, token, onBack, onSubmitted }) {
 // ═══════════════════════════════════════════════════════════════
 // Forms Tab — list of available forms
 // ═══════════════════════════════════════════════════════════════
-function FormsTab({ forms, lang, token, onFormSubmitted }) {
+function FormsTab({ forms, lang, token, onFormSubmitted, onCelebrate = null }) {
   const [openForm, setOpenForm] = useState(null); // form object
 
   function handleSubmitted(formType) {
     onFormSubmitted(formType);
+    onCelebrate?.();
     setOpenForm(null);
   }
 
@@ -1612,6 +1785,22 @@ function FormsTab({ forms, lang, token, onFormSubmitted }) {
   return (
     <div style={{ padding: '22px 20px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <PatientCard tone="brand" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <img
+            src={TIKIBELL_ASSETS.document}
+            alt=""
+            style={{ width: 82, height: 82, objectFit: 'contain', flexShrink: 0, animation: 'tikibellFloat 4.5s ease-in-out infinite' }}
+          />
+          <div>
+            <p style={{ fontSize: 18, fontWeight: 950, color: C.text, letterSpacing: '-0.04em', lineHeight: 1.25 }}>
+              {tikibellGuideCopy(lang, 'document')[0]}
+            </p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: C.textSub, lineHeight: 1.55, marginTop: 6 }}>
+              {tikibellGuideCopy(lang, 'document')[1]}
+            </p>
+          </div>
+        </PatientCard>
+
         {forms.map(form => {
           const title   = formTitle(form, lang);
           const done    = form.submitted;
@@ -1620,7 +1809,11 @@ function FormsTab({ forms, lang, token, onFormSubmitted }) {
               key={form.id}
               type="button"
               disabled={done}
-              onClick={() => !done && setOpenForm(form)}
+              onClick={() => {
+                if (done) return;
+                onCelebrate?.();
+                setOpenForm(form);
+              }}
               style={{
                 width: '100%', display: 'flex', alignItems: 'center', gap: 16,
                 padding: '20px', borderRadius: 24, cursor: done ? 'default' : 'pointer',
@@ -1661,7 +1854,7 @@ function FormsTab({ forms, lang, token, onFormSubmitted }) {
   );
 }
 
-function AftercareTab({ lang, token, onStateChange = null }) {
+function AftercareTab({ lang, token, onStateChange = null, onCelebrate = null }) {
   const [phase, setPhase] = useState('loading');
   const [data, setData] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -1697,6 +1890,7 @@ function AftercareTab({ lang, token, onStateChange = null }) {
       if (!res.ok) throw new Error(res.data?.error || 'aftercare_submit_failed');
       setData(res.data.state);
       onStateChange?.(res.data.state);
+      onCelebrate?.();
     } catch {
       // quiet for portal simplicity
     } finally {
@@ -1725,9 +1919,18 @@ function AftercareTab({ lang, token, onStateChange = null }) {
   return (
     <div style={{ padding: '22px 20px 96px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <PatientCard>
-        <SectionKicker>TikiBell</SectionKicker>
-        <p style={{ fontSize: 22, fontWeight: 950, letterSpacing: '-0.045em', color: C.text, lineHeight: 1.2 }}>{tx(lang, 'aftercareTitle')}</p>
-        <p style={{ fontSize: 15, color: C.textSub, lineHeight: 1.65, marginTop: 8, fontWeight: 650 }}>{tx(lang, 'aftercareSubtitle')}</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <img
+            src={TIKIBELL_ASSETS.aftercare}
+            alt=""
+            style={{ width: 84, height: 84, objectFit: 'contain', flexShrink: 0, animation: 'tikibellFloat 4.5s ease-in-out infinite' }}
+          />
+          <div>
+            <SectionKicker>TikiBell</SectionKicker>
+            <p style={{ fontSize: 22, fontWeight: 950, letterSpacing: '-0.045em', color: C.text, lineHeight: 1.2 }}>{tx(lang, 'aftercareTitle')}</p>
+            <p style={{ fontSize: 15, color: C.textSub, lineHeight: 1.65, marginTop: 8, fontWeight: 650 }}>{tx(lang, 'aftercareSubtitle')}</p>
+          </div>
+        </div>
         {data.acknowledgement && (
           <div style={{ marginTop: 12, padding: '12px 13px', borderRadius: 14, background: C.warnPale, border: `1px solid ${C.warn}25`, fontSize: 12, color: C.warn, lineHeight: 1.5 }}>
             <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 4 }}>{tx(lang, 'aftercareAck')}</div>
@@ -1833,12 +2036,24 @@ function AftercareTab({ lang, token, onStateChange = null }) {
   );
 }
 
-function AskTab({ lang, token }) {
+function AskTab({ lang, token, onCelebrate = null }) {
   const [phase, setPhase] = useState('loading');
   const [askData, setAskData] = useState(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [escalating, setEscalating] = useState(null);
+  const [confirmEscalation, setConfirmEscalation] = useState(null);
+  const [showHero, setShowHero] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('tikibellHeroSeen') !== '1';
+  });
+
+  function dismissHero() {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem('tikibellHeroSeen', '1');
+    }
+    setShowHero(false);
+  }
 
   const loadAsk = useCallback(async () => {
     setPhase('loading');
@@ -1879,6 +2094,7 @@ function AskTab({ lang, token }) {
         ],
       }) : prev);
       setInput('');
+      onCelebrate?.();
     } catch {
       // keep simple for now — no toast system in portal
     } finally {
@@ -1910,10 +2126,12 @@ function AskTab({ lang, token }) {
           res.data.acknowledgement,
         ],
       }) : prev);
+      onCelebrate?.();
     } catch {
       // intentionally quiet in phase 6
     } finally {
       setEscalating(null);
+      setConfirmEscalation(null);
     }
   }
 
@@ -1935,21 +2153,74 @@ function AskTab({ lang, token }) {
 
   return (
     <div style={{ padding: '22px 20px 96px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {showHero && (
+        <PatientCard style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
+          <video
+            src={TIKIBELL_ASSETS.hero}
+            autoPlay
+            muted
+            playsInline
+            onEnded={dismissHero}
+            style={{
+              display: 'block',
+              width: '100%',
+              maxHeight: 220,
+              objectFit: 'cover',
+              background: C.mochaPale,
+            }}
+          />
+          <button
+            type="button"
+            onClick={dismissHero}
+            style={{
+              position: 'absolute',
+              right: 12,
+              top: 12,
+              border: `1px solid ${C.border}`,
+              borderRadius: 999,
+              background: 'rgba(255,255,255,0.86)',
+              color: C.textSub,
+              fontSize: 12,
+              fontWeight: 850,
+              padding: '7px 10px',
+              cursor: 'pointer',
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            {lang === 'ko' ? '넘기기' : lang === 'ja' ? 'スキップ' : lang === 'zh' ? '跳过' : 'Skip'}
+          </button>
+        </PatientCard>
+      )}
+
       <PatientCard tone="brand">
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{
-            width: 50, height: 50, borderRadius: 18,
+            width: 62, height: 62, borderRadius: 22,
             background: C.surface,
             border: `1px solid ${C.mochaSoft}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
+            overflow: 'hidden',
           }}>
-            <MessageCircle size={20} color={C.tealDark} />
+            <img
+              src={TIKIBELL_ASSETS.main}
+              alt=""
+              style={{
+                width: 58,
+                height: 58,
+                objectFit: 'contain',
+                filter: 'grayscale(1) saturate(0.15) opacity(0.74)',
+                transform: 'translateY(3px)',
+              }}
+            />
           </div>
           <div>
             <p style={{ fontSize: 22, fontWeight: 950, letterSpacing: '-0.045em', color: C.text }}>{tx(lang, 'askTitle')}</p>
             <p style={{ fontSize: 15, color: C.textSub, lineHeight: 1.65, marginTop: 7, fontWeight: 650 }}>
               {tx(lang, 'askSubtitle')}
+            </p>
+            <p style={{ fontSize: 13, color: C.mochaDark, lineHeight: 1.58, marginTop: 8, fontWeight: 850 }}>
+              {tikibellGuideCopy(lang, 'main')[1]}
             </p>
             <p style={{ fontSize: 14, color: C.mochaDark, lineHeight: 1.62, marginTop: 12, fontWeight: 800 }}>
               {askStageSummary(lang, askData.currentStage)}
@@ -1987,56 +2258,57 @@ function AskTab({ lang, token }) {
       </PatientCard>
 
       <PatientCard>
-        <p style={{ fontSize: 17, fontWeight: 900, color: C.text, marginBottom: 12 }}>
-          {tx(lang, 'escalation')}
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {(askData.escalationOptions || []).map(option => {
-            const Icon = option.id === 'doctor_confirmation' ? Stethoscope : ShieldAlert;
-            return (
-              <button
-                key={option.id}
-                onClick={() => requestEscalation(option.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '12px 14px',
-                  borderRadius: 18,
-                  border: `1px solid ${C.border}`,
-                  background: C.warm,
-                  cursor: 'pointer',
-                  color: C.text,
-                  fontSize: 15,
-                  fontWeight: 800,
-                }}
-              >
-                <Icon size={16} color={C.warn} />
-                <span>{askEscalationLabel(lang, option)}</span>
-                {escalating === option.id && (
-                  <Loader2 size={14} color={C.textSub} style={{ marginLeft: 'auto', animation: 'spin 1s linear infinite' }} />
-                )}
-              </button>
-            );
-          })}
+        <div style={{
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 24,
+          padding: 10,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'flex-end',
+        }}>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={tx(lang, 'askPlaceholder')}
+            rows={2}
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              fontFamily: SANS,
+              fontSize: 16,
+              lineHeight: 1.55,
+              color: C.text,
+              background: 'transparent',
+              padding: '8px 6px',
+            }}
+          />
+          <button
+            onClick={() => sendMessage(input, 'free_text')}
+            disabled={sending || !input.trim()}
+            style={{
+              width: 50,
+              height: 50,
+              borderRadius: 18,
+              border: 'none',
+              background: sending || !input.trim() ? '#D5D9DD' : C.teal,
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: sending || !input.trim() ? 'default' : 'pointer',
+              flexShrink: 0,
+              boxShadow: sending || !input.trim() ? 'none' : `0 10px 22px ${C.teal}26`,
+            }}
+            aria-label={tx(lang, 'send')}
+          >
+            {sending
+              ? <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} />
+              : <Send size={17} />}
+          </button>
         </div>
-        {askData.openEscalation?.patient_visible_status_text && (
-          <div style={{
-            marginTop: 12,
-            padding: '12px 13px',
-            borderRadius: 14,
-            background: C.warnPale,
-            border: `1px solid ${C.warn}25`,
-            fontSize: 12,
-            color: C.warn,
-            lineHeight: 1.5,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 4, letterSpacing: '0.03em' }}>
-              {tx(lang, 'escalationStatus')}
-            </div>
-            {askData.openEscalation.patient_visible_status_text}
-          </div>
-        )}
       </PatientCard>
 
       <PatientCard>
@@ -2090,63 +2362,158 @@ function AskTab({ lang, token }) {
         )}
       </PatientCard>
 
-      <div style={{
-        position: 'sticky',
-        bottom: 0,
-          background: `linear-gradient(180deg, rgba(248,246,243,0) 0%, ${C.appBg} 18%, ${C.appBg} 100%)`,
-        paddingTop: 8,
-      }}>
-        <div style={{
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: 24,
-          padding: 10,
-          display: 'flex',
-          gap: 8,
-          alignItems: 'flex-end',
-        }}>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={tx(lang, 'askPlaceholder')}
-            rows={2}
-            style={{
-              flex: 1,
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              fontFamily: SANS,
-              fontSize: 15,
-              lineHeight: 1.55,
-              color: C.text,
-              background: 'transparent',
-              padding: '8px 6px',
-            }}
-          />
-          <button
-            onClick={() => sendMessage(input, 'free_text')}
-            disabled={sending || !input.trim()}
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 18,
-              border: 'none',
-              background: sending || !input.trim() ? '#D5D9DD' : C.teal,
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: sending || !input.trim() ? 'default' : 'pointer',
-              flexShrink: 0,
-            }}
-            aria-label={tx(lang, 'send')}
-          >
-            {sending
-              ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-              : <Send size={16} />}
-          </button>
+      <PatientCard>
+        <p style={{ fontSize: 17, fontWeight: 900, color: C.text, marginBottom: 12 }}>
+          {tx(lang, 'escalation')}
+        </p>
+        <p style={{ fontSize: 13, color: C.textSub, lineHeight: 1.55, marginBottom: 12, fontWeight: 650 }}>
+          {tx(lang, 'escalationHelp')}
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {(askData.escalationOptions || []).map(option => {
+            const Icon = option.id === 'doctor_confirmation' ? Stethoscope : ShieldAlert;
+            const label = askEscalationLabel(lang, option);
+            return (
+              <button
+                key={option.id}
+                onClick={() => setConfirmEscalation({ id: option.id, label })}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 14px',
+                  borderRadius: 18,
+                  border: `1px solid ${C.border}`,
+                  background: C.warm,
+                  cursor: 'pointer',
+                  color: C.text,
+                  fontSize: 15,
+                  fontWeight: 800,
+                }}
+              >
+                <Icon size={16} color={C.warn} />
+                <span>{label}</span>
+                {escalating === option.id && (
+                  <Loader2 size={14} color={C.textSub} style={{ marginLeft: 'auto', animation: 'spin 1s linear infinite' }} />
+                )}
+              </button>
+            );
+          })}
         </div>
-      </div>
+        {askData.openEscalation?.patient_visible_status_text && (
+          <div style={{
+            marginTop: 12,
+            padding: '12px 13px',
+            borderRadius: 14,
+            background: C.warnPale,
+            border: `1px solid ${C.warn}25`,
+            fontSize: 12,
+            color: C.warn,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 800, marginBottom: 4, letterSpacing: '0.03em' }}>
+              {tx(lang, 'escalationStatus')}
+            </div>
+          {askData.openEscalation.patient_visible_status_text}
+          </div>
+        )}
+      </PatientCard>
+
+      {confirmEscalation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(15, 23, 42, 0.34)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => setConfirmEscalation(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              borderRadius: 28,
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              boxShadow: '0 24px 70px rgba(15, 23, 42, 0.22)',
+              padding: 22,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{
+                width: 48,
+                height: 48,
+                borderRadius: 18,
+                background: C.warnPale,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <ShieldAlert size={22} color={C.warn} />
+              </div>
+              <div>
+                <p style={{ fontSize: 20, fontWeight: 950, color: C.text, letterSpacing: '-0.04em', lineHeight: 1.2 }}>
+                  {tx(lang, 'escalationConfirmTitle')}
+                </p>
+                <p style={{ marginTop: 8, fontSize: 14, fontWeight: 650, lineHeight: 1.6, color: C.textSub }}>
+                  {tx(lang, 'escalationConfirmBody', confirmEscalation.label)}
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmEscalation(null)}
+                style={{
+                  minHeight: 48,
+                  borderRadius: 16,
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  color: C.textSub,
+                  fontSize: 15,
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                }}
+              >
+                {tx(lang, 'escalationConfirmCancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => requestEscalation(confirmEscalation.id)}
+                disabled={!!escalating}
+                style={{
+                  minHeight: 48,
+                  borderRadius: 16,
+                  border: 'none',
+                  background: C.teal,
+                  color: '#fff',
+                  fontSize: 15,
+                  fontWeight: 950,
+                  cursor: escalating ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: `0 12px 26px ${C.teal}28`,
+                  opacity: escalating ? 0.75 : 1,
+                }}
+              >
+                {escalating && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
+                {tx(lang, 'escalationConfirmSubmit')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2169,6 +2536,21 @@ export default function MyTikiPortal() {
   const [aftercarePreview, setAftercarePreview] = useState(null);
   const [tab,       setTab]       = useState('journey'); // journey | forms | ask | aftercare
   const [arrivedAt, setArrivedAt] = useState(null);     // patient_arrived_at ISO string or null
+  const [sparkleKey, setSparkleKey] = useState(0);
+
+  const triggerTikibellSparkle = useCallback(() => {
+    setSparkleKey((prev) => prev + 1);
+  }, []);
+
+  const goToFormsWithTikibell = useCallback(() => {
+    triggerTikibellSparkle();
+    setTab('forms');
+  }, [triggerTikibellSparkle]);
+
+  const goToAftercareWithTikibell = useCallback(() => {
+    triggerTikibellSparkle();
+    setTab('aftercare');
+  }, [triggerTikibellSparkle]);
 
   // ── Bootstrap — fetch patient context + forms ─────────────────
   const api = patientApi(token);
@@ -2259,6 +2641,12 @@ export default function MyTikiPortal() {
       position: 'relative',
       boxShadow: '0 0 0 1px rgba(231,221,215,0.6)',
     }}>
+      <style>{`
+        @keyframes tikibellFloat {
+          0%, 100% { transform: translateY(0) rotate(-1deg); }
+          50% { transform: translateY(-5px) rotate(1deg); }
+        }
+      `}</style>
 
       {/* ── Top bar ─────────────────────────────────────────── */}
       <div style={{
@@ -2326,12 +2714,13 @@ export default function MyTikiPortal() {
             lang={lang}
             formsStatus={formsStatus}
             clinicRuleConfig={clinicRuleConfig}
-            onGoToForms={() => setTab('forms')}
-            onGoToAftercare={() => setTab('aftercare')}
+            onGoToForms={goToFormsWithTikibell}
+            onGoToAftercare={goToAftercareWithTikibell}
             aftercareState={aftercarePreview}
             arrivedAt={arrivedAt}
             onArrived={setArrivedAt}
             token={token}
+            onCelebrate={triggerTikibellSparkle}
           />
         )}
         {tab === 'forms' && (
@@ -2340,12 +2729,14 @@ export default function MyTikiPortal() {
             lang={lang}
             token={token}
             onFormSubmitted={handleFormSubmitted}
+            onCelebrate={triggerTikibellSparkle}
           />
         )}
         {tab === 'ask' && (
           <AskTab
             lang={lang}
             token={token}
+            onCelebrate={triggerTikibellSparkle}
           />
         )}
         {tab === 'aftercare' && (
@@ -2353,9 +2744,12 @@ export default function MyTikiPortal() {
             lang={lang}
             token={token}
             onStateChange={setAftercarePreview}
+            onCelebrate={triggerTikibellSparkle}
           />
         )}
       </div>
+
+      <TikibellSparkleOverlay sparkleKey={sparkleKey} />
 
       {/* ── Bottom tab bar ───────────────────────────────────── */}
       <div style={{

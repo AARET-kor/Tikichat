@@ -321,3 +321,38 @@ Why:
 - Design-system and staff UX reset are implemented in code, but still require real device/manual visual QA.
 - Quick Visit and My Tiki link hotfixes are implemented and pushed; final operational closure depends on one deployed smoke test after Railway deploy completes.
 - Do not reopen stabilization work unless a real issue is found in operations.
+
+## Tikibell Mascot Usage
+
+- Tikibell is the patient-facing helper inside My Tiki.
+- Tikibell mascot assets are approved for patient-facing guidance and landing product storytelling.
+- In My Tiki, Tikibell may appear as:
+  - a calm welcome/guide character
+  - paperwork support when forms or consent are pending
+  - waiting support when the patient is in treatment/numbing-cream flow
+  - aftercare support when recovery checks or instructions are active
+  - a short celebratory sparkle animation after patient actions
+- In the Ask TikiBell surface, the mascot can be used as the helper identity and the hero video may play once per browser session.
+- In landing, the mascot should be subtle and supportive, not a dominant mascot-first brand takeover.
+- Do not add a Tikibell asset CMS, rules engine, or new workflow state system unless explicitly approved.
+
+## Ask TikiBell Interaction Order
+
+- Ask TikiBell should prioritize patient question entry over staff escalation.
+- The order should be:
+  1. Ask TikiBell intro
+  2. quick questions
+  3. free-text chat input
+  4. recent messages
+  5. human help / clinic confirmation request
+- Human help is intentionally bottom-positioned because it is a fallback, not the main action.
+- Human-help requests must use a confirmation step so patients do not accidentally trigger staff-facing alerts.
+- Do not convert Ask TikiBell into a general emergency/call button without explicit product approval.
+
+## TikiPaste / Tiki Desk Link State Contract
+
+- TikiPaste conversion is allowed to create a staff-confirmed patient, visit, Memory context, and My Tiki link in one workflow.
+- Tiki Desk must treat `patient_links.status in active/sent/opened` as “link already issued” even if the raw URL is not available after reload.
+- Raw My Tiki tokens remain response-only and are not stored in DB; DB keeps token hashes for safety.
+- Active undated visits created from TikiPaste or CRM/EMR intake should remain visible in Tiki Desk today/week operational views until staff assigns a concrete visit time or completes the workflow.
+- Do not add raw token storage, message-channel sync, or an inbox architecture just to make link copy-back easier.

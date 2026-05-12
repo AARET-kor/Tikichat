@@ -4556,19 +4556,20 @@ async function fetchOpsBoardVisits({
 
   if (stage && stage !== "all") q = q.eq("stage", stage);
 
+  const activeUndatedVisitFilter = "and(visit_date.is.null,stage.in.(booked,pre_visit,treatment))";
   if (dateRange === "today") {
-    q = q
-      .gte("visit_date", todayUTC.toISOString())
-      .lt("visit_date", addUTCDays(todayUTC, 1).toISOString());
+    const start = todayUTC.toISOString();
+    const end = addUTCDays(todayUTC, 1).toISOString();
+    q = q.or(`and(visit_date.gte.${start},visit_date.lt.${end}),${activeUndatedVisitFilter}`);
   } else if (dateRange === "tomorrow") {
     const tom = addUTCDays(todayUTC, 1);
     q = q
       .gte("visit_date", tom.toISOString())
       .lt("visit_date", addUTCDays(todayUTC, 2).toISOString());
   } else if (dateRange === "week") {
-    q = q
-      .gte("visit_date", todayUTC.toISOString())
-      .lt("visit_date", addUTCDays(todayUTC, 7).toISOString());
+    const start = todayUTC.toISOString();
+    const end = addUTCDays(todayUTC, 7).toISOString();
+    q = q.or(`and(visit_date.gte.${start},visit_date.lt.${end}),${activeUndatedVisitFilter}`);
   }
 
   const { data: visits, error } = await q;

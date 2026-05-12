@@ -97,6 +97,7 @@ function SurfaceDemo({ type }) {
   if (type === "my-tiki") {
     return (
       <div className="surface-demo mytiki-demo" aria-label="My Tiki와 TikiBell 작동 예시">
+        <img className="tikibell-fade-mascot" src="/assets/tikibell/tikibell-main.png" alt="" aria-hidden="true" />
         <div className="demo-link">My Tiki 링크 발급</div>
         <div className="demo-phone">
           <div className="demo-status-row"><span>상담</span><b>완료</b></div>

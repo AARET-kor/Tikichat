@@ -77,7 +77,14 @@ export function getDeskNextAction(visit = {}) {
 }
 
 export function getDeskPrimaryCta(action = {}, visit = {}) {
-  if (["active", "sent", "opened"].includes(visit.link_status) && visit.link?.url) {
+  if (["active", "sent", "opened"].includes(visit.link_status)) {
+    if (!(visit.link?.url || visit.link_url || visit.my_tiki_url)) {
+      return {
+        type: "focus_visit",
+        label: "링크 발급됨",
+        helper: "이미 My Tiki 링크가 있습니다. 새로 필요할 때만 재발급합니다",
+      };
+    }
     return {
       type: "copy_my_tiki_link",
       label: "링크 복사",

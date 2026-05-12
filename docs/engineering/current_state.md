@@ -333,3 +333,74 @@ The single safest next step is a logged-in deployed smoke test after the latest 
 - confirm Tiki Desk scrolls at normal zoom
 
 After that, continue to My Tiki preview surfacing and staff/admin polish only if the smoke test passes.
+
+## 2026-05-12 Tikibell Mascot Integration
+
+Implemented in this pass:
+
+- Tikibell mascot assets are now stored as app and landing public assets.
+- My Tiki now shows Tikibell as a patient-facing guide in the patient journey.
+- My Tiki shows stage-specific Tikibell illustrations for default guidance, paperwork/consent, numbing-cream waiting, and aftercare.
+- Patient actions such as arrival confirmation, opening/submitting forms, Ask TikiBell messages, and aftercare responses now trigger a short sparkle Tikibell animation.
+- Ask TikiBell now uses the mascot image in the helper card and can show the Tikibell hero video once per browser session when the patient first opens the Ask TikiBell tab.
+- The landing My Tiki + TikiBell demo card now includes a subtle faded Tikibell mascot layer.
+
+Intentionally unchanged:
+
+- No schema changes.
+- No new patient workflow states.
+- No route, API, or auth changes.
+- No backend animation/state tracking.
+- No campaign/editor/admin surface for Tikibell assets.
+
+Remaining later polish:
+
+- Validate mascot/video scale on real patient phones.
+- Consider lower-size optimized image/video derivatives if first-load performance is affected.
+- Add richer localized Tikibell microcopy only after patient testing.
+
+## 2026-05-12 Ask TikiBell Patient Flow Polish
+
+Implemented in this pass:
+
+- Ask TikiBell now places the free-text chat input directly below the quick questions instead of leaving it near the bottom of the screen.
+- Recent messages now sit below the chat input so patients can ask first and then review the response.
+- Staff/nurse/doctor confirmation requests are moved to the bottom of the Ask TikiBell flow.
+- Human-help requests now require a second confirmation step before the clinic-facing escalation request is sent.
+
+Intentionally unchanged:
+
+- No new escalation schema or backend route.
+- No automatic staff-call behavior from quick prompts.
+- No push notification or external alert channel changes.
+
+Remaining later polish:
+
+- Validate on real patient phone height that the Ask TikiBell order feels natural in Chinese, Japanese, English, and Korean.
+- Consider adding clearer patient-facing acknowledgement states only after real usage shows confusion.
+
+## 2026-05-12 TikiPaste → Tiki Desk Linkage Stabilization
+
+Implemented in this pass:
+
+- Tiki Desk now keeps active undated operational visits visible in today/week views, so TikiPaste-created “time unknown” visits do not disappear after refresh or relogin.
+- Tiki Desk visit normalization now accepts both nested API joins and flattened visit payloads for patient name, patient language, flag, and procedure name.
+- My Tiki link generation now keeps the returned share URL in local state immediately after generation.
+- Tiki Desk now treats active/sent/opened patient links as already issued even when the raw token URL cannot be reconstructed from DB after refresh.
+
+Root cause:
+
+- TikiPaste could create a valid patient, visit, Memory context, and My Tiki link, but Tiki Desk’s default today filter excluded visits with `visit_date = null`.
+- Patient links are intentionally stored as token hashes, so after reload the app can verify “link issued” but cannot recreate the original raw share URL.
+- Some UI paths assumed one API payload shape for patient/procedure joins, which made patient names fragile when data came from a different conversion/import path.
+
+Intentionally unchanged:
+
+- No schema changes.
+- No raw My Tiki token storage added.
+- No automatic CRM/EMR sync or omnichannel inbox behavior.
+- No changes to the staff-confirmed TikiPaste conversion rule.
+
+Remaining risk:
+
+- After a full reload, an already-issued link can be recognized as issued, but the original raw URL cannot be copied again unless it is reissued or a future safe delivery-log design is approved.

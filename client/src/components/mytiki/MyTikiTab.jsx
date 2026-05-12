@@ -91,13 +91,15 @@ async function authHeaders() {
 
 // ── Visit normalizer ─────────────────────────────────────────────────────────
 function normalizeVisit(v) {
+  const patient = v.patients || v.patient || {};
+  const procedure = v.procedures || v.procedure || {};
   return {
     id:               v.id,
     patient_id:       v.patient_id,
-    patient_name:     v.patients?.name     || '(이름 없음)',
-    patient_flag:     v.patients?.flag     || '🏥',
-    patient_lang:     v.patients?.lang     || 'ko',
-    procedure_name:   v.procedures?.name_ko || '시술 미지정',
+    patient_name:     patient.name || v.patient_name || v.patientName || '(이름 없음)',
+    patient_flag:     patient.flag || v.patient_flag || '🏥',
+    patient_lang:     patient.lang || v.patient_lang || v.lang || 'ko',
+    procedure_name:   procedure.name_ko || procedure.name_en || v.procedure_name || v.procedureName || '시술 미지정',
     visit_date:       v.visit_date || null,
     stage:            v.stage              || 'booked',
     link_status:      v.link_status        || 'none',
@@ -1691,7 +1693,13 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setUrl(data.url);
       setPhase('done');
-      onGenerated(visit.id, { id: data.link_id, status: 'active', expires_at: data.expires_at, first_opened_at: null });
+      onGenerated(visit.id, {
+        id: data.link_id,
+        status: 'active',
+        expires_at: data.expires_at,
+        first_opened_at: null,
+        url: data.url,
+      });
     } catch (err) {
       setErrMsg(err.message);
       setPhase('error');
@@ -2320,13 +2328,16 @@ export default function MyTikiTab({ darkMode }) {
     focusVisitRow(visit.id);
   }
 
-  function handleGenerated(visitId, newLink) {
+  async function handleGenerated(visitId, newLink) {
     setVisits(prev => prev.map(v =>
-      v.id === visitId ? { ...v, link_status: 'active', link: newLink } : v
+      v.id === visitId ? { ...v, link_status: 'active', link: { ...(v.link || {}), ...newLink } } : v
     ));
     setSummary(prev => ({ ...prev, activeLinks: prev.activeLinks + 1 }));
     setDeskNotice('My Tiki 링크가 발급됐습니다.');
-    fetchVisits();
+    await fetchVisits();
+    setVisits(prev => prev.map(v =>
+      v.id === visitId ? { ...v, link_status: 'active', link: { ...(v.link || {}), ...newLink } } : v
+    ));
   }
 
   function handleCreated(rawVisit) {
