@@ -11,7 +11,7 @@ const patientCareSource = existsSync(patientCareUrl) ? readFileSync(patientCareU
 test("Patient Care appears directly after Tiki Desk in the staff sidebar", () => {
   assert.match(sidebarSource, /id:\s*'my_tiki'[\s\S]*id:\s*'patient_care'[\s\S]*id:\s*'tiki_memory'/);
   assert.match(sidebarSource, /label:\s*'환자 케어'/);
-  assert.match(sidebarSource, /sublabel:\s*'확인·사후관리'/);
+  assert.match(sidebarSource, /sublabel:\s*'확인·애프터케어'/);
 });
 
 test("Dashboard routes the patient_care tab to the dedicated PatientCareTab", () => {
@@ -23,7 +23,7 @@ test("Dashboard routes the patient_care tab to the dedicated PatientCareTab", ()
 test("Patient Care uses staff-friendly Korean labels instead of escalation jargon", () => {
   assert.match(patientCareSource, /환자 케어/);
   assert.match(patientCareSource, /확인 요청/);
-  assert.match(patientCareSource, /사후관리/);
+  assert.match(patientCareSource, /애프터케어/);
   assert.match(patientCareSource, /긴급 확인/);
   assert.match(patientCareSource, /지연된 확인 요청/);
   assert.match(patientCareSource, /아직 확인 안 됨/);

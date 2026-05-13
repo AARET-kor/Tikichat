@@ -21,6 +21,7 @@ import {
   isAftercareUnanswered,
   isEscalationUnanswered,
 } from '../../lib/opsStatusMeta';
+import { getStaffSafeErrorMessage } from '../../lib/tikiDeskFlow';
 
 const TEXT = '#1B262C';
 const MUTED = '#5A6874';
@@ -379,7 +380,7 @@ function AftercareCard({ item, busy, onReview, onOpenPatient }) {
         {state.key === 'concern' && '회복 상태에 주의가 필요합니다.'}
         {state.key === 'safe_for_return' && '재방문 가능 상태로 보입니다. 필요하면 안내를 이어가세요.'}
         {state.key === 'responded' && '환자 응답이 도착했습니다. 회복 상태를 확인해 주세요.'}
-        {state.key === 'due' && '사후관리 응답을 기다리는 중입니다.'}
+        {state.key === 'due' && '애프터케어 응답을 기다리는 중입니다.'}
       </p>
 
       <div style={{
@@ -392,7 +393,7 @@ function AftercareCard({ item, busy, onReview, onOpenPatient }) {
         lineHeight: 1.6,
         fontWeight: 760,
       }}>
-        {compactText(template, '연결된 사후관리 안내 내용이 없습니다.')}
+        {compactText(template, '연결된 애프터케어 안내 내용이 없습니다.')}
       </div>
 
       <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -465,7 +466,7 @@ export default function PatientCareTab({ darkMode = false }) {
       await Promise.all([fetchConfirmRequests(), fetchAftercare()]);
     } catch (error) {
       console.error('[patient-care]', error);
-      setNotice(error.message || '환자 케어 항목을 불러오지 못했습니다.');
+      setNotice(getStaffSafeErrorMessage(error, '환자 케어 항목을 불러오지 못했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -520,7 +521,7 @@ export default function PatientCareTab({ darkMode = false }) {
         setNotice('이미 처리된 요청입니다. 목록을 새로고침합니다.');
         await fetchConfirmRequests();
       } else {
-        setNotice(message || '확인 요청을 처리하지 못했습니다.');
+        setNotice(getStaffSafeErrorMessage(error, '확인 요청을 처리하지 못했습니다.'));
       }
     } finally {
       setBusy('');
@@ -539,11 +540,11 @@ export default function PatientCareTab({ darkMode = false }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setNotice('사후관리 검토를 기록했습니다.');
+      setNotice('애프터케어 검토를 기록했습니다.');
       await fetchAftercare();
     } catch (error) {
       console.error('[patient-care-aftercare-review]', error);
-      setNotice(error.message || '사후관리 항목을 처리하지 못했습니다.');
+      setNotice(getStaffSafeErrorMessage(error, '애프터케어 항목을 처리하지 못했습니다.'));
     } finally {
       setBusy('');
     }
@@ -677,7 +678,7 @@ export default function PatientCareTab({ darkMode = false }) {
           <SummaryCard icon={UserCheck} label="확인 필요" value={confirmSummary.unanswered || confirmSummary.requested} hint="직원 확인 요청" tone={PRIMARY} active={activeTab === 'requests' && filters.status === 'active' && filters.priority === 'all' && quickFilter === 'none'} onClick={() => handleSummaryClick('needs_attention')} />
           <SummaryCard icon={ShieldAlert} label="긴급" value={urgentConfirmCount + Number(aftercareSummary.urgent || 0)} hint="먼저 볼 항목" tone="#DC2626" active={activeTab === 'requests' && filters.priority === 'urgent'} onClick={() => handleSummaryClick('urgent')} />
           <SummaryCard icon={Clock3} label="지연" value={confirmSummary.overdue} hint="지연된 확인 요청" tone="#B45309" active={quickFilter === 'overdue'} onClick={() => handleSummaryClick('overdue')} />
-          <SummaryCard icon={Send} label="사후관리 응답" value={aftercareSummary.responded} hint="환자 응답 도착" tone={PRIMARY_DARK} active={activeTab === 'aftercare' && filters.aftercare === 'responded'} onClick={() => handleSummaryClick('aftercare_responded')} />
+          <SummaryCard icon={Send} label="애프터케어 응답" value={aftercareSummary.responded} hint="환자 응답 도착" tone={PRIMARY_DARK} active={activeTab === 'aftercare' && filters.aftercare === 'responded'} onClick={() => handleSummaryClick('aftercare_responded')} />
           <SummaryCard icon={CheckCircle2} label="재방문 가능" value={aftercareSummary.safe_for_return} hint="리턴 제안 가능" tone="#16A34A" active={activeTab === 'aftercare' && filters.aftercare === 'safe_for_return'} onClick={() => handleSummaryClick('safe_for_return')} />
         </section>
 
@@ -707,7 +708,7 @@ export default function PatientCareTab({ darkMode = false }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: 10 }}>
               <ShellButton active={activeTab === 'requests'} onClick={() => setActiveTab('requests')}>확인 요청</ShellButton>
-              <ShellButton active={activeTab === 'aftercare'} onClick={() => setActiveTab('aftercare')}>사후관리</ShellButton>
+              <ShellButton active={activeTab === 'aftercare'} onClick={() => setActiveTab('aftercare')}>애프터케어</ShellButton>
             </div>
             <p style={{ margin: 0, color: MUTED, fontSize: 15, fontWeight: 850 }}>
               오늘 놓치면 안 되는 환자 확인 업무를 먼저 보여줍니다.
@@ -764,10 +765,10 @@ export default function PatientCareTab({ darkMode = false }) {
           {activeTab === 'aftercare' && (
             <div ref={listTopRef} style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 18 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: '-0.04em' }}>오늘 먼저 볼 사후관리</h2>
+                <h2 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: '-0.04em' }}>오늘 먼저 볼 애프터케어</h2>
                 <p style={{ marginTop: 8, color: MUTED, fontSize: 15, fontWeight: 780 }}>회복 상태, 주의 신호, 재방문 가능 여부를 빠르게 확인합니다.</p>
                 <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
-                  {aftercareItems.length === 0 && <EmptyState>지금 확인할 사후관리 항목이 없습니다.</EmptyState>}
+                  {aftercareItems.length === 0 && <EmptyState>지금 확인할 애프터케어 항목이 없습니다.</EmptyState>}
                   {aftercareItems.map(item => (
                     <AftercareCard
                       key={item.id}
@@ -807,7 +808,7 @@ export default function PatientCareTab({ darkMode = false }) {
                     lineHeight: 1.55,
                     fontWeight: 780,
                   }}>
-                    사후관리는 응답을 검토하면 현재 항목의 확인 이력이 남습니다. 대형 감사 화면은 만들지 않고 운영 기록만 유지합니다.
+                    애프터케어는 응답을 검토하면 현재 항목의 확인 이력이 남습니다. 대형 감사 화면은 만들지 않고 운영 기록만 유지합니다.
                   </div>
                 </div>
               </aside>

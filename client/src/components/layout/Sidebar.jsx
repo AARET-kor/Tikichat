@@ -37,7 +37,7 @@ const NAV_ITEMS = [
     id:            'patient_care',
     icon:          HeartPulse,
     label:         '환자 케어',
-    sublabel:      '확인·사후관리',
+    sublabel:      '확인·애프터케어',
     requiredRoles: ['owner', 'admin'],
     accent:        MOCHA,
   },

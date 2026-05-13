@@ -152,7 +152,7 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 
 ### Patient Care
 
-- Staff-facing copy should use `환자 케어`, `확인 요청`, `사후관리`, `긴급`, `지연`, and `재방문 가능` rather than developer terms such as escalation.
+- Staff-facing copy should use `환자 케어`, `확인 요청`, `애프터케어`, `긴급`, `지연`, and `재방문 가능` rather than developer terms such as escalation.
 - Patient Care is the dedicated staff surface for patient-side confirmation requests and aftercare/recovery signals.
 - The five summary cards at the top are operational filters, not passive metrics.
 - Confirmation-request action buttons must persist status transitions and remove completed items from the default actionable view.
@@ -397,3 +397,13 @@ Why:
 - Tiki Room remains the owner of room clear/load-next actions. Tiki Desk can summarize room state and route staff into Tiki Room, but should not duplicate the treatment-room control surface.
 - Patient Care remains the owner of aftercare and confirmation-request handling. Tiki Desk can surface that work as a stage or next action, but should not become a second Patient Care UI.
 - The current implementation deliberately keeps raw My Tiki tokens response-only. Staff can see that a link exists after reload, but a previously issued raw URL cannot be reconstructed unless a future safe delivery-log design is approved.
+
+## Tiki Desk Action Feedback And Remaining Roadmap
+
+- Every durable Tiki Desk action should make persistence visible to staff: `저장됨`, `다시 불러오는 중`, and `다음 단계 확인`.
+- Tiki Desk should not imply that a stage has changed until the backend refresh confirms the new state.
+- My Tiki link state should be shown as operational lifecycle states: `링크 필요`, `발급됨`, `열람됨`, `문진 필요`, `동의 필요`, `도착 확인`, and `만료/취소`.
+- Patient cards may show a compact `여정 기록`, but this remains a trust aid, not a full audit dashboard.
+- Staff-facing UI should use `애프터케어`; older `사후` wording should not be used for visible lifecycle labels.
+- Raw technical failures such as schema cache, UUID, column missing, or PostgREST errors must be translated into staff-safe operational Korean messages.
+- The next roadmap priority is verification and closure of the connected journey, not a new feature bucket: TikiPaste conversion, My Tiki link lifecycle, Tiki Desk stage movement, Tiki Room handoff, Patient Care/애프터케어, and Memory consistency.

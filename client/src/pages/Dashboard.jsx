@@ -203,7 +203,7 @@ export default function Dashboard() {
               : <AccessDenied feature="Tiki Desk" darkMode={darkMode} />
           )}
 
-          {/* ── 환자 케어 (확인 요청 + 사후관리) ── */}
+          {/* ── 환자 케어 (확인 요청 + 애프터케어) ── */}
           {activeTab === 'patient_care' && (
             canAccess('patient_care')
               ? <PatientCareTab darkMode={darkMode} />

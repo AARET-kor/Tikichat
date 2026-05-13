@@ -638,7 +638,7 @@ export default function ProceduresTab({ darkMode }) {
               </div>
               <div className="min-w-0">
                 <h1 className={`text-[36px] tracking-[-0.055em] leading-none font-black ${panelTitle}`}>시술 관리</h1>
-                <p className={`text-[16px] mt-3 font-bold ${muted}`}>AI 답변, My Tiki 안내, 사후관리의 기반이 되는 병원 시술 정보입니다.</p>
+                <p className={`text-[16px] mt-3 font-bold ${muted}`}>AI 답변, My Tiki 안내, 애프터케어의 기반이 되는 병원 시술 정보입니다.</p>
               </div>
             </div>
           </div>

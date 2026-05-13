@@ -7,6 +7,8 @@ import {
   buildTikiDeskCounts,
   buildTikiDeskFlow,
   buildMyTikiStatusSummary,
+  buildVisitJourneyTimeline,
+  getStaffSafeErrorMessage,
   getVisitJourneyStage,
   getDeskPrimaryCta,
   getDeskNextAction,
@@ -303,31 +305,112 @@ test("Tiki Desk ops-board includes active undated visits in today and week views
   assert.match(serverSource, /visit_date\.is\.null,stage\.in\.\(booked,pre_visit,treatment\)/);
 });
 
-test("buildMyTikiStatusSummary groups patients by link and form state", () => {
+test("buildMyTikiStatusSummary groups patients by operational My Tiki state", () => {
   const summary = buildMyTikiStatusSummary([
     { ...base, id: "needs-link", link_status: "none", intake_done: false, consent_done: false },
     { ...base, id: "active-link", link_status: "active", intake_done: true, consent_done: false },
-    { ...base, id: "opened", link_status: "opened", intake_done: true, consent_done: true },
+    { ...base, id: "opened", link_status: "opened", intake_done: true, consent_done: true, patient_arrived_at: "2026-04-24T09:04:00.000Z" },
+    { ...base, id: "expired", link_status: "expired", intake_done: false, consent_done: false },
+    { ...base, id: "revoked", link_status: "revoked", intake_done: false, consent_done: false },
   ]);
 
-  assert.deepEqual(summary.map((group) => [group.key, group.count]), [
-    ["link_needed", 1],
-    ["link_active", 1],
-    ["link_opened", 1],
-    ["intake_done", 2],
-    ["consent_needed", 2],
+  assert.deepEqual(summary.map((group) => [group.key, group.label, group.count]), [
+    ["link_needed", "링크 필요", 1],
+    ["link_active", "발급됨", 1],
+    ["link_opened", "열람됨", 1],
+    ["intake_needed", "문진 필요", 3],
+    ["consent_needed", "동의 필요", 4],
+    ["arrival_confirmed", "도착 확인", 1],
+    ["link_expired_cancelled", "만료/취소", 2],
   ]);
   assert.equal(summary[0].patients[0].id, "needs-link");
+});
+
+test("buildVisitJourneyTimeline exposes a compact operational journey", () => {
+  const timeline = buildVisitJourneyTimeline({
+    ...base,
+    id: "timeline",
+    patient_id: "patient-1",
+    conversation_intake_id: "intake-1",
+    source_channel: "kakao",
+    link_status: "opened",
+    link: { id: "link-1", created_at: "2026-04-24T08:40:00.000Z" },
+    patient_arrived_at: "2026-04-24T08:55:00.000Z",
+    checked_in_at: "2026-04-24T09:00:00.000Z",
+    room: "리프팅실 1",
+    room_cleared_at: "2026-04-24T10:00:00.000Z",
+    aftercare_status: "responded",
+  });
+
+  assert.deepEqual(timeline.map((event) => event.label), [
+    "상담 캡처",
+    "환자 생성",
+    "링크 발급",
+    "링크 열람",
+    "도착 확인",
+    "문진·동의",
+    "룸 진행",
+    "애프터케어",
+  ]);
+});
+
+test("staff safe error message hides raw database implementation details", () => {
+  assert.equal(
+    getStaffSafeErrorMessage(
+      new Error("Could not find the 'last_edited_at' column of 'patient_interactions' in the schema cache"),
+      "환자 정보를 저장하지 못했습니다. 다시 시도해 주세요.",
+    ),
+    "환자 정보를 저장하지 못했습니다. 다시 시도해 주세요.",
+  );
+  assert.equal(
+    getStaffSafeErrorMessage(
+      new Error("invalid input syntax for type uuid: \"demo\""),
+      "환자 링크를 발급하지 못했습니다. 다시 시도해 주세요.",
+    ),
+    "환자 링크를 발급하지 못했습니다. 다시 시도해 주세요.",
+  );
+});
+
+test("Tiki Desk exposes saved, reloaded, and next-stage confirmation feedback", () => {
+  assert.match(tikiDeskSource, /저장됨/);
+  assert.match(tikiDeskSource, /다시 불러오는 중/);
+  assert.match(tikiDeskSource, /다음 단계 확인/);
+  assert.match(tikiDeskSource, /deskActionStatusByVisit/);
+});
+
+test("Tiki Desk patient cards expose a compact journey timeline", () => {
+  assert.match(tikiDeskSource, /buildVisitJourneyTimeline/);
+  assert.match(tikiDeskSource, /여정 기록/);
+  assert.match(tikiDeskSource, /접기/);
+});
+
+test("Tiki Desk uses safe staff errors instead of raw database messages", () => {
+  assert.match(tikiDeskSource, /getStaffSafeErrorMessage/);
+  assert.doesNotMatch(tikiDeskSource, /setFetchError\(err\.message\)/);
+  assert.doesNotMatch(tikiDeskSource, /setErrMsg\(err\.message\)/);
+});
+
+test("legacy staff wording uses 애프터케어 instead of 사후", () => {
+  assert.doesNotMatch(tikiDeskSource, /사후/);
 });
 
 test("Tiki Desk exposes a My Tiki patient-level drilldown", () => {
   assert.match(tikiDeskSource, /MyTikiStatusDrilldown/);
   assert.match(tikiDeskSource, /selectedMyTikiGroup/);
   assert.match(tikiDeskSource, /id="my-tiki-status-detail"/);
-  assert.match(tikiDeskSource, /링크 발급됨/);
+  assert.match(tikiDeskSource, /발급됨/);
   assert.match(tikiDeskSource, /열람됨/);
-  assert.match(tikiDeskSource, /문진 완료/);
+  assert.match(tikiDeskSource, /문진 필요/);
   assert.match(tikiDeskSource, /동의 필요/);
+  assert.match(tikiDeskSource, /도착 확인/);
+  assert.match(tikiDeskSource, /만료\/취소/);
+});
+
+test("legacy My Tiki summary keys are no longer used for current operations", () => {
+  const summary = buildMyTikiStatusSummary([
+    { ...base, id: "needs-link", link_status: "none", intake_done: false, consent_done: false },
+  ]);
+  assert.equal(summary.some((group) => group.key === "intake_done"), false);
 });
 
 test("Tiki Desk keeps generated link URLs through polling without relying on token storage", () => {

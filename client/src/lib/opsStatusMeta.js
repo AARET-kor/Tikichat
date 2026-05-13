@@ -8,7 +8,7 @@ export const STAGE_META = {
   booked: { label: "예약 확정", color: "#5B72A8", bg: "#5B72A810" },
   pre_visit: { label: "방문 전", color: "#0F4C75", bg: "#0F4C7510" },
   treatment: { label: "시술 중", color: "#3B6500", bg: "#89E90020" },
-  post_care: { label: "사후 관리", color: "#0145F2", bg: "#0145F210" },
+  post_care: { label: "애프터케어", color: "#0145F2", bg: "#0145F210" },
   followup: { label: "팔로업", color: "#9B72CF", bg: "#9B72CF10" },
   closed: { label: "완료", color: "#6B7280", bg: "#6B728010" },
 };
@@ -27,7 +27,7 @@ export const ESCALATION_TYPE_LABELS = {
   simple_logistics: "단순 운영 문의",
   billing_or_booking: "예약·결제 문의",
   symptom_concern: "증상 문의",
-  aftercare_concern: "사후관리 문의",
+  aftercare_concern: "애프터케어 문의",
   urgent_risk: "긴급 위험",
   doctor_required: "의료진 확인 필요",
 };

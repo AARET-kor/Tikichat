@@ -28,7 +28,16 @@ import QuickVisitCreate from './QuickVisitCreate';
 import CsvImportModal   from './CsvImportModal';
 import { deriveArrivalFlowState } from '../../lib/opsBoardArrival';
 import { buildQrImageUrl, shouldPollOpsBoard } from '../../lib/opsLite';
-import { buildMyTikiStatusSummary, buildTikiDeskCounts, buildTikiDeskFlow, buildVisitStatusBadges, getDeskNextAction, getDeskPrimaryCta } from '../../lib/tikiDeskFlow';
+import {
+  buildMyTikiStatusSummary,
+  buildTikiDeskCounts,
+  buildTikiDeskFlow,
+  buildVisitJourneyTimeline,
+  buildVisitStatusBadges,
+  getDeskNextAction,
+  getDeskPrimaryCta,
+  getStaffSafeErrorMessage,
+} from '../../lib/tikiDeskFlow';
 import {
   AFTERCARE_FILTER_LABELS,
   ESCALATION_PRIORITY_META,
@@ -448,10 +457,12 @@ function MyTikiStatusStrip({ visit, action, darkMode, compact = false }) {
   );
 }
 
-function FlowPatientLine({ visit, mode, darkMode, compact = false, rooms = [], busy = false, onPrimaryAction }) {
+function FlowPatientLine({ visit, mode, darkMode, compact = false, rooms = [], busy = false, actionStatus = null, onPrimaryAction }) {
   const action = getDeskNextAction(visit);
   const primaryCta = getDeskPrimaryCta(action, visit);
   const tone = DESK_TONE[action.tone] || DESK_TONE.muted;
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const timeline = buildVisitJourneyTimeline(visit);
   const timeSource = mode === 'booked'
     ? visit.visit_date
     : mode === 'arrived'
@@ -510,6 +521,61 @@ function FlowPatientLine({ visit, mode, darkMode, compact = false, rooms = [], b
       </div>
       <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact={compact} />
       <VisitStatusRail visit={visit} darkMode={darkMode} compact={compact} />
+      {mode === 'next' && actionStatus && (
+        <div
+          className="mt-3 rounded-2xl border px-3 py-2"
+          style={{
+            borderColor: darkMode ? '#1E3A8A' : '#BBD7FF',
+            background: darkMode ? '#0B1F3A' : '#EFF6FF',
+            color: darkMode ? '#BFDBFE' : '#10367D',
+          }}
+        >
+          <p className={`${compact ? 'text-[11px]' : 'text-[12px]'} font-black`}>
+            {actionStatus.label}
+          </p>
+          {actionStatus.detail && (
+            <p className={`mt-0.5 ${compact ? 'text-[10px]' : 'text-[11px]'} font-bold opacity-80`}>
+              {actionStatus.detail}
+            </p>
+          )}
+        </div>
+      )}
+      {timeline.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setTimelineOpen((open) => !open)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${compact ? 'text-[10px]' : 'text-[11px]'} font-black transition-all hover:-translate-y-0.5 active:scale-[0.98]`}
+            style={{
+              borderColor: darkMode ? '#27272A' : '#D6E1EA',
+              background: darkMode ? '#0F172A' : '#F8FBFF',
+              color: darkMode ? '#E4E4E7' : '#10367D',
+            }}
+          >
+            여정 기록 {timelineOpen ? '접기' : '보기'}
+            <ChevronDown size={12} style={{ transform: timelineOpen ? 'rotate(180deg)' : 'none', transition: 'transform 160ms ease' }} />
+          </button>
+          {timelineOpen && (
+            <ol
+              className="mt-2 space-y-1.5 rounded-2xl border px-3 py-2"
+              style={{
+                borderColor: darkMode ? '#27272A' : '#E0E7F0',
+                background: darkMode ? '#0B1220' : '#FFFFFF',
+              }}
+            >
+              {timeline.map((event) => (
+                <li
+                  key={`${visit.id}-${event.key}`}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-black ${darkMode ? 'text-zinc-200' : 'text-[#1B262C]'}`}>{event.label}</span>
+                  <span className={`${compact ? 'text-[9px]' : 'text-[10px]'} font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{event.detail || event.whenLabel || '기록됨'}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
       {mode === 'next' && (
         <div
           className="mt-3 flex items-center justify-between gap-3 rounded-2xl border"
@@ -735,7 +801,7 @@ function JourneyStageRail({ stages = [], selectedKey, onSelectStage, darkMode })
   );
 }
 
-function JourneyStageDrilldown({ stage, darkMode, rooms = [], busyVisitIds = new Set(), onPrimaryAction }) {
+function JourneyStageDrilldown({ stage, darkMode, rooms = [], busyVisitIds = new Set(), actionStatuses = {}, onPrimaryAction }) {
   if (!stage) return null;
   return (
     <section
@@ -772,6 +838,7 @@ function JourneyStageDrilldown({ stage, darkMode, rooms = [], busyVisitIds = new
               compact
               rooms={rooms}
               busy={busyVisitIds.has(visit.id)}
+              actionStatus={actionStatuses[visit.id]}
               onPrimaryAction={onPrimaryAction}
             />
           ))}
@@ -835,8 +902,10 @@ function MyTikiStatusDrilldown({
     link_needed: DESK_TONE.urgent,
     link_active: DESK_TONE.info,
     link_opened: DESK_TONE.ready,
-    intake_done: DESK_TONE.ready,
+    intake_needed: DESK_TONE.warn,
     consent_needed: DESK_TONE.warn,
+    arrival_confirmed: DESK_TONE.ready,
+    link_expired_cancelled: DESK_TONE.urgent,
   };
 
   return (
@@ -854,7 +923,7 @@ function MyTikiStatusDrilldown({
         <div>
           <h3 className={`text-[18px] font-black tracking-[-0.04em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>My Tiki 상태 상세</h3>
           <p className={`mt-1 text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
-            링크 발급, 열람, 문진, 동의 상태를 환자별로 바로 확인합니다.
+            링크 발급, 열람, 문진 필요, 동의 필요, 도착 확인, 만료/취소 상태를 환자별로 바로 확인합니다.
           </p>
         </div>
         <span className={`rounded-full px-3 py-1 text-[12px] font-black ${darkMode ? 'bg-zinc-800 text-zinc-200' : 'bg-[#EDF1F5] text-[#10367D]'}`}>
@@ -944,6 +1013,7 @@ function TikiDeskCommandBoard({
   onSelectJourneyStage,
   rooms = [],
   busyVisitIds = new Set(),
+  actionStatuses = {},
 }) {
   const primaryTasks = flow.nextActions || [];
   const selectedStage = (flow.stageRail || []).find((stage) => stage.key === selectedJourneyStage) || null;
@@ -982,6 +1052,7 @@ function TikiDeskCommandBoard({
           darkMode={darkMode}
           rooms={rooms}
           busyVisitIds={busyVisitIds}
+          actionStatuses={actionStatuses}
           onPrimaryAction={onPrimaryAction}
         />
 
@@ -1013,6 +1084,7 @@ function TikiDeskCommandBoard({
                   compact
                   rooms={rooms}
                   busy={busyVisitIds.has(visit.id)}
+                  actionStatus={actionStatuses[visit.id]}
                   onPrimaryAction={onPrimaryAction}
                 />
               ))}
@@ -1872,7 +1944,7 @@ function GenerateLinkModal({ visit, darkMode, clinicId, onClose, onGenerated }) 
         url: data.url,
       });
     } catch (err) {
-      setErrMsg(err.message);
+      setErrMsg(getStaffSafeErrorMessage(err, 'My Tiki 링크를 발급하지 못했습니다. 잠시 후 다시 시도해 주세요.'));
       setPhase('error');
     }
   }
@@ -1993,6 +2065,7 @@ export default function MyTikiTab({ darkMode }) {
   const [selectedAftercareProcedureId, setSelectedAftercareProcedureId] = useState('');
   const [checkingInIds,   setCheckingInIds]   = useState(new Set());
   const [assigningRoomIds, setAssigningRoomIds] = useState(new Set());
+  const [deskActionStatusByVisit, setDeskActionStatusByVisit] = useState({});
   const [reviewingAftercareIds, setReviewingAftercareIds] = useState(new Set());
   const [savingAftercareStepIds, setSavingAftercareStepIds] = useState(new Set());
   const [ensuringAftercarePlan, setEnsuringAftercarePlan] = useState(false);
@@ -2019,6 +2092,36 @@ export default function MyTikiTab({ darkMode }) {
     };
   }), []);
 
+  function setVisitActionFeedback(visitId, phase, detail) {
+    if (!visitId) return;
+    const labelMap = {
+      saving: '저장됨',
+      reloading: '다시 불러오는 중',
+      confirmed: '다음 단계 확인',
+      error: '처리 실패',
+    };
+    setDeskActionStatusByVisit((prev) => ({
+      ...prev,
+      [visitId]: {
+        phase,
+        label: labelMap[phase] || phase,
+        detail,
+        updatedAt: Date.now(),
+      },
+    }));
+  }
+
+  function clearVisitActionFeedback(visitId, delay = 2600) {
+    if (!visitId) return;
+    window.setTimeout(() => {
+      setDeskActionStatusByVisit((prev) => {
+        const next = { ...prev };
+        delete next[visitId];
+        return next;
+      });
+    }, delay);
+  }
+
   // ── Fetch visits ───────────────────────────────────────────────────────────
   const fetchVisits = useCallback(async () => {
     setLoading(true);
@@ -2039,7 +2142,7 @@ export default function MyTikiTab({ darkMode }) {
       setRoomSummary(data.room_summary || { total: 0, free: 0, occupied: 0, readyQueue: 0 });
       setRoomQueue(mergeCachedLinkUrls((data.room_ready_queue || []).map(normalizeVisit)));
     } catch (err) {
-      setFetchError(err.message);
+      setFetchError(getStaffSafeErrorMessage(err, '방문 목록을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'));
     } finally {
       setLoading(false);
     }
@@ -2211,15 +2314,21 @@ export default function MyTikiTab({ darkMode }) {
   async function handleCheckIn(visitId) {
     if (checkingInIds.has(visitId)) return;
     setCheckingInIds(prev => new Set([...prev, visitId]));
+    setVisitActionFeedback(visitId, 'saving', '도착 확인을 저장했습니다.');
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/my-tiki/visits/${visitId}/check-in`, { method: 'POST', headers });
       const d = await res.json().catch(() => ({}));
       if (!res.ok && res.status !== 409) throw new Error(d.error);
+      setVisitActionFeedback(visitId, 'reloading', '변경된 방문 흐름을 다시 불러옵니다.');
       await fetchVisits();
-      setDeskNotice('도착 확인이 처리됐습니다.');
+      setVisitActionFeedback(visitId, 'confirmed', '다음 단계로 이동했는지 확인했습니다.');
+      setDeskNotice('도착 확인 저장됨 · 다시 불러옴 · 다음 단계 이동을 확인했습니다.');
+      clearVisitActionFeedback(visitId);
     } catch (err) {
       console.error('[check-in]', err.message);
+      setVisitActionFeedback(visitId, 'error', getStaffSafeErrorMessage(err, '도착 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.'));
+      clearVisitActionFeedback(visitId, 4200);
       setDeskNotice('도착 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setCheckingInIds(prev => { const next = new Set(prev); next.delete(visitId); return next; });
@@ -2229,6 +2338,7 @@ export default function MyTikiTab({ darkMode }) {
   async function handleAssignRoom(visitId, roomId) {
     if (assigningRoomIds.has(visitId)) return;
     setAssigningRoomIds((prev) => new Set([...prev, visitId]));
+    setVisitActionFeedback(visitId, 'saving', '룸 배정을 저장했습니다.');
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/staff/visits/${visitId}/assign-room`, {
@@ -2238,10 +2348,15 @@ export default function MyTikiTab({ darkMode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setVisitActionFeedback(visitId, 'reloading', '룸 상태와 방문 흐름을 다시 불러옵니다.');
       await fetchVisits();
-      setDeskNotice('빈 룸에 배정했습니다.');
+      setVisitActionFeedback(visitId, 'confirmed', '룸 단계로 이동했는지 확인했습니다.');
+      setDeskNotice('룸 배정 저장됨 · 다시 불러옴 · 다음 단계 이동을 확인했습니다.');
+      clearVisitActionFeedback(visitId);
     } catch (err) {
       console.error('[assign-room]', err.message);
+      setVisitActionFeedback(visitId, 'error', getStaffSafeErrorMessage(err, '룸 배정에 실패했습니다. 빈 룸 상태를 확인해 주세요.'));
+      clearVisitActionFeedback(visitId, 4200);
       setDeskNotice('룸 배정에 실패했습니다. 빈 룸 상태를 확인해 주세요.');
     } finally {
       setAssigningRoomIds((prev) => {
@@ -2255,6 +2370,7 @@ export default function MyTikiTab({ darkMode }) {
   async function handleConfirmForms(visitId) {
     if (checkingInIds.has(visitId)) return;
     setCheckingInIds(prev => new Set([...prev, visitId]));
+    setVisitActionFeedback(visitId, 'saving', '문진·동의 확인을 저장했습니다.');
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/staff/visits/${visitId}/confirm-forms`, {
@@ -2263,10 +2379,15 @@ export default function MyTikiTab({ darkMode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setVisitActionFeedback(visitId, 'reloading', '변경된 서류 상태를 다시 불러옵니다.');
       await fetchVisits();
-      setDeskNotice('문진·동의 확인이 완료 처리됐습니다.');
+      setVisitActionFeedback(visitId, 'confirmed', '대기 단계로 이동했는지 확인했습니다.');
+      setDeskNotice('문진·동의 확인 저장됨 · 다시 불러옴 · 다음 단계 이동을 확인했습니다.');
+      clearVisitActionFeedback(visitId);
     } catch (err) {
       console.error('[confirm-forms]', err.message);
+      setVisitActionFeedback(visitId, 'error', getStaffSafeErrorMessage(err, '서류 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.'));
+      clearVisitActionFeedback(visitId, 4200);
       setDeskNotice('서류 확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setCheckingInIds(prev => { const next = new Set(prev); next.delete(visitId); return next; });
@@ -2276,6 +2397,7 @@ export default function MyTikiTab({ darkMode }) {
   async function handleClearRoom(visitId) {
     if (assigningRoomIds.has(visitId)) return;
     setAssigningRoomIds((prev) => new Set([...prev, visitId]));
+    setVisitActionFeedback(visitId, 'saving', '룸 종료를 저장했습니다.');
     try {
       const headers = await authHeaders();
       const res = await fetch(`/api/staff/visits/${visitId}/clear-room`, {
@@ -2284,9 +2406,16 @@ export default function MyTikiTab({ darkMode }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setVisitActionFeedback(visitId, 'reloading', '룸 상태와 애프터케어 흐름을 다시 불러옵니다.');
       await fetchVisits();
+      setVisitActionFeedback(visitId, 'confirmed', '애프터케어 단계로 이동했는지 확인했습니다.');
+      setDeskNotice('룸 종료 저장됨 · 다시 불러옴 · 애프터케어 단계 이동을 확인했습니다.');
+      clearVisitActionFeedback(visitId);
     } catch (err) {
       console.error('[clear-room]', err.message);
+      setVisitActionFeedback(visitId, 'error', getStaffSafeErrorMessage(err, '룸 종료 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.'));
+      clearVisitActionFeedback(visitId, 4200);
+      setDeskNotice('룸 종료 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setAssigningRoomIds((prev) => {
         const next = new Set(prev);
@@ -2485,11 +2614,14 @@ export default function MyTikiTab({ darkMode }) {
 
   function focusMyTikiStatus(visit) {
     const status = visit.link_status || 'none';
-    if (status === 'opened') setSelectedMyTikiGroup('link_opened');
-    else if (['active', 'sent'].includes(status)) setSelectedMyTikiGroup('link_active');
-    else if (['none', 'expired', 'revoked'].includes(status)) setSelectedMyTikiGroup('link_needed');
-    else if (visit.intake_done) setSelectedMyTikiGroup('intake_done');
+    const arrived = Boolean(visit.patient_arrived_at || visit.checked_in_at);
+    if (['expired', 'revoked'].includes(status)) setSelectedMyTikiGroup('link_expired_cancelled');
+    else if (status === 'none') setSelectedMyTikiGroup('link_needed');
+    else if (status === 'opened') setSelectedMyTikiGroup('link_opened');
+    else if (!visit.intake_done) setSelectedMyTikiGroup('intake_needed');
     else if (!visit.consent_done) setSelectedMyTikiGroup('consent_needed');
+    else if (arrived) setSelectedMyTikiGroup('arrival_confirmed');
+    else if (['active', 'sent'].includes(status)) setSelectedMyTikiGroup('link_active');
     else setSelectedMyTikiGroup('link_needed');
 
     const detail = document.getElementById('my-tiki-status-detail');
@@ -2545,6 +2677,7 @@ export default function MyTikiTab({ darkMode }) {
   }
 
   async function handleGenerated(visitId, newLink) {
+    setVisitActionFeedback(visitId, 'saving', 'My Tiki 링크 발급을 저장했습니다.');
     if (newLink?.url) {
       linkUrlCacheRef.current[visitId] = newLink.url;
       if (newLink.id) linkUrlCacheRef.current[newLink.id] = newLink.url;
@@ -2553,11 +2686,14 @@ export default function MyTikiTab({ darkMode }) {
       v.id === visitId ? { ...v, link_status: 'active', link: { ...(v.link || {}), ...newLink } } : v
     ));
     setSummary(prev => ({ ...prev, activeLinks: prev.activeLinks + 1 }));
-    setDeskNotice('My Tiki 링크가 발급됐습니다.');
+    setDeskNotice('My Tiki 링크 발급 저장됨 · 다시 불러옴 · 링크 단계 이동을 확인합니다.');
+    setVisitActionFeedback(visitId, 'reloading', '발급된 링크 상태를 다시 불러옵니다.');
     await fetchVisits();
+    setVisitActionFeedback(visitId, 'confirmed', '링크 단계로 이동했는지 확인했습니다.');
     setVisits(prev => prev.map(v =>
       v.id === visitId ? { ...v, link_status: 'active', link: { ...(v.link || {}), ...newLink } } : v
     ));
+    clearVisitActionFeedback(visitId);
   }
 
   function handleCreated(rawVisit) {
@@ -2711,6 +2847,7 @@ export default function MyTikiTab({ darkMode }) {
             onSelectJourneyStage={setSelectedJourneyStage}
             rooms={rooms}
             busyVisitIds={new Set([...checkingInIds, ...assigningRoomIds])}
+            actionStatuses={deskActionStatusByVisit}
           />
         </div>
 

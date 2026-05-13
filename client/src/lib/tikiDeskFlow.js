@@ -18,6 +18,7 @@ function waitingLabelFromMs(ms) {
 }
 
 const ACTIVE_LINK_STATUSES = ["active", "sent", "opened"];
+const CLOSED_LINK_STATUSES = ["expired", "revoked"];
 
 export const JOURNEY_STAGES = [
   { key: "consult", label: "상담", helper: "상담에서 방문 후보로 정리" },
@@ -34,7 +35,7 @@ function hasActiveLink(visit = {}) {
 }
 
 function hasMissingLink(visit = {}) {
-  return !hasActiveLink(visit) || ["none", "expired", "revoked"].includes(visit.link_status);
+  return !hasActiveLink(visit) || ["none", ...CLOSED_LINK_STATUSES].includes(visit.link_status);
 }
 
 function formsReady(visit = {}) {
@@ -317,6 +318,91 @@ export function buildTikiDeskCounts(visits = []) {
   });
 }
 
+export function getMyTikiLinkStatus(visit = {}) {
+  const status = visit.link_status || "none";
+  if (CLOSED_LINK_STATUSES.includes(status)) {
+    return {
+      key: "link_expired_cancelled",
+      label: "만료/취소",
+      helper: "새 링크 발급 또는 상태 확인이 필요합니다",
+      tone: "urgent",
+    };
+  }
+  if (status === "opened" || visit.link_opened_at || visit.link?.opened_at) {
+    return {
+      key: "link_opened",
+      label: "열람됨",
+      helper: "환자가 My Tiki를 열었습니다",
+      tone: "ready",
+    };
+  }
+  if (["active", "sent"].includes(status)) {
+    return {
+      key: "link_active",
+      label: "발급됨",
+      helper: "환자에게 전달할 수 있습니다",
+      tone: "info",
+    };
+  }
+  return {
+    key: "link_needed",
+    label: "링크 필요",
+    helper: "아직 My Tiki 링크가 없습니다",
+    tone: "urgent",
+  };
+}
+
+function eventAt(...values) {
+  return values.find(Boolean) || null;
+}
+
+export function buildVisitJourneyTimeline(visit = {}) {
+  const events = [];
+  const push = (key, label, detail, at) => {
+    events.push({ key, label, detail, at: at || null });
+  };
+
+  if (visit.conversation_intake_id || visit.source_channel || visit.raw_text) {
+    push("consultation_captured", "상담 캡처", visit.source_channel || "상담 내용에서 시작", eventAt(visit.intake_created_at, visit.created_at));
+  }
+  if (visit.patient_id || visit.patient_name) {
+    push("patient_created", "환자 생성", visit.patient_name || "환자 기록 생성", eventAt(visit.patient_created_at, visit.created_at));
+  }
+  if (hasActiveLink(visit) || CLOSED_LINK_STATUSES.includes(visit.link_status) || visit.link?.id) {
+    push("link_issued", "링크 발급", "My Tiki 링크 생성", eventAt(visit.link?.created_at, visit.link_created_at, visit.created_at));
+  }
+  if (visit.link_status === "opened" || visit.link_opened_at || visit.link?.opened_at) {
+    push("link_opened", "링크 열람", "환자가 My Tiki를 열람", eventAt(visit.link_opened_at, visit.link?.opened_at, visit.updated_at));
+  }
+  if (visit.patient_arrived_at || visit.checked_in_at) {
+    push("arrival_confirmed", "도착 확인", "도착 또는 체크인 확인", eventAt(visit.patient_arrived_at, visit.checked_in_at));
+  }
+  if (visit.intake_done || visit.consent_done) {
+    const done = [visit.intake_done && "문진", visit.consent_done && "동의"].filter(Boolean).join("·");
+    push("forms_consent", "문진·동의", done ? `${done} 확인` : "서류 확인", eventAt(visit.forms_completed_at, visit.checked_in_at, visit.updated_at));
+  }
+  if (visit.room_id || visit.room || visit.room_assigned_at) {
+    push("room_session", "룸 진행", visit.room || "룸 배정", eventAt(visit.room_assigned_at, visit.checked_in_at, visit.updated_at));
+  }
+  if (isAftercareStage(visit)) {
+    push("aftercare", "애프터케어", visit.aftercare_status || "회복 상태 확인", eventAt(visit.room_cleared_at, visit.aftercare_sent_at, visit.updated_at));
+  }
+
+  return events;
+}
+
+export function getStaffSafeErrorMessage(error, fallback = "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.") {
+  const raw = String(error?.message || error?.error || error || "");
+  if (!raw.trim()) return fallback;
+  if (/session|auth|unauthorized|401|jwt|login/i.test(raw)) {
+    return "로그인 세션을 다시 확인한 뒤 시도해 주세요.";
+  }
+  if (/schema cache|column|does not exist|invalid input syntax|uuid|PGRST|relation|foreign key|violates|duplicate key/i.test(raw)) {
+    return fallback;
+  }
+  return fallback;
+}
+
 export function buildVisitStatusBadges(visit = {}) {
   const hasLink = hasActiveLink(visit);
   const linkOpened = visit.link_status === "opened";
@@ -381,7 +467,7 @@ export function buildMyTikiStatusSummary(visits = []) {
     },
     {
       key: "link_active",
-      label: "링크 발급됨",
+      label: "발급됨",
       helper: "환자에게 전달할 수 있습니다",
       patients: [],
     },
@@ -392,9 +478,9 @@ export function buildMyTikiStatusSummary(visits = []) {
       patients: [],
     },
     {
-      key: "intake_done",
-      label: "문진 완료",
-      helper: "문진표 제출이 끝났습니다",
+      key: "intake_needed",
+      label: "문진 필요",
+      helper: "문진표 확인이 남았습니다",
       patients: [],
     },
     {
@@ -403,17 +489,28 @@ export function buildMyTikiStatusSummary(visits = []) {
       helper: "동의서 확인이 남았습니다",
       patients: [],
     },
+    {
+      key: "arrival_confirmed",
+      label: "도착 확인",
+      helper: "환자가 도착을 알렸습니다",
+      patients: [],
+    },
+    {
+      key: "link_expired_cancelled",
+      label: "만료/취소",
+      helper: "새 링크가 필요할 수 있습니다",
+      patients: [],
+    },
   ];
   const byKey = Object.fromEntries(groups.map((group) => [group.key, group]));
 
   for (const visit of visits) {
-    const status = visit.link_status || "none";
-    if (status === "opened") byKey.link_opened.patients.push(visit);
-    else if (["active", "sent"].includes(status)) byKey.link_active.patients.push(visit);
-    else byKey.link_needed.patients.push(visit);
+    const link = getMyTikiLinkStatus(visit);
+    if (byKey[link.key]) byKey[link.key].patients.push(visit);
 
-    if (visit.intake_done) byKey.intake_done.patients.push(visit);
+    if (!visit.intake_done) byKey.intake_needed.patients.push(visit);
     if (!visit.consent_done) byKey.consent_needed.patients.push(visit);
+    if (visit.patient_arrived_at || visit.checked_in_at) byKey.arrival_confirmed.patients.push(visit);
   }
 
   return groups.map((group) => ({

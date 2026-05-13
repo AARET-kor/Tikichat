@@ -24,7 +24,7 @@ const ROOM_READY_STAGES = [
   ['booked', '예약'],
   ['pre_visit', '방문 전'],
   ['treatment', '시술 중'],
-  ['post_care', '사후관리'],
+  ['post_care', '애프터케어'],
   ['followup', '팔로업'],
   ['closed', '완료'],
 ];

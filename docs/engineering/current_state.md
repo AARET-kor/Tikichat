@@ -1,6 +1,6 @@
 # Current Engineering State
 
-Last updated: 2026-05-11
+Last updated: 2026-05-14
 
 This document is the short engineering truth snapshot for TikiDoc after hardening, Batch 6A / 6B / 6C / 6D, the design-system pass, TikiPaste web-sidecar pivot, auth fixes, and Quick Visit / My Tiki link stabilization.
 
@@ -508,3 +508,30 @@ Remaining risk:
 
 - After a full browser reload, an already-issued My Tiki link can be recognized as issued, but the original raw URL still cannot be reconstructed because raw tokens are intentionally not stored.
 - Deployed clinic smoke testing should still verify the full chain: TikiPaste conversion -> Tiki Desk stage rail -> My Tiki link state -> Tiki Room assignment/clear -> Patient Care aftercare signal.
+
+## 2026-05-14 Tiki Desk Journey Stabilization And Remaining Roadmap
+
+Implemented in this pass:
+
+- Tiki Desk durable actions now expose a clearer operational feedback loop: `저장됨 -> 다시 불러오는 중 -> 다음 단계 확인`.
+- My Tiki status grouping is now more explicit for staff: `링크 필요`, `발급됨`, `열람됨`, `문진 필요`, `동의 필요`, `도착 확인`, `만료/취소`.
+- Tiki Desk patient cards can expose a compact `여정 기록` showing consultation capture, patient creation, link issue/open, arrival, room, and 애프터케어 milestones when data exists.
+- Staff-facing raw DB/schema failures are mapped to operational Korean copy in the main Tiki Desk and Patient Care paths.
+- Staff and patient visible copy now uses `애프터케어` instead of the older `사후` wording where this is a user-facing lifecycle stage.
+
+Remaining roadmap:
+
+1. Deployed smoke test: verify `TikiPaste -> patient/visit -> My Tiki link -> Tiki Desk stage` after refresh, polling, and relogin.
+2. My Tiki live-event verification: confirm link opened, intake, consent, and arrival events move the same visit through the Tiki Desk stage model.
+3. Tiki Room journey verification: confirm assign, load-next, current patient, and clear events update Tiki Desk and Memory consistently.
+4. Patient Care / 애프터케어 verification: confirm confirmation-request actions and aftercare attention signals persist, refresh correctly, and appear in Memory/journey history.
+5. Safer link operations: design a minimal delivery-log or copy-back record if staff must re-copy an already-issued My Tiki URL after a full reload. Do not store raw tokens without an explicit security decision.
+6. Later expansion only: richer journey-history browser, CRM/EMR API integrations, backend voice/STT/TTS, broad admin CMS/rules editor, and deeper analytics.
+
+What should not be built yet:
+
+- No full CRM/EMR replacement.
+- No omnichannel inbox.
+- No drag/drop workflow engine or Vegas-style dense kanban clone.
+- No raw token store without a security review.
+- No backend voice pipeline unless explicitly approved.

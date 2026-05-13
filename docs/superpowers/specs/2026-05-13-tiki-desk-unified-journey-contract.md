@@ -385,7 +385,7 @@ Allowed actions:
 - `서류 확인 완료`
 - `룸 이동`
 - `룸 완료`
-- `사후관리 확인`
+- `애프터케어 확인`
 
 Every action must either:
 
