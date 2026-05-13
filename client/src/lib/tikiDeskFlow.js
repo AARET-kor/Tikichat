@@ -3,6 +3,20 @@ function timeValue(value) {
   return date && Number.isFinite(date.getTime()) ? date.getTime() : Number.POSITIVE_INFINITY;
 }
 
+function finiteTimeValue(value) {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date.getTime() : null;
+}
+
+function waitingLabelFromMs(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const minutes = Math.max(1, Math.floor(ms / 60000));
+  if (minutes < 60) return `${minutes}분`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간`;
+  return `${Math.floor(hours / 24)}일`;
+}
+
 const ACTIVE_LINK_STATUSES = ["active", "sent", "opened"];
 
 export const JOURNEY_STAGES = [
@@ -12,7 +26,7 @@ export const JOURNEY_STAGES = [
   { key: "forms", label: "문진·동의", helper: "서류 확인" },
   { key: "waiting", label: "대기", helper: "룸 배정 전" },
   { key: "room", label: "룸", helper: "진료실 진행" },
-  { key: "aftercare", label: "사후", helper: "회복·응답 확인" },
+  { key: "aftercare", label: "애프터케어", helper: "회복·응답 확인" },
 ];
 
 function hasActiveLink(visit = {}) {
@@ -53,7 +67,7 @@ export function getVisitJourneyStage(visit = {}) {
   else if (checkedInAt && !formsReady(visit)) key = "forms";
   else if (arrivedAt) key = "arrival";
   else if (hasMissingLink(visit)) key = "link";
-  else if (hasActiveLink(visit)) key = "arrival";
+  else if (hasActiveLink(visit)) key = "link";
 
   const stage = JOURNEY_STAGES.find((item) => item.key === key) || JOURNEY_STAGES[0];
   return {
@@ -70,8 +84,8 @@ export function getDeskNextAction(visit = {}) {
   if (isAftercareStage(visit)) {
     return {
       key: "aftercare_review",
-      label: "사후 확인",
-      detail: "시술 후 회복 상태나 응답을 확인합니다.",
+      label: "애프터케어 확인",
+      detail: "애프터케어 응답이나 회복 신호를 확인합니다.",
       tone: visit.aftercare_attention || visit.aftercare_due ? "warn" : "steady",
       priority: 70,
       at: visit.room_cleared_at || visit.updated_at || visit.visit_date,
@@ -184,7 +198,7 @@ export function getDeskPrimaryCta(action = {}, visit = {}) {
     aftercare_review: {
       type: "open_patient_care",
       label: "환자 케어 열기",
-      helper: "사후관리와 확인 요청 화면에서 처리합니다",
+      helper: "애프터케어와 확인 요청 화면에서 처리합니다",
     },
   };
 
@@ -235,18 +249,39 @@ export function buildJourneyStageBuckets(visits = []) {
   const buckets = JOURNEY_STAGES.map((stage) => ({
     ...stage,
     count: 0,
+    attentionCount: 0,
+    oldestWaitingAt: null,
+    oldestWaitingLabel: "",
     patients: [],
   }));
   const byKey = Object.fromEntries(buckets.map((stage) => [stage.key, stage]));
 
   for (const visit of visits) {
     const stage = getVisitJourneyStage(visit);
+    const action = getDeskNextAction(visit);
     const bucket = byKey[stage.key] || byKey.consult;
     bucket.patients.push(visit);
     bucket.count += 1;
+    if (["urgent", "warn"].includes(action.tone)) bucket.attentionCount += 1;
+
+    const waitingAt = finiteTimeValue(
+      action.at ||
+      visit.patient_arrived_at ||
+      visit.checked_in_at ||
+      visit.visit_date ||
+      visit.created_at ||
+      visit.updated_at,
+    );
+    if (waitingAt && (!bucket.oldestWaitingAt || waitingAt < bucket.oldestWaitingAt)) {
+      bucket.oldestWaitingAt = waitingAt;
+    }
   }
 
-  return buckets;
+  const now = Date.now();
+  return buckets.map((bucket) => ({
+    ...bucket,
+    oldestWaitingLabel: bucket.oldestWaitingAt ? waitingLabelFromMs(now - bucket.oldestWaitingAt) : "",
+  }));
 }
 
 export function buildTikiDeskFlow(visits = [], limit = 5) {
@@ -329,9 +364,9 @@ export function buildVisitStatusBadges(visit = {}) {
     },
     {
       key: "aftercare",
-      label: "사후",
+      label: "애프터케어",
       state: visit.followup_done ? "done" : aftercareActive ? "active" : "waiting",
-      helper: visit.followup_done ? "사후관리 완료" : aftercareActive ? "사후관리 진행" : "시술 후 확인",
+      helper: visit.followup_done ? "애프터케어 완료" : aftercareActive ? "애프터케어 진행" : "시술 후 확인",
     },
   ];
 }

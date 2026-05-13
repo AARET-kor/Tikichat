@@ -370,16 +370,19 @@ Why:
   - `문진·동의`
   - `대기`
   - `룸`
-  - `사후`
+  - `애프터케어`
 - The default Tiki Desk screen should stay focused on:
+  - the expanded `오늘 운영 핵심` board
   - the seven-stage flow rail
-  - `오늘 할 일`
-  - `My Tiki 상태`
+  - selected-stage patient drilldown
+  - durable next-action buttons inside the core board
+  - `My Tiki 상태 상세` and `룸 상태` as supporting sections below the core board
 - Clicking a stage card should expand or filter the patient list for that stage. Clicking a stage card alone should not mutate backend state.
 - Every patient/visit should resolve to exactly one current operational stage.
 - Every primary action should either change durable backend state or navigate to the dedicated surface that owns the action. Buttons must not only scroll to hidden legacy rows or update local UI state.
 - Completing a stage action should move the patient/visit to the next appropriate stage after refresh, relogin, and polling.
 - TikiPaste-created patient + visit + My Tiki link records must be recognized by Tiki Desk without asking staff to issue a duplicate link.
+- Active/sent/opened My Tiki links belong to the `링크` stage until the patient actually arrives; issued links must not be reclassified as missing links after polling or reload.
 - My Tiki form/consent progress, Tiki Room assignment/clear/load-next, Patient Care aftercare signals, and Memory/journey history should all feed the same stage model.
 - Tiki Desk may borrow the stage-based mental model from dense clinic systems such as Vegas, but it should not copy the full dense column UI.
 - Do not build a full CRM replacement, drag/drop workflow engine, kanban board, raw token store, or schema-first workflow system for this pass.
@@ -388,7 +391,7 @@ Why:
 ## Tiki Desk Stage Action Rule
 
 - The seven-stage rail is a read/filter surface. Clicking a stage should reveal the patients in that stage, not change clinical or operational state by itself.
-- Patient cards inside the stage drilldown must expose the same durable primary action as `오늘 할 일`.
+- Patient cards inside the stage drilldown must expose the durable primary action for that patient's current stage.
 - A patient with an active/sent/opened My Tiki link should not be asked to issue a duplicate link.
 - However, an existing My Tiki link must not suppress later stage actions. If the patient has arrived, needs form review, can be room-assigned, or needs aftercare review, that operational action takes priority over link-copy behavior.
 - Tiki Room remains the owner of room clear/load-next actions. Tiki Desk can summarize room state and route staff into Tiki Room, but should not duplicate the treatment-room control surface.

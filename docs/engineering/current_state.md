@@ -435,11 +435,11 @@ Remaining risk:
 
 Implemented in this pass:
 
-- No product code was changed in this pass.
+- Initial design contract was created before implementation.
 - Created the design contract at `docs/superpowers/specs/2026-05-13-tiki-desk-unified-journey-contract.md`.
 - Locked the intended Tiki Desk direction as a unified patient journey board:
-  - `상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 사후`
-  - default screen shows only the seven-stage rail, `오늘 할 일`, and `My Tiki 상태`
+  - `상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 애프터케어`
+  - default screen centers on the seven-stage rail and selected-stage patient drilldown
   - clicking a stage expands that stage's patient list
   - completing a primary action moves the patient/visit to the next stage
 
@@ -450,14 +450,12 @@ Why this matters:
 
 Intentionally deferred:
 
-- No implementation of the new stage rail yet.
 - No new schema, no workflow engine, no drag/drop kanban, and no CRM replacement behavior.
 - No raw My Tiki token storage.
 
 Next:
 
-- Convert the design contract into an implementation plan.
-- First implementation batch should create a shared journey-stage helper and tests before changing the main Tiki Desk UI.
+- Continue hardening the connected stage transitions only when real clinic-use issues are observed.
 
 ## 2026-05-13 Tiki Desk Unified Journey Implementation
 
@@ -470,12 +468,18 @@ Implemented in this pass:
   - `문진·동의`
   - `대기`
   - `룸`
-  - `사후`
+  - `애프터케어`
 - Tiki Desk now receives a stage rail from the same helper that builds today's operational task list.
-- The Tiki Desk main surface now shows a clickable seven-stage rail above the focused operating view.
+- The Tiki Desk main surface is titled `Tiki Desk` and no longer uses `오늘 운영` as the primary surface name.
+- The `오늘 운영 핵심` board now uses the larger headline `한 눈에 보기`.
+- The separate `오늘 할 일` card and compact `My Tiki 상태` summary card were removed from the default top layout.
+- The expanded `오늘 운영 핵심` board now contains the seven-stage rail, selected-stage patient drilldown, and immediate next-action handling.
+- `My Tiki 상태 상세` and `룸 상태` now sit below the core board as supporting operational detail.
 - Clicking a stage expands the patients in that stage without mutating backend state.
-- Stage drilldown patient cards now expose the same primary action buttons as `오늘 할 일`, so a stage card can be used to continue work instead of only reading state.
+- Stage drilldown patient cards now expose the durable primary action button for that patient's current stage, so staff can continue work directly from the core board instead of only reading state.
+- Active/sent/opened My Tiki links now derive to the `링크` stage, not `도착`, until the patient has actually arrived. This prevents TikiPaste/Quick Visit patients with issued links from being treated as link-needed or arrival-stage by mistake.
 - Tiki Desk primary CTA selection now prioritizes the current transition over an already-issued My Tiki link. This prevents active links from hiding actions such as `도착 확인`, `서류 확인`, and `빈 룸 배정`.
+- The stage rail now includes attention counts and oldest-waiting labels when available.
 - Ops-board link status now reads stable `patient_links.status` values, including `opened`, instead of relying on optional link telemetry fields.
 
 Backend behavior now connected:
@@ -484,7 +488,7 @@ Backend behavior now connected:
 - `서류 확인` uses the existing staff-auth forms-confirm route.
 - `빈 룸 배정` uses the existing room assignment path.
 - `룸` work remains owned by Tiki Room for clear/load-next behavior.
-- `사후` work navigates to Patient Care rather than trying to handle aftercare inside Tiki Desk.
+- `애프터케어` work navigates to Patient Care rather than trying to handle aftercare inside Tiki Desk.
 
 Verified:
 

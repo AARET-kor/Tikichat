@@ -110,11 +110,15 @@ test("buildTikiDeskCounts tracks attention, forms, and room-ready counts for the
   assert.equal(counts.inRoom, 0);
 });
 
-test("Tiki Desk command board keeps only today tasks, My Tiki status, and room status on the main surface", () => {
-  assert.match(tikiDeskSource, /오늘 할 일/);
-  assert.match(tikiDeskSource, /My Tiki 상태/);
+test("Tiki Desk command board keeps work inside the core board and puts detail panels below", () => {
+  assert.match(tikiDeskSource, /Tiki Desk/);
+  assert.match(tikiDeskSource, /오늘 운영 핵심/);
+  assert.match(tikiDeskSource, /한 눈에 보기/);
   assert.match(tikiDeskSource, /룸 상태/);
+  assert.match(tikiDeskSource, /My Tiki 상태 상세/);
   assert.match(tikiDeskSource, /openDedicatedSurface/);
+  assert.doesNotMatch(tikiDeskSource, /title="오늘 할 일"/);
+  assert.doesNotMatch(tikiDeskSource, /title="My Tiki 상태"/);
   assert.doesNotMatch(tikiDeskSource, /환자 질문이 운영 task로 전환된 항목/);
   assert.doesNotMatch(tikiDeskSource, /사후관리 체크인, 위험 신호, 리턴 가능 상태를 운영 task로 확인합니다/);
 });
@@ -150,6 +154,7 @@ test("Tiki Desk treats active My Tiki links as issued even when raw token URL is
   };
 
   assert.equal(getDeskNextAction(visit).key, "wait_arrival");
+  assert.equal(getVisitJourneyStage(visit).key, "link");
   assert.deepEqual(getDeskPrimaryCta(getDeskNextAction(visit), visit), {
     type: "view_my_tiki_status",
     label: "상태 확인",
@@ -200,7 +205,7 @@ test("visit journey helper calculates the shared seven-stage contract", () => {
   ]);
 
   assert.equal(getVisitJourneyStage({ ...base, link_status: "none" }).key, "link");
-  assert.equal(getVisitJourneyStage({ ...base, link_status: "active" }).key, "arrival");
+  assert.equal(getVisitJourneyStage({ ...base, link_status: "active" }).key, "link");
   assert.equal(getVisitJourneyStage({ ...base, patient_arrived_at: "2026-04-24T09:01:00.000Z", checked_in_at: null }).key, "arrival");
   assert.equal(getVisitJourneyStage({ ...base, checked_in_at: "2026-04-24T09:02:00.000Z", intake_done: false, consent_done: false }).key, "forms");
   assert.equal(getVisitJourneyStage({ ...base, checked_in_at: "2026-04-24T09:03:00.000Z", intake_done: true, consent_done: true, room_id: null }).key, "waiting");
@@ -216,8 +221,8 @@ test("journey stage buckets expose counts and patients for Tiki Desk rail drilld
     { ...base, id: "waiting", checked_in_at: "2026-04-24T09:03:00.000Z", intake_done: true, consent_done: true, room_id: null },
   ]);
 
-  assert.equal(buckets.find((stage) => stage.key === "link").count, 1);
-  assert.equal(buckets.find((stage) => stage.key === "arrival").patients[0].id, "arrival");
+  assert.equal(buckets.find((stage) => stage.key === "link").count, 2);
+  assert.equal(buckets.find((stage) => stage.key === "link").patients[1].id, "arrival");
   assert.equal(buckets.find((stage) => stage.key === "forms").count, 1);
   assert.equal(buckets.find((stage) => stage.key === "waiting").count, 1);
 });
@@ -230,8 +235,23 @@ test("buildTikiDeskFlow includes the seven-stage rail alongside today tasks", ()
 
   assert.ok(Array.isArray(flow.stageRail));
   assert.equal(flow.stageRail.length, 7);
-  assert.equal(flow.stageRail.find((stage) => stage.key === "link").count, 1);
-  assert.equal(flow.stageRail.find((stage) => stage.key === "arrival").count, 1);
+  assert.equal(flow.stageRail.find((stage) => stage.key === "link").count, 2);
+  assert.equal(flow.stageRail.find((stage) => stage.key === "arrival").count, 0);
+});
+
+test("journey stage rail uses patient-facing staff copy and attention metadata", () => {
+  const stages = buildJourneyStageBuckets([
+    { ...base, id: "missing-link", link_status: "none", visit_date: "2026-04-24T08:00:00.000Z" },
+    { ...base, id: "aftercare", stage: "post_care", aftercare_due: true, updated_at: "2026-04-24T09:00:00.000Z" },
+  ]);
+
+  const aftercare = stages.find((stage) => stage.key === "aftercare");
+  const link = stages.find((stage) => stage.key === "link");
+
+  assert.equal(aftercare.label, "애프터케어");
+  assert.equal(aftercare.attentionCount, 1);
+  assert.equal(link.count, 1);
+  assert.equal(typeof link.oldestWaitingLabel, "string");
 });
 
 test("Tiki Desk stage rail drilldown keeps the same backend action buttons visible", () => {

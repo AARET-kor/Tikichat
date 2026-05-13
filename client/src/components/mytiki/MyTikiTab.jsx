@@ -663,7 +663,7 @@ function JourneyStageRail({ stages = [], selectedKey, onSelectStage, darkMode })
         <div>
           <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 방문 흐름</p>
           <h3 className={`mt-1 text-[22px] font-black tracking-[-0.045em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
-            상담부터 사후까지 한 줄로 봅니다
+            상담부터 애프터케어까지 한 줄로 봅니다
           </h3>
         </div>
         <p className={`hidden lg:block text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
@@ -707,6 +707,26 @@ function JourneyStageRail({ stages = [], selectedKey, onSelectStage, darkMode })
               <div className={`mt-1 text-[11px] font-bold leading-snug ${darkMode ? 'text-zinc-500' : 'text-[#40515D]'}`}>
                 {stage.helper}
               </div>
+              {(stage.attentionCount > 0 || stage.oldestWaitingLabel) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {stage.attentionCount > 0 && (
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[10px] font-black"
+                      style={{
+                        background: darkMode ? '#3F1D1D' : '#FEE2E2',
+                        color: darkMode ? '#FCA5A5' : '#B91C1C',
+                      }}
+                    >
+                      주의 {stage.attentionCount}
+                    </span>
+                  )}
+                  {stage.oldestWaitingLabel && (
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-[#EDF1F5] text-[#40515D]'}`}>
+                      최장 {stage.oldestWaitingLabel}
+                    </span>
+                  )}
+                </div>
+              )}
             </button>
           );
         })}
@@ -927,6 +947,7 @@ function TikiDeskCommandBoard({
 }) {
   const primaryTasks = flow.nextActions || [];
   const selectedStage = (flow.stageRail || []).find((stage) => stage.key === selectedJourneyStage) || null;
+  const selectedOrFirstStage = selectedStage || (flow.stageRail || []).find((stage) => Number(stage.count) > 0) || null;
 
   return (
     <div className="space-y-5">
@@ -943,10 +964,10 @@ function TikiDeskCommandBoard({
         <div className="flex items-end justify-between gap-4 mb-5">
           <div>
             <p className={`text-[14px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 운영 핵심</p>
-            <h2 className={`mt-1 text-[28px] font-black tracking-[-0.055em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>지금 할 일, My Tiki, 룸 상태만 크게 봅니다</h2>
+            <h2 className={`mt-1 text-[30px] font-black tracking-[-0.055em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>한 눈에 보기</h2>
           </div>
           <p className={`hidden lg:block text-[14px] font-bold leading-relaxed ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
-            숫자가 생기면 바로 처리할 일이 있다는 뜻입니다.
+            단계를 누르면 해당 환자가 펼쳐지고, 완료하면 다음 단계로 이어집니다.
           </p>
         </div>
 
@@ -957,59 +978,69 @@ function TikiDeskCommandBoard({
           darkMode={darkMode}
         />
         <JourneyStageDrilldown
-          stage={selectedStage}
+          stage={selectedOrFirstStage}
           darkMode={darkMode}
           rooms={rooms}
           busyVisitIds={busyVisitIds}
           onPrimaryAction={onPrimaryAction}
         />
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)] gap-4">
-          <FlowColumn
-            title="오늘 할 일"
-            subtitle="상담 확인, 링크 발급, 도착·서류, 룸 이동 순서로 먼저 처리합니다"
-            empty="지금 처리할 일이 없습니다"
-            visits={primaryTasks}
-            mode="next"
-            darkMode={darkMode}
-            rooms={rooms}
-            busyVisitIds={busyVisitIds}
-            onPrimaryAction={onPrimaryAction}
-          />
-
-          <div className="grid grid-cols-1 gap-4">
-            <DeskCompactPanel
-              title="My Tiki 상태"
-              subtitle="환자 링크와 서류 진행"
-              value={loading ? '…' : counts.linkNeeded}
-              helper={`링크 필요 ${counts.linkNeeded || 0} · 서류 확인 ${counts.needsAttention || 0} · 오늘 방문 ${counts.total || 0}`}
-              tone={counts.linkNeeded > 0 || counts.needsAttention > 0 ? 'urgent' : 'info'}
-              icon={Send}
-              actionLabel="새 환자 등록"
-              onAction={onQuickCreate}
-              darkMode={darkMode}
-            />
-            <MyTikiStatusDrilldown
-              groups={myTikiStatusGroups}
-              selectedKey={selectedMyTikiGroup}
-              onSelectGroup={onSelectMyTikiGroup}
-              darkMode={darkMode}
-              onPrimaryAction={onPrimaryAction}
-            />
-            <DeskCompactPanel
-              title="룸 상태"
-              subtitle="빈 방과 다음 배정 후보"
-              value={loading ? '…' : roomSummary.readyQueue || 0}
-              helper={`빈 방 ${roomSummary.free || 0} · 사용 중 ${roomSummary.occupied || 0} · 전체 ${roomSummary.total || 0}`}
-              tone={roomSummary.readyQueue > 0 ? 'ready' : 'info'}
-              icon={DoorOpen}
-              actionLabel="Tiki Room 열기"
-              onAction={onOpenRoom}
-              darkMode={darkMode}
-            />
+        {!selectedOrFirstStage && (
+          <div
+            className={`rounded-3xl border border-dashed px-5 py-8 text-center text-[15px] font-black ${darkMode ? 'border-zinc-700 text-zinc-500' : 'border-[#D6E1EA] text-[#6B7C88]'}`}
+          >
+            지금 처리할 환자 흐름이 없습니다.
           </div>
-        </div>
+        )}
+
+        {!selectedStage && primaryTasks.length > 0 && (
+          <div className={`mt-4 rounded-3xl border px-4 py-4 ${darkMode ? 'border-zinc-800 bg-zinc-950/50' : 'border-[#D6E1EA] bg-white/72'}`}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className={`text-[16px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>먼저 처리할 항목</p>
+                <p className={`mt-1 text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+                  단계가 선택되지 않았을 때는 우선순위가 높은 환자부터 보여줍니다.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {primaryTasks.slice(0, 4).map(({ visit }) => (
+                <FlowPatientLine
+                  key={`priority-${visit.id}`}
+                  visit={visit}
+                  mode="next"
+                  darkMode={darkMode}
+                  compact
+                  rooms={rooms}
+                  busy={busyVisitIds.has(visit.id)}
+                  onPrimaryAction={onPrimaryAction}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.75fr)] gap-4">
+        <MyTikiStatusDrilldown
+          groups={myTikiStatusGroups}
+          selectedKey={selectedMyTikiGroup}
+          onSelectGroup={onSelectMyTikiGroup}
+          darkMode={darkMode}
+          onPrimaryAction={onPrimaryAction}
+        />
+        <DeskCompactPanel
+          title="룸 상태"
+          subtitle="빈 방과 다음 배정 후보"
+          value={loading ? '…' : roomSummary.readyQueue || 0}
+          helper={`빈 방 ${roomSummary.free || 0} · 사용 중 ${roomSummary.occupied || 0} · 전체 ${roomSummary.total || 0}`}
+          tone={roomSummary.readyQueue > 0 ? 'ready' : 'info'}
+          icon={DoorOpen}
+          actionLabel="Tiki Room 열기"
+          onAction={onOpenRoom}
+          darkMode={darkMode}
+        />
+        </div>
     </div>
   );
 }
@@ -1631,7 +1662,7 @@ function AftercareTaskCard({ item, darkMode, busy, onReview }) {
   const risk = getAftercareRiskMeta(item.risk_level);
   const patient = item.patient_aftercare_runs?.patients || {};
   const visit = item.patient_aftercare_runs?.visits || {};
-  const procedureName = visit?.procedures?.name_ko || visit?.procedures?.name_en || '사후관리';
+  const procedureName = visit?.procedures?.name_ko || visit?.procedures?.name_en || '애프터케어';
   const unanswered = isAftercareUnanswered(item);
 
   return (
@@ -2548,8 +2579,8 @@ export default function MyTikiTab({ darkMode }) {
     escalationSummary.overdue > 0 ? `에스컬레이션 SLA 초과 ${escalationSummary.overdue}건` : null,
     escalationSummary.due_soon > 0 ? `에스컬레이션 SLA 임박 ${escalationSummary.due_soon}건` : null,
     escalationSummary.urgent > 0 ? `긴급 에스컬레이션 ${escalationSummary.urgent}건` : null,
-    aftercareSummary.urgent > 0 ? `긴급 사후관리 ${aftercareSummary.urgent}건` : null,
-    aftercareScheduler?.status === 'degraded' ? '사후관리 스케줄러 이상' : null,
+    aftercareSummary.urgent > 0 ? `긴급 애프터케어 ${aftercareSummary.urgent}건` : null,
+    aftercareScheduler?.status === 'degraded' ? '애프터케어 스케줄러 이상' : null,
   ].filter(Boolean);
 
   async function openEscalation(id) {
@@ -2627,7 +2658,7 @@ export default function MyTikiTab({ darkMode }) {
                 <ClipboardCheck size={25} color="#fff" strokeWidth={2.6} />
               </div>
               <div>
-                <h1 className={`text-[34px] leading-none font-black tracking-[-0.055em] ${textP}`}>오늘 운영</h1>
+                <h1 className={`text-[34px] leading-none font-black tracking-[-0.055em] ${textP}`}>Tiki Desk</h1>
                 <p className={`text-[15px] mt-2.5 font-bold ${textS}`}>Tiki Desk · {todayLabel}</p>
               </div>
             </div>
@@ -2704,7 +2735,7 @@ export default function MyTikiTab({ darkMode }) {
 
         {aftercareScheduler?.status === 'degraded' && (
           <div className={`mt-3 rounded-xl border px-4 py-3 text-[13px] font-semibold ${darkMode ? 'border-amber-800 bg-amber-950/40 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-            사후관리 스케줄러 이상 · 백그라운드 발송이 지연될 수 있습니다.
+            애프터케어 스케줄러 이상 · 백그라운드 발송이 지연될 수 있습니다.
           </div>
         )}
 

@@ -2,13 +2,13 @@
 
 Date: 2026-05-13
 
-Status: design approved for implementation planning
+Status: implemented as the current Tiki Desk stage model
 
 ## Goal
 
 Make Tiki Desk a reliable operational board where every patient/visit moves through one shared journey:
 
-`상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 사후`
+`상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 애프터케어`
 
 The important product requirement is not only a clearer screen. The real requirement is that TikiPaste, Tiki Desk, My Tiki, Tiki Room, Aftercare, and Memory all read and write the same patient/visit state. If one surface completes a step, every other surface must recognize that step as complete after refresh, relogin, and polling.
 
@@ -20,11 +20,12 @@ It should borrow the strongest part of the Vegas mental model: stage-based patie
 
 The TikiDoc version should be:
 
-- Default view: large, calm, readable `오늘 할 일` and `My Tiki 상태`.
-- Stage rail: seven large stage cards across the top.
+- Default view: large `오늘 운영 핵심` board with the headline `한 눈에 보기`.
+- Stage rail: seven large stage cards inside the core board.
 - Drilldown: clicking a stage card expands that stage's patient list.
 - Action model: each patient card has one primary action for the current stage.
 - Transition model: completing that action moves the visit to the next stage.
+- Supporting detail: `My Tiki 상태 상세` and `룸 상태` sit below the core board, not as competing summary cards above it.
 
 ## Surface Responsibilities
 
@@ -107,7 +108,7 @@ Writes:
 Must guarantee:
 
 - Tiki Desk can show room stage summary without duplicating room operations.
-- Room assignment and clear/load-next move the visit across `대기`, `룸`, and `사후` correctly.
+- Room assignment and clear/load-next move the visit across `대기`, `룸`, and `애프터케어` correctly.
 
 ### Aftercare / Patient Care
 
@@ -126,7 +127,7 @@ Writes:
 
 Must guarantee:
 
-- Aftercare status appears in `사후` stage and Patient Care.
+- Aftercare status appears in `애프터케어` stage and Patient Care.
 - Urgent or concern responses are not hidden inside My Tiki only.
 
 ### Memory
@@ -295,7 +296,7 @@ Completion action:
 
 Next stage:
 
-- `사후`
+- `애프터케어`
 
 Backend expectation:
 
@@ -303,7 +304,7 @@ Backend expectation:
 - Tiki Desk reflects the room change after refresh.
 - Write journey/audit/Memory event.
 
-### 7. 사후
+### 7. 애프터케어
 
 Meaning:
 
@@ -316,7 +317,7 @@ Entry examples:
 
 Completion actions:
 
-- `사후관리 확인`
+- `애프터케어 확인`
 - `검토 완료`
 - `재방문 안내`
 
@@ -441,7 +442,7 @@ Recommended priority:
 4. Else if intake/consent incomplete or unverified: `문진·동의`
 5. Else if room-ready and no room assigned: `대기`
 6. Else if room assigned/current: `룸`
-7. Else if aftercare active/due/responded: `사후`
+7. Else if aftercare active/due/responded: `애프터케어`
 8. Else hide from active daily board or show as complete history only
 
 Implementation may need careful ordering because aftercare can overlap with room completion. The rule should prefer current active operational work over historical flags.
