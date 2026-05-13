@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  JOURNEY_STAGES,
+  buildJourneyStageBuckets,
   buildVisitStatusBadges,
   buildTikiDeskCounts,
   buildTikiDeskFlow,
   buildMyTikiStatusSummary,
+  getVisitJourneyStage,
   getDeskPrimaryCta,
   getDeskNextAction,
   sortNextActionVisits,
@@ -146,12 +149,98 @@ test("Tiki Desk treats active My Tiki links as issued even when raw token URL is
     link: { id: "link-1", status: "active" },
   };
 
-  assert.equal(getDeskNextAction(visit).key, "wait_booking");
+  assert.equal(getDeskNextAction(visit).key, "wait_arrival");
   assert.deepEqual(getDeskPrimaryCta(getDeskNextAction(visit), visit), {
-    type: "focus_visit",
-    label: "링크 발급됨",
-    helper: "이미 My Tiki 링크가 있습니다. 새로 필요할 때만 재발급합니다",
+    type: "view_my_tiki_status",
+    label: "상태 확인",
+    helper: "이미 발급된 My Tiki 상태를 확인합니다",
   });
+});
+
+test("Tiki Desk primary CTA prioritizes the next operational transition over existing link state", () => {
+  const arrived = {
+    ...base,
+    link_status: "active",
+    patient_arrived_at: "2026-04-24T09:01:00.000Z",
+    checked_in_at: null,
+    intake_done: false,
+    consent_done: false,
+  };
+
+  assert.deepEqual(getDeskPrimaryCta(getDeskNextAction(arrived), arrived), {
+    type: "check_in",
+    label: "도착 확인",
+    helper: "체크인으로 처리합니다",
+  });
+
+  const forms = {
+    ...base,
+    link_status: "opened",
+    checked_in_at: "2026-04-24T09:03:00.000Z",
+    intake_done: true,
+    consent_done: false,
+  };
+
+  assert.deepEqual(getDeskPrimaryCta(getDeskNextAction(forms), forms), {
+    type: "confirm_forms",
+    label: "서류 확인",
+    helper: "직원이 문진·동의 확인을 완료 처리합니다",
+  });
+});
+
+test("visit journey helper calculates the shared seven-stage contract", () => {
+  assert.deepEqual(JOURNEY_STAGES.map((stage) => stage.key), [
+    "consult",
+    "link",
+    "arrival",
+    "forms",
+    "waiting",
+    "room",
+    "aftercare",
+  ]);
+
+  assert.equal(getVisitJourneyStage({ ...base, link_status: "none" }).key, "link");
+  assert.equal(getVisitJourneyStage({ ...base, link_status: "active" }).key, "arrival");
+  assert.equal(getVisitJourneyStage({ ...base, patient_arrived_at: "2026-04-24T09:01:00.000Z", checked_in_at: null }).key, "arrival");
+  assert.equal(getVisitJourneyStage({ ...base, checked_in_at: "2026-04-24T09:02:00.000Z", intake_done: false, consent_done: false }).key, "forms");
+  assert.equal(getVisitJourneyStage({ ...base, checked_in_at: "2026-04-24T09:03:00.000Z", intake_done: true, consent_done: true, room_id: null }).key, "waiting");
+  assert.equal(getVisitJourneyStage({ ...base, checked_in_at: "2026-04-24T09:04:00.000Z", room_id: "room-1" }).key, "room");
+  assert.equal(getVisitJourneyStage({ ...base, stage: "post_care", followup_done: false }).key, "aftercare");
+});
+
+test("journey stage buckets expose counts and patients for Tiki Desk rail drilldown", () => {
+  const buckets = buildJourneyStageBuckets([
+    { ...base, id: "link", link_status: "none" },
+    { ...base, id: "arrival", link_status: "active" },
+    { ...base, id: "forms", checked_in_at: "2026-04-24T09:02:00.000Z", consent_done: false },
+    { ...base, id: "waiting", checked_in_at: "2026-04-24T09:03:00.000Z", intake_done: true, consent_done: true, room_id: null },
+  ]);
+
+  assert.equal(buckets.find((stage) => stage.key === "link").count, 1);
+  assert.equal(buckets.find((stage) => stage.key === "arrival").patients[0].id, "arrival");
+  assert.equal(buckets.find((stage) => stage.key === "forms").count, 1);
+  assert.equal(buckets.find((stage) => stage.key === "waiting").count, 1);
+});
+
+test("buildTikiDeskFlow includes the seven-stage rail alongside today tasks", () => {
+  const flow = buildTikiDeskFlow([
+    { ...base, id: "needs-link", link_status: "none" },
+    { ...base, id: "arrival", link_status: "active" },
+  ]);
+
+  assert.ok(Array.isArray(flow.stageRail));
+  assert.equal(flow.stageRail.length, 7);
+  assert.equal(flow.stageRail.find((stage) => stage.key === "link").count, 1);
+  assert.equal(flow.stageRail.find((stage) => stage.key === "arrival").count, 1);
+});
+
+test("Tiki Desk stage rail drilldown keeps the same backend action buttons visible", () => {
+  assert.match(tikiDeskSource, /JourneyStageRail/);
+  assert.match(tikiDeskSource, /JourneyStageDrilldown/);
+  assert.match(tikiDeskSource, /selectedJourneyStage/);
+  assert.match(tikiDeskSource, /onSelectJourneyStage/);
+  assert.match(tikiDeskSource, /mode === 'next' && \(/);
+  assert.doesNotMatch(tikiDeskSource, /!compact && mode === 'next' && \(/);
 });
 
 test("Tiki Desk normalizes patient data from flattened and nested API payloads", () => {
@@ -163,6 +252,8 @@ test("Tiki Desk today cards wire direct actions instead of passive-only rows", (
   assert.match(tikiDeskSource, /onPrimaryAction/);
   assert.match(tikiDeskSource, /handleDeskPrimaryAction/);
   assert.match(tikiDeskSource, /copy_my_tiki_link/);
+  assert.match(tikiDeskSource, /view_my_tiki_status/);
+  assert.match(tikiDeskSource, /focusMyTikiStatus/);
   assert.match(tikiDeskSource, /confirm_forms/);
   assert.match(tikiDeskSource, /\/api\/staff\/visits\/\$\{visitId\}\/confirm-forms/);
   assert.match(tikiDeskSource, /assign_room/);
@@ -212,8 +303,29 @@ test("buildMyTikiStatusSummary groups patients by link and form state", () => {
 test("Tiki Desk exposes a My Tiki patient-level drilldown", () => {
   assert.match(tikiDeskSource, /MyTikiStatusDrilldown/);
   assert.match(tikiDeskSource, /selectedMyTikiGroup/);
+  assert.match(tikiDeskSource, /id="my-tiki-status-detail"/);
   assert.match(tikiDeskSource, /링크 발급됨/);
   assert.match(tikiDeskSource, /열람됨/);
   assert.match(tikiDeskSource, /문진 완료/);
   assert.match(tikiDeskSource, /동의 필요/);
+});
+
+test("Tiki Desk keeps generated link URLs through polling without relying on token storage", () => {
+  assert.match(tikiDeskSource, /linkUrlCacheRef/);
+  assert.match(tikiDeskSource, /mergeCachedLinkUrls/);
+  assert.match(tikiDeskSource, /linkUrlCacheRef\.current\[visitId\] = newLink\.url/);
+  assert.match(tikiDeskSource, /linkUrlCacheRef\.current\[newLink\.id\] = newLink\.url/);
+});
+
+test("Tiki Desk ops-board link lookup uses stable patient_links columns and fails visibly on link query errors", () => {
+  const serverSource = readFileSync(new URL("../server.js", import.meta.url), "utf8");
+  const routeStart = serverSource.indexOf("async function fetchOpsBoardVisits");
+  const routeEnd = serverSource.indexOf("async function loadClinicRooms", routeStart);
+  const routeSource = serverSource.slice(routeStart, routeEnd);
+
+  assert.match(routeSource, /\.select\("visit_id, id, status, expires_at, created_at"\)/);
+  assert.doesNotMatch(routeSource, /last_accessed_at/);
+  assert.match(routeSource, /if \(linksError\) throw linksError/);
+  assert.match(routeSource, /link\.status === "opened"/);
+  assert.doesNotMatch(routeSource, /first_opened_at/);
 });

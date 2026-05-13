@@ -510,17 +510,24 @@ function FlowPatientLine({ visit, mode, darkMode, compact = false, rooms = [], b
       </div>
       <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact={compact} />
       <VisitStatusRail visit={visit} darkMode={darkMode} compact={compact} />
-      {!compact && mode === 'next' && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5" style={{ borderColor: darkMode ? '#27272A' : '#E0E7F0', background: darkMode ? '#0F172A' : '#F8FBFF' }}>
+      {mode === 'next' && (
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-2xl border"
+          style={{
+            borderColor: darkMode ? '#27272A' : '#E0E7F0',
+            background: darkMode ? '#0F172A' : '#F8FBFF',
+            padding: compact ? '8px 9px' : '10px 12px',
+          }}
+        >
           <div className="min-w-0">
-            <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{primaryCta.label}</p>
-            <p className={`mt-0.5 truncate text-[11px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{ctaHelper}</p>
+            <p className={`${compact ? 'text-[12px]' : 'text-[13px]'} font-black ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>{primaryCta.label}</p>
+            <p className={`mt-0.5 truncate ${compact ? 'text-[10px]' : 'text-[11px]'} font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>{ctaHelper}</p>
           </div>
           <button
             type="button"
             disabled={busy}
             onClick={() => onPrimaryAction?.(primaryCta.type, visit, action)}
-            className="shrink-0 rounded-xl px-3.5 py-2 text-[12px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97] disabled:opacity-50"
+            className={`shrink-0 rounded-xl ${compact ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2 text-[12px]'} font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97] disabled:opacity-50`}
             style={{ background: tone.color, boxShadow: `0 12px 24px ${tone.color}22` }}
           >
             {busy ? '처리 중…' : primaryCta.label}
@@ -639,6 +646,121 @@ function DeskFlowStep({ index, label, value, helper, tone = 'info', darkMode }) 
   );
 }
 
+function JourneyStageRail({ stages = [], selectedKey, onSelectStage, darkMode }) {
+  const toneByKey = {
+    consult: DESK_TONE.info,
+    link: DESK_TONE.urgent,
+    arrival: DESK_TONE.warn,
+    forms: DESK_TONE.warn,
+    waiting: DESK_TONE.muted,
+    room: DESK_TONE.ready,
+    aftercare: DESK_TONE.steady,
+  };
+
+  return (
+    <section className="mb-5">
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <p className={`text-[13px] font-black ${darkMode ? 'text-zinc-400' : 'text-[#40515D]'}`}>오늘 방문 흐름</p>
+          <h3 className={`mt-1 text-[22px] font-black tracking-[-0.045em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
+            상담부터 사후까지 한 줄로 봅니다
+          </h3>
+        </div>
+        <p className={`hidden lg:block text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+          칸을 누르면 해당 단계 환자만 펼쳐집니다.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2.5">
+        {stages.map((stage, index) => {
+          const tone = toneByKey[stage.key] || DESK_TONE.info;
+          const active = selectedKey === stage.key;
+          const hasItems = Number(stage.count) > 0;
+          return (
+            <button
+              key={stage.key}
+              type="button"
+              onClick={() => onSelectStage?.(active ? null : stage.key)}
+              className="group relative overflow-hidden rounded-2xl border px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]"
+              style={{
+                borderColor: darkMode ? '#27272A' : active ? tone.color : hasItems ? tone.border : '#D6E1EA',
+                background: darkMode ? '#111827' : active ? tone.bg : '#FFFFFF',
+                boxShadow: darkMode ? 'none' : active ? `0 18px 38px ${tone.color}17` : '0 8px 22px rgba(16, 54, 125, 0.04)',
+              }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-black"
+                  style={{
+                    background: active || hasItems ? tone.color : darkMode ? '#27272A' : '#EDF1F5',
+                    color: active || hasItems ? '#FFFFFF' : darkMode ? '#A1A1AA' : '#40515D',
+                  }}
+                >
+                  {index + 1}
+                </span>
+                <span style={{ fontSize: 27, lineHeight: 1, fontWeight: 950, color: hasItems ? tone.color : darkMode ? '#A1A1AA' : '#1B262C' }}>
+                  {stage.count || 0}
+                </span>
+              </div>
+              <div className={`mt-3 text-[15px] font-black tracking-[-0.035em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
+                {stage.label}
+              </div>
+              <div className={`mt-1 text-[11px] font-bold leading-snug ${darkMode ? 'text-zinc-500' : 'text-[#40515D]'}`}>
+                {stage.helper}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function JourneyStageDrilldown({ stage, darkMode, rooms = [], busyVisitIds = new Set(), onPrimaryAction }) {
+  if (!stage) return null;
+  return (
+    <section
+      className="mb-5 border tiki-desk-rise"
+      style={{
+        borderColor: darkMode ? '#27272A' : '#D6E1EA',
+        background: darkMode ? '#111827' : '#FFFFFF',
+        borderRadius: 24,
+        padding: 16,
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className={`text-[18px] font-black tracking-[-0.04em] ${darkMode ? 'text-zinc-100' : 'text-[#1B262C]'}`}>
+            {stage.label} 단계 환자
+          </h3>
+          <p className={`mt-1 text-[12px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+            {stage.helper} · {stage.count || 0}명
+          </p>
+        </div>
+      </div>
+      {(stage.patients || []).length === 0 ? (
+        <div className={`rounded-2xl border border-dashed px-4 py-6 text-center text-[13px] font-bold ${darkMode ? 'border-zinc-700 text-zinc-500' : 'border-[#D6E1EA] text-[#6B7C88]'}`}>
+          이 단계에 있는 환자가 없습니다.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {stage.patients.slice(0, 8).map((visit) => (
+            <FlowPatientLine
+              key={`${stage.key}-${visit.id}`}
+              visit={visit}
+              mode="next"
+              darkMode={darkMode}
+              compact
+              rooms={rooms}
+              busy={busyVisitIds.has(visit.id)}
+              onPrimaryAction={onPrimaryAction}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DeskCompactPanel({ title, subtitle, value, helper, tone = 'info', icon: Icon, actionLabel, onAction, darkMode }) {
   const m = DESK_TONE[tone] || DESK_TONE.info;
   return (
@@ -699,6 +821,7 @@ function MyTikiStatusDrilldown({
 
   return (
     <section
+      id="my-tiki-status-detail"
       className="border tiki-desk-rise"
       style={{
         borderColor: darkMode ? '#27272A' : '#D6E1EA',
@@ -790,6 +913,7 @@ function TikiDeskCommandBoard({
   counts,
   myTikiStatusGroups,
   selectedMyTikiGroup,
+  selectedJourneyStage,
   roomSummary = {},
   loading,
   darkMode,
@@ -797,10 +921,12 @@ function TikiDeskCommandBoard({
   onQuickCreate,
   onPrimaryAction,
   onSelectMyTikiGroup,
+  onSelectJourneyStage,
   rooms = [],
   busyVisitIds = new Set(),
 }) {
   const primaryTasks = flow.nextActions || [];
+  const selectedStage = (flow.stageRail || []).find((stage) => stage.key === selectedJourneyStage) || null;
 
   return (
     <div className="space-y-5">
@@ -823,6 +949,20 @@ function TikiDeskCommandBoard({
             숫자가 생기면 바로 처리할 일이 있다는 뜻입니다.
           </p>
         </div>
+
+        <JourneyStageRail
+          stages={flow.stageRail || []}
+          selectedKey={selectedJourneyStage}
+          onSelectStage={onSelectJourneyStage}
+          darkMode={darkMode}
+        />
+        <JourneyStageDrilldown
+          stage={selectedStage}
+          darkMode={darkMode}
+          rooms={rooms}
+          busyVisitIds={busyVisitIds}
+          onPrimaryAction={onPrimaryAction}
+        />
 
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)] gap-4">
           <FlowColumn
@@ -1816,6 +1956,7 @@ export default function MyTikiTab({ darkMode }) {
   const [showCsvImport,   setShowCsvImport]   = useState(false);
   const [deskNotice, setDeskNotice] = useState('');
   const [selectedMyTikiGroup, setSelectedMyTikiGroup] = useState('link_needed');
+  const [selectedJourneyStage, setSelectedJourneyStage] = useState(null);
   const [showRoomSettings, setShowRoomSettings] = useState(false);
   const [showAftercareEditor, setShowAftercareEditor] = useState(false);
   const [selectedAftercareProcedureId, setSelectedAftercareProcedureId] = useState('');
@@ -1824,6 +1965,7 @@ export default function MyTikiTab({ darkMode }) {
   const [reviewingAftercareIds, setReviewingAftercareIds] = useState(new Set());
   const [savingAftercareStepIds, setSavingAftercareStepIds] = useState(new Set());
   const [ensuringAftercarePlan, setEnsuringAftercarePlan] = useState(false);
+  const linkUrlCacheRef = useRef({});
 
   // ── Theme ──────────────────────────────────────────────────────────────────
   const bg        = darkMode ? 'bg-zinc-950' : 'td-page';
@@ -1834,6 +1976,17 @@ export default function MyTikiTab({ darkMode }) {
   const inputBg   = darkMode
     ? 'bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-500'
     : 'bg-white border-[#D6E1EA] text-[#1B262C] placeholder-[#6B7C88]';
+
+  const mergeCachedLinkUrls = useCallback((rows = []) => rows.map((visit) => {
+    const linkId = visit.link?.id;
+    const cachedUrl = linkUrlCacheRef.current[visit.id] || (linkId ? linkUrlCacheRef.current[linkId] : null);
+    if (!cachedUrl) return visit;
+    return {
+      ...visit,
+      link: { ...(visit.link || {}), url: cachedUrl },
+      link_status: visit.link_status === 'none' ? 'active' : visit.link_status,
+    };
+  }), []);
 
   // ── Fetch visits ───────────────────────────────────────────────────────────
   const fetchVisits = useCallback(async () => {
@@ -1849,17 +2002,17 @@ export default function MyTikiTab({ darkMode }) {
         throw new Error(d.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      setVisits((data.visits || []).map(normalizeVisit));
+      setVisits(mergeCachedLinkUrls((data.visits || []).map(normalizeVisit)));
       setSummary(data.summary || { total: 0, formsPending: 0, checkedIn: 0, activeLinks: 0, arrived: 0, roomReady: 0 });
       setRooms(data.rooms || []);
       setRoomSummary(data.room_summary || { total: 0, free: 0, occupied: 0, readyQueue: 0 });
-      setRoomQueue((data.room_ready_queue || []).map(normalizeVisit));
+      setRoomQueue(mergeCachedLinkUrls((data.room_ready_queue || []).map(normalizeVisit)));
     } catch (err) {
       setFetchError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [dateRange, stageFilter]);
+  }, [dateRange, mergeCachedLinkUrls, stageFilter]);
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
 
@@ -2267,9 +2420,14 @@ export default function MyTikiTab({ darkMode }) {
   }
 
   async function copyVisitLink(visit) {
-    const url = visit.link?.url || visit.link_url || visit.my_tiki_url;
+    const linkId = visit.link?.id;
+    const url = visit.link?.url
+      || visit.link_url
+      || visit.my_tiki_url
+      || linkUrlCacheRef.current[visit.id]
+      || (linkId ? linkUrlCacheRef.current[linkId] : null);
     if (!url) {
-      setDeskNotice('복사할 My Tiki 링크가 없습니다. 먼저 링크를 발급해 주세요.');
+      setDeskNotice('이미 발급된 링크가 있지만 보안상 원본 URL은 다시 불러올 수 없습니다. 새 링크가 필요하면 재발급해 주세요.');
       return;
     }
     try {
@@ -2283,8 +2441,7 @@ export default function MyTikiTab({ darkMode }) {
   function focusVisitRow(visitId) {
     const row = document.getElementById(`visit-row-${visitId}`);
     if (!row) {
-      setDeskNotice('방문 목록에서 해당 환자를 찾지 못했습니다. 필터를 확인해 주세요.');
-      return;
+      return false;
     }
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     row.animate?.([
@@ -2292,6 +2449,26 @@ export default function MyTikiTab({ darkMode }) {
       { boxShadow: '0 0 0 5px rgba(1, 69, 242, 0.18)' },
       { boxShadow: '0 0 0 0 rgba(1, 69, 242, 0)' },
     ], { duration: 900, easing: 'ease-out' });
+    return true;
+  }
+
+  function focusMyTikiStatus(visit) {
+    const status = visit.link_status || 'none';
+    if (status === 'opened') setSelectedMyTikiGroup('link_opened');
+    else if (['active', 'sent'].includes(status)) setSelectedMyTikiGroup('link_active');
+    else if (['none', 'expired', 'revoked'].includes(status)) setSelectedMyTikiGroup('link_needed');
+    else if (visit.intake_done) setSelectedMyTikiGroup('intake_done');
+    else if (!visit.consent_done) setSelectedMyTikiGroup('consent_needed');
+    else setSelectedMyTikiGroup('link_needed');
+
+    const detail = document.getElementById('my-tiki-status-detail');
+    detail?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    detail?.animate?.([
+      { boxShadow: '0 0 0 0 rgba(1, 69, 242, 0)' },
+      { boxShadow: '0 0 0 5px rgba(1, 69, 242, 0.14)' },
+      { boxShadow: '0 0 0 0 rgba(1, 69, 242, 0)' },
+    ], { duration: 900, easing: 'ease-out' });
+    setDeskNotice(`${visit.patient_name || '해당 환자'}의 My Tiki 상태를 오른쪽 상세에서 확인합니다.`);
   }
 
   function handleDeskPrimaryAction(type, visit) {
@@ -2301,6 +2478,10 @@ export default function MyTikiTab({ darkMode }) {
     }
     if (type === 'copy_my_tiki_link') {
       copyVisitLink(visit);
+      return;
+    }
+    if (type === 'view_my_tiki_status') {
+      focusMyTikiStatus(visit);
       return;
     }
     if (type === 'check_in') {
@@ -2325,10 +2506,18 @@ export default function MyTikiTab({ darkMode }) {
       openDedicatedSurface('room');
       return;
     }
-    focusVisitRow(visit.id);
+    if (type === 'open_patient_care') {
+      openDedicatedSurface('patient_care');
+      return;
+    }
+    if (!focusVisitRow(visit.id)) focusMyTikiStatus(visit);
   }
 
   async function handleGenerated(visitId, newLink) {
+    if (newLink?.url) {
+      linkUrlCacheRef.current[visitId] = newLink.url;
+      if (newLink.id) linkUrlCacheRef.current[newLink.id] = newLink.url;
+    }
     setVisits(prev => prev.map(v =>
       v.id === visitId ? { ...v, link_status: 'active', link: { ...(v.link || {}), ...newLink } } : v
     ));
@@ -2480,6 +2669,7 @@ export default function MyTikiTab({ darkMode }) {
             counts={deskCounts}
             myTikiStatusGroups={myTikiStatusGroups}
             selectedMyTikiGroup={selectedMyTikiGroup}
+            selectedJourneyStage={selectedJourneyStage}
             roomSummary={roomSummary}
             loading={loading}
             darkMode={darkMode}
@@ -2487,6 +2677,7 @@ export default function MyTikiTab({ darkMode }) {
             onQuickCreate={() => openDedicatedSurface('quick_create')}
             onPrimaryAction={handleDeskPrimaryAction}
             onSelectMyTikiGroup={setSelectedMyTikiGroup}
+            onSelectJourneyStage={setSelectedJourneyStage}
             rooms={rooms}
             busyVisitIds={new Set([...checkingInIds, ...assigningRoomIds])}
           />

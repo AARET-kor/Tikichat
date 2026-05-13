@@ -4578,10 +4578,10 @@ async function fetchOpsBoardVisits({
 
   const visitIds = visits.map((visit) => visit.id);
 
-  const [{ data: links }, { data: unreviewedRows }] = await Promise.all([
+  const [{ data: links, error: linksError }, { data: unreviewedRows, error: unreviewedRowsError }] = await Promise.all([
     sb
       .from("patient_links")
-      .select("visit_id, id, status, expires_at, first_opened_at, last_accessed_at, created_at")
+      .select("visit_id, id, status, expires_at, created_at")
       .in("visit_id", visitIds)
       .eq("clinic_id", clinic_id)
       .order("created_at", { ascending: false }),
@@ -4592,6 +4592,8 @@ async function fetchOpsBoardVisits({
       .eq("status", "submitted")
       .is("reviewed_at", null),
   ]);
+  if (linksError) throw linksError;
+  if (unreviewedRowsError) throw unreviewedRowsError;
 
   const linksMap = {};
   for (const link of links || []) {
@@ -4607,7 +4609,7 @@ async function fetchOpsBoardVisits({
     if (!link) return "none";
     if (link.status === "revoked") return "revoked";
     if (link.status === "expired" || new Date(link.expires_at) < new Date()) return "expired";
-    if (link.first_opened_at) return "opened";
+    if (link.status === "opened") return "opened";
     return "active";
   }
 

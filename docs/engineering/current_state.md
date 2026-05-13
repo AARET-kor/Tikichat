@@ -404,3 +404,103 @@ Intentionally unchanged:
 Remaining risk:
 
 - After a full reload, an already-issued link can be recognized as issued, but the original raw URL cannot be copied again unless it is reissued or a future safe delivery-log design is approved.
+
+## 2026-05-12 Tiki Desk Link-State Follow-Up Fix
+
+Implemented in this pass:
+
+- Tiki Desk ops-board link lookup now uses only stable `patient_links` columns: `visit_id`, `id`, `status`, `expires_at`, and `created_at`.
+- Tiki Desk now throws and surfaces link lookup errors instead of silently treating failed link reads as “link needed”.
+- My Tiki link URLs returned immediately after generation are cached in the current browser session, so the 20-second ops-board refresh does not erase the copyable URL.
+- “방문 확인” fallback behavior no longer depends on a removed/hidden visit row. If the row cannot be found, Tiki Desk opens the My Tiki status detail for that patient instead.
+
+Root cause:
+
+- The deployed DB can legitimately lack optional patient-link extension columns such as `first_opened_at` and `last_accessed_at`.
+- Tiki Desk selected those optional columns inside the ops-board link lookup and ignored the query error. That made valid issued links look like missing links after refresh or polling.
+- Some desk actions still tried to scroll to legacy visit rows that are no longer the primary Tiki Desk surface, so button clicks appeared to do nothing.
+
+Intentionally unchanged:
+
+- No schema changes.
+- No raw token persistence.
+- No new link delivery table.
+- No new Tiki Desk architecture or patient task engine.
+
+Remaining risk:
+
+- After a full browser reload, an issued link can still be shown as issued, but the original raw URL cannot be copied again because raw tokens are intentionally not stored. Reissue remains the safe current workaround.
+
+## 2026-05-13 Tiki Desk Unified Journey Design
+
+Implemented in this pass:
+
+- No product code was changed in this pass.
+- Created the design contract at `docs/superpowers/specs/2026-05-13-tiki-desk-unified-journey-contract.md`.
+- Locked the intended Tiki Desk direction as a unified patient journey board:
+  - `상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 사후`
+  - default screen shows only the seven-stage rail, `오늘 할 일`, and `My Tiki 상태`
+  - clicking a stage expands that stage's patient list
+  - completing a primary action moves the patient/visit to the next stage
+
+Why this matters:
+
+- Recent real-use issues showed that TikiPaste, Tiki Desk, My Tiki, Tiki Room, Aftercare, and Memory can feel disconnected if each surface interprets state separately.
+- Tiki Desk must become a stage-driven operating board, not a generic dashboard and not a full Vegas/CRM clone.
+
+Intentionally deferred:
+
+- No implementation of the new stage rail yet.
+- No new schema, no workflow engine, no drag/drop kanban, and no CRM replacement behavior.
+- No raw My Tiki token storage.
+
+Next:
+
+- Convert the design contract into an implementation plan.
+- First implementation batch should create a shared journey-stage helper and tests before changing the main Tiki Desk UI.
+
+## 2026-05-13 Tiki Desk Unified Journey Implementation
+
+Implemented in this pass:
+
+- Added a shared Tiki Desk journey-stage helper for the seven operational stages:
+  - `상담`
+  - `링크`
+  - `도착`
+  - `문진·동의`
+  - `대기`
+  - `룸`
+  - `사후`
+- Tiki Desk now receives a stage rail from the same helper that builds today's operational task list.
+- The Tiki Desk main surface now shows a clickable seven-stage rail above the focused operating view.
+- Clicking a stage expands the patients in that stage without mutating backend state.
+- Stage drilldown patient cards now expose the same primary action buttons as `오늘 할 일`, so a stage card can be used to continue work instead of only reading state.
+- Tiki Desk primary CTA selection now prioritizes the current transition over an already-issued My Tiki link. This prevents active links from hiding actions such as `도착 확인`, `서류 확인`, and `빈 룸 배정`.
+- Ops-board link status now reads stable `patient_links.status` values, including `opened`, instead of relying on optional link telemetry fields.
+
+Backend behavior now connected:
+
+- `도착 확인` uses the existing staff-auth check-in route.
+- `서류 확인` uses the existing staff-auth forms-confirm route.
+- `빈 룸 배정` uses the existing room assignment path.
+- `룸` work remains owned by Tiki Room for clear/load-next behavior.
+- `사후` work navigates to Patient Care rather than trying to handle aftercare inside Tiki Desk.
+
+Verified:
+
+- `node --test tests/tiki-desk-flow.test.js`
+- `npm test`
+- `npm run build`
+
+Intentionally unchanged:
+
+- No schema changes.
+- No raw My Tiki token storage.
+- No drag/drop kanban or workflow engine.
+- No CRM/EMR replacement behavior.
+- No new backend voice, notification, or inbox system.
+
+Remaining risk:
+
+- After a full browser reload, an already-issued My Tiki link can be recognized as issued, but the original raw URL still cannot be reconstructed because raw tokens are intentionally not stored.
+- Deployed clinic smoke testing should still verify the full chain: TikiPaste conversion -> Tiki Desk stage rail -> My Tiki link state -> Tiki Room assignment/clear -> Patient Care aftercare signal.

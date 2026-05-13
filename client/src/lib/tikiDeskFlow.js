@@ -3,44 +3,78 @@ function timeValue(value) {
   return date && Number.isFinite(date.getTime()) ? date.getTime() : Number.POSITIVE_INFINITY;
 }
 
-export function getDeskNextAction(visit = {}) {
-  const formsReady = Boolean(visit.intake_done && visit.consent_done);
+const ACTIVE_LINK_STATUSES = ["active", "sent", "opened"];
+
+export const JOURNEY_STAGES = [
+  { key: "consult", label: "상담", helper: "상담에서 방문 후보로 정리" },
+  { key: "link", label: "링크", helper: "My Tiki 발급 필요" },
+  { key: "arrival", label: "도착", helper: "방문 대기·도착 확인" },
+  { key: "forms", label: "문진·동의", helper: "서류 확인" },
+  { key: "waiting", label: "대기", helper: "룸 배정 전" },
+  { key: "room", label: "룸", helper: "진료실 진행" },
+  { key: "aftercare", label: "사후", helper: "회복·응답 확인" },
+];
+
+function hasActiveLink(visit = {}) {
+  return ACTIVE_LINK_STATUSES.includes(visit.link_status);
+}
+
+function hasMissingLink(visit = {}) {
+  return !hasActiveLink(visit) || ["none", "expired", "revoked"].includes(visit.link_status);
+}
+
+function formsReady(visit = {}) {
+  return Boolean(visit.intake_done && visit.consent_done);
+}
+
+function isAftercareStage(visit = {}) {
+  return Boolean(
+    visit.followup_done ||
+    visit.room_cleared_at ||
+    visit.aftercare_due ||
+    visit.aftercare_status ||
+    ["post_care", "aftercare", "closed"].includes(visit.stage),
+  );
+}
+
+function isRoomReady(visit = {}) {
+  if (typeof visit.room_ready === "boolean") return visit.room_ready;
+  return Boolean(visit.checked_in_at && formsReady(visit) && ["pre_visit", "treatment", "post_care"].includes(visit.stage));
+}
+
+export function getVisitJourneyStage(visit = {}) {
   const arrivedAt = visit.patient_arrived_at || null;
   const checkedInAt = visit.checked_in_at || null;
-  const roomReady = typeof visit.room_ready === "boolean"
-    ? visit.room_ready
-    : Boolean(checkedInAt && formsReady && ["pre_visit", "treatment", "post_care"].includes(visit.stage));
 
-  if (arrivedAt && !checkedInAt) {
-    return {
-      key: "confirm_arrival",
-      label: "도착 확인",
-      detail: "환자가 My Tiki에서 도착을 눌렀습니다.",
-      tone: "urgent",
-      priority: 10,
-      at: arrivedAt,
-    };
-  }
+  let key = "consult";
+  if (isAftercareStage(visit)) key = "aftercare";
+  else if (visit.room_id || visit.room) key = "room";
+  else if (checkedInAt && formsReady(visit)) key = "waiting";
+  else if (checkedInAt && !formsReady(visit)) key = "forms";
+  else if (arrivedAt) key = "arrival";
+  else if (hasMissingLink(visit)) key = "link";
+  else if (hasActiveLink(visit)) key = "arrival";
 
-  if ((arrivedAt || checkedInAt) && !formsReady) {
-    return {
-      key: "complete_forms",
-      label: !visit.intake_done ? "문진 확인" : "동의서 확인",
-      detail: "룸 이동 전 필요한 서류가 남아 있습니다.",
-      tone: "warn",
-      priority: 20,
-      at: arrivedAt || checkedInAt,
-    };
-  }
+  const stage = JOURNEY_STAGES.find((item) => item.key === key) || JOURNEY_STAGES[0];
+  return {
+    ...stage,
+    index: JOURNEY_STAGES.findIndex((item) => item.key === stage.key),
+  };
+}
 
-  if (roomReady && !visit.room_id) {
+export function getDeskNextAction(visit = {}) {
+  const arrivedAt = visit.patient_arrived_at || null;
+  const checkedInAt = visit.checked_in_at || null;
+  const readyForRoom = isRoomReady(visit);
+
+  if (isAftercareStage(visit)) {
     return {
-      key: "send_to_room",
-      label: "룸 배정",
-      detail: "체크인과 서류가 끝나 룸으로 보낼 수 있습니다.",
-      tone: "ready",
-      priority: 30,
-      at: checkedInAt || arrivedAt || visit.visit_date,
+      key: "aftercare_review",
+      label: "사후 확인",
+      detail: "시술 후 회복 상태나 응답을 확인합니다.",
+      tone: visit.aftercare_attention || visit.aftercare_due ? "warn" : "steady",
+      priority: 70,
+      at: visit.room_cleared_at || visit.updated_at || visit.visit_date,
     };
   }
 
@@ -55,7 +89,50 @@ export function getDeskNextAction(visit = {}) {
     };
   }
 
-  if (visit.link_status === "none" || visit.link_status === "expired") {
+  if (arrivedAt && !checkedInAt) {
+    return {
+      key: "confirm_arrival",
+      label: "도착 확인",
+      detail: "환자가 My Tiki에서 도착을 눌렀습니다.",
+      tone: "urgent",
+      priority: 10,
+      at: arrivedAt,
+    };
+  }
+
+  if (checkedInAt && formsReady(visit)) {
+    if (readyForRoom) {
+      return {
+        key: "send_to_room",
+        label: "룸 배정",
+        detail: "체크인과 서류가 끝나 룸으로 보낼 수 있습니다.",
+        tone: "ready",
+        priority: 30,
+        at: checkedInAt || arrivedAt || visit.visit_date,
+      };
+    }
+    return {
+      key: "wait_room_ready",
+      label: "룸 대기",
+      detail: "문진·동의 확인은 끝났고 룸 이동 조건을 기다립니다.",
+      tone: "muted",
+      priority: 50,
+      at: checkedInAt || arrivedAt || visit.visit_date,
+    };
+  }
+
+  if ((arrivedAt || checkedInAt) && !formsReady(visit)) {
+    return {
+      key: "complete_forms",
+      label: !visit.intake_done ? "문진 확인" : "동의서 확인",
+      detail: "룸 이동 전 필요한 서류가 남아 있습니다.",
+      tone: "warn",
+      priority: 20,
+      at: arrivedAt || checkedInAt,
+    };
+  }
+
+  if (hasMissingLink(visit)) {
     return {
       key: "send_link",
       label: "링크 발급",
@@ -67,31 +144,16 @@ export function getDeskNextAction(visit = {}) {
   }
 
   return {
-    key: "wait_booking",
-    label: "예약 대기",
-    detail: "예약 시간 흐름을 지켜보면 됩니다.",
+    key: "wait_arrival",
+    label: "방문 대기",
+    detail: "My Tiki 링크가 발급됐고 방문을 기다립니다.",
     tone: "muted",
-    priority: 90,
+    priority: 80,
     at: visit.visit_date,
   };
 }
 
 export function getDeskPrimaryCta(action = {}, visit = {}) {
-  if (["active", "sent", "opened"].includes(visit.link_status)) {
-    if (!(visit.link?.url || visit.link_url || visit.my_tiki_url)) {
-      return {
-        type: "focus_visit",
-        label: "링크 발급됨",
-        helper: "이미 My Tiki 링크가 있습니다. 새로 필요할 때만 재발급합니다",
-      };
-    }
-    return {
-      type: "copy_my_tiki_link",
-      label: "링크 복사",
-      helper: "이미 발급된 My Tiki 링크를 복사합니다",
-    };
-  }
-
   const actionKey = action.key || action;
   const ctas = {
     send_link: {
@@ -119,12 +181,34 @@ export function getDeskPrimaryCta(action = {}, visit = {}) {
       label: "Tiki Room 열기",
       helper: "진료실 화면에서 이어서 처리합니다",
     },
+    aftercare_review: {
+      type: "open_patient_care",
+      label: "환자 케어 열기",
+      helper: "사후관리와 확인 요청 화면에서 처리합니다",
+    },
   };
 
-  return ctas[actionKey] || {
-    type: "focus_visit",
-    label: "방문 확인",
-    helper: "방문 행으로 이동합니다",
+  if (ctas[actionKey]) return ctas[actionKey];
+
+  if (actionKey === "wait_arrival" && ["active", "sent", "opened"].includes(visit.link_status)) {
+    if (!(visit.link?.url || visit.link_url || visit.my_tiki_url)) {
+      return {
+        type: "view_my_tiki_status",
+        label: "상태 확인",
+        helper: "이미 발급된 My Tiki 상태를 확인합니다",
+      };
+    }
+    return {
+      type: "copy_my_tiki_link",
+      label: "링크 복사",
+      helper: "이미 발급된 My Tiki 링크를 복사합니다",
+    };
+  }
+
+  return {
+    type: "view_my_tiki_status",
+    label: "상태 확인",
+    helper: "오른쪽 My Tiki 상태에서 확인합니다",
   };
 }
 
@@ -147,8 +231,27 @@ export function sortNextActionVisits(visits = []) {
     });
 }
 
+export function buildJourneyStageBuckets(visits = []) {
+  const buckets = JOURNEY_STAGES.map((stage) => ({
+    ...stage,
+    count: 0,
+    patients: [],
+  }));
+  const byKey = Object.fromEntries(buckets.map((stage) => [stage.key, stage]));
+
+  for (const visit of visits) {
+    const stage = getVisitJourneyStage(visit);
+    const bucket = byKey[stage.key] || byKey.consult;
+    bucket.patients.push(visit);
+    bucket.count += 1;
+  }
+
+  return buckets;
+}
+
 export function buildTikiDeskFlow(visits = [], limit = 5) {
   return {
+    stageRail: buildJourneyStageBuckets(visits),
     booked: sortBookedVisits(visits).slice(0, limit),
     arrived: sortArrivedVisits(visits).slice(0, limit),
     nextActions: sortNextActionVisits(visits).slice(0, limit),
@@ -160,7 +263,7 @@ export function buildTikiDeskCounts(visits = []) {
     const action = getDeskNextAction(visit);
     acc.total += 1;
     acc.arrived += visit.patient_arrived_at ? 1 : 0;
-    acc.waiting += ["confirm_arrival", "complete_forms", "send_to_room"].includes(action.key) ? 1 : 0;
+    acc.waiting += ["confirm_arrival", "complete_forms", "send_to_room", "wait_room_ready", "wait_arrival"].includes(action.key) ? 1 : 0;
     acc.formsNeeded += action.key === "complete_forms" ? 1 : 0;
     acc.roomReady += action.key === "send_to_room" ? 1 : 0;
     acc.needsAttention += ["confirm_arrival", "complete_forms"].includes(action.key) ? 1 : 0;
@@ -180,14 +283,12 @@ export function buildTikiDeskCounts(visits = []) {
 }
 
 export function buildVisitStatusBadges(visit = {}) {
-  const hasLink = ["active", "opened"].includes(visit.link_status);
+  const hasLink = hasActiveLink(visit);
   const linkOpened = visit.link_status === "opened";
   const arrived = Boolean(visit.patient_arrived_at || visit.checked_in_at);
-  const roomReady = typeof visit.room_ready === "boolean"
-    ? visit.room_ready
-    : Boolean(visit.checked_in_at && visit.intake_done && visit.consent_done);
+  const roomReady = isRoomReady(visit);
   const inRoom = Boolean(visit.room_id || visit.room);
-  const aftercareActive = visit.stage === "post_care" || Boolean(visit.followup_done);
+  const aftercareActive = isAftercareStage(visit);
 
   return [
     {
