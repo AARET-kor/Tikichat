@@ -1,6 +1,6 @@
 # TikiDoc Product Decisions
 
-Last updated: 2026-05-13
+Last updated: 2026-05-16
 
 ## Product Surface Naming
 
@@ -113,6 +113,26 @@ Display copy should use these names. Internal routes, schema fields, metadata va
 
 - `Tiki Desk` is the staff / clinic operations surface.
 - Tiki Desk should feel like an operational command board, not a generic dashboard.
+- Tiki Desk's current operational model is one active visit, one current journey stage:
+  - 상담
+  - 링크
+  - 도착
+  - 문진·동의
+  - 대기
+  - 룸
+  - 애프터케어
+- Stage buttons must not be decorative. When backend support exists, they should save through the real transition, reload state, and show staff-visible feedback. When backend support does not exist, the button should be disabled or explain the missing operation in Korean.
+- `My Tiki 상태 상세` is the working surface for the 링크 stage. It should expose link issue/reissue/copy, 문진·동의 확인, and 도착 확인 actions according to the selected patient status group.
+- My Tiki link status is journey infrastructure, not a loose URL. Staff-facing status should distinguish:
+  - 링크 발급됨
+  - 열람됨
+  - 문진 미완료
+  - 동의 미완료
+  - 도착 신호 있음
+  - 만료됨
+  - 취소됨
+- Because raw patient link tokens are not stored, old generated URLs may not always be copyable after reload. If the URL is unavailable, the safe staff action is 재발급.
+- Patient cards may show a compact `여정 기록` section using existing journey/audit events. This is for operational trust, not a full audit explorer.
 - The first screen should prioritize:
   - booked order
   - actual arrival order
@@ -125,7 +145,7 @@ Display copy should use these names. Internal routes, schema fields, metadata va
   - aftercare
   - scheduler degraded state
   - recent audit/history snippets
-- It is not currently a full command center, alert center, audit dashboard, or admin CMS.
+- It is not currently a full command center, alert center, audit dashboard, workflow engine, or admin CMS.
 - Phase 1 UX reset is implemented for the Tiki Desk first screen: larger metrics, larger patient rows, and a clearer booked / arrived / next-action board.
 - Phase 2 dashboard shell reset is implemented for the staff sidebar and top bar: wider navigation, larger icons, larger labels, clearer product/management grouping, and stronger clinic/staff identity.
 - Phase 3 Protocol UX reset is implemented as a read/scan-oriented standards board with clearer Korean copy, response standards, prohibited phrases, approved wording, and an improvement checklist.
@@ -407,3 +427,15 @@ Why:
 - Staff-facing UI should use `애프터케어`; older `사후` wording should not be used for visible lifecycle labels.
 - Raw technical failures such as schema cache, UUID, column missing, or PostgREST errors must be translated into staff-safe operational Korean messages.
 - The next roadmap priority is verification and closure of the connected journey, not a new feature bucket: TikiPaste conversion, My Tiki link lifecycle, Tiki Desk stage movement, Tiki Room handoff, Patient Care/애프터케어, and Memory consistency.
+
+## Tiki Desk My Tiki Status Action Rule
+
+- `My Tiki 상태 상세` is the staff work surface for the link stage and related My Tiki lifecycle states.
+- Status groups should expose real, state-specific actions where the backend already supports them:
+  - `링크 필요` -> issue link
+  - `발급됨` / `열람됨` -> copy recoverable link URL or reissue if no raw URL is available
+  - `문진 필요` / `동의 필요` -> use the existing forms-confirm transition
+  - `도착 확인` -> use the existing staff check-in transition
+  - `만료/취소` -> reissue link
+- Buttons must not fake stage movement. If no safe backend transition exists, the button should be disabled with a staff-readable reason.
+- Splitting 문진 and 동의 into separate completion actions is deferred until the backend contract supports distinct confirmation state.

@@ -8,6 +8,7 @@ import {
   buildTikiDeskFlow,
   buildMyTikiStatusSummary,
   buildVisitJourneyTimeline,
+  getMyTikiStatusAction,
   getStaffSafeErrorMessage,
   getVisitJourneyStage,
   getDeskPrimaryCta,
@@ -404,6 +405,36 @@ test("Tiki Desk exposes a My Tiki patient-level drilldown", () => {
   assert.match(tikiDeskSource, /동의 필요/);
   assert.match(tikiDeskSource, /도착 확인/);
   assert.match(tikiDeskSource, /만료\/취소/);
+});
+
+test("My Tiki detail exposes concrete status-specific actions", () => {
+  assert.deepEqual(getMyTikiStatusAction("link_needed", { ...base, link_status: "none" }), {
+    type: "generate_link",
+    label: "My Tiki 링크 발급",
+    helper: "환자에게 보낼 링크를 새로 발급합니다",
+    enabled: true,
+  });
+  assert.deepEqual(getMyTikiStatusAction("link_active", { ...base, link_status: "active", my_tiki_url: "https://app.tikidoc.xyz/t/abc" }), {
+    type: "copy_my_tiki_link",
+    label: "링크 복사",
+    helper: "이미 발급된 My Tiki 링크를 복사합니다",
+    enabled: true,
+  });
+  assert.equal(getMyTikiStatusAction("link_active", { ...base, link_status: "active" }).type, "generate_link");
+  assert.equal(getMyTikiStatusAction("intake_needed", { ...base, intake_done: false }).type, "confirm_forms");
+  assert.equal(getMyTikiStatusAction("consent_needed", { ...base, consent_done: false }).type, "confirm_forms");
+  assert.equal(getMyTikiStatusAction("arrival_confirmed", { ...base, checked_in_at: null, patient_arrived_at: "2026-04-24T09:00:00.000Z" }).type, "check_in");
+  assert.equal(getMyTikiStatusAction("arrival_confirmed", { ...base, checked_in_at: "2026-04-24T09:02:00.000Z" }).enabled, false);
+  assert.equal(getMyTikiStatusAction("link_expired_cancelled", { ...base, link_status: "expired" }).type, "generate_link");
+});
+
+test("My Tiki detail panel uses status-specific actions instead of passive-only status checks", () => {
+  assert.match(tikiDeskSource, /getMyTikiStatusAction/);
+  assert.match(tikiDeskSource, /busyVisitIds/);
+  assert.match(tikiDeskSource, /actionStatuses/);
+  assert.match(tikiDeskSource, /disabled={!cta\.enabled \|\| busy}/);
+  assert.match(tikiDeskSource, /actionStatus \|\| cta\.helper/);
+  assert.match(tikiDeskSource, /type === 'disabled'/);
 });
 
 test("legacy My Tiki summary keys are no longer used for current operations", () => {

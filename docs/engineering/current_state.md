@@ -1,6 +1,6 @@
 # Current Engineering State
 
-Last updated: 2026-05-14
+Last updated: 2026-05-16
 
 This document is the short engineering truth snapshot for TikiDoc after hardening, Batch 6A / 6B / 6C / 6D, the design-system pass, TikiPaste web-sidecar pivot, auth fixes, and Quick Visit / My Tiki link stabilization.
 
@@ -49,6 +49,12 @@ Stable:
 - Scheduler health/degraded visibility for aftercare.
 - Light audit/actor tracking for key escalation, room, and aftercare transitions.
 - Tiki Desk operational visibility: urgency markers, escalation owner/latest actor line, SLA-derived markers, scheduler notice, and recent audit/history browse.
+- Tiki Desk journey board:
+  - the main board uses the shared seven-stage visit journey model: `상담 -> 링크 -> 도착 -> 문진·동의 -> 대기 -> 룸 -> 애프터케어`
+  - My Tiki detail management is no longer passive-only; status groups now expose concrete actions where existing backend support exists
+  - link-needed, issued/opened, intake-needed, consent-needed, arrival-confirmed, and expired/cancelled groups each show the relevant staff action or a disabled operational note
+  - actions reuse existing backend transitions for link generation, check-in, forms/consent confirmation, room assignment, room clear, and aftercare review rather than faking stage movement
+  - patient journey snippets are available on patient cards so staff can see how a visit moved through capture, link, arrival, room, and aftercare events
 - Patient Care operational screen:
   - confirmation-request action buttons now persist state transitions instead of behaving like passive UI
   - the default request list shows actionable active requests, not already resolved/closed history
@@ -116,6 +122,8 @@ Prototype-level or intentionally bounded:
 - Conversation intake is not an omnichannel inbox. It has no unread state, channel sync, channel reply sending, or automated CRM/EMR integration.
 - CRM/EMR presets are practical alias helpers, not certified vendor integrations.
 - My Tiki patient UI kit is improved and reusable, but not every multilingual patient route has been manually device-tested after the latest visual pass.
+- My Tiki detail management currently confirms 문진 and 동의 together through the existing staff forms-confirm route. Separate clinical confirmation states remain a later contract decision.
+- Previously generated link URLs may not be recoverable after reload because raw link tokens are intentionally not stored; when a URL is unavailable, the safe operation is link reissue rather than pretending a copy action can work.
 
 Intentionally deferred:
 
@@ -535,3 +543,23 @@ What should not be built yet:
 - No drag/drop workflow engine or Vegas-style dense kanban clone.
 - No raw token store without a security review.
 - No backend voice pipeline unless explicitly approved.
+
+## 2026-05-16 Tiki Desk My Tiki Action Closure
+
+Implemented in this pass:
+
+- `My Tiki 상태 상세` is now an operational work area, not just a status readout.
+- Each My Tiki status group exposes the smallest real action available from the current backend contract:
+  - `링크 필요`: issue My Tiki link
+  - `발급됨` / `열람됨`: copy a recoverable link URL, or reissue when the raw URL is unavailable after reload
+  - `문진 필요` / `동의 필요`: run the existing forms-confirm transition
+  - `도착 확인`: run the existing staff check-in transition when the visit is not already checked in
+  - `만료/취소`: reissue link
+- Unsupported or already-complete states now show a disabled operational explanation instead of a decorative button.
+- Tiki Desk action handling now avoids fake stage movement. The UI only implies progress after the existing action path saves, reloads, and confirms the refreshed state.
+
+Remaining roadmap:
+
+1. Live deployed QA for the full chain: `TikiPaste -> patient/visit -> My Tiki link -> Tiki Desk stage -> My Tiki open/forms/consent -> arrival -> Tiki Room -> 애프터케어`.
+2. Separate `문진 확인` and `동의 확인` only if the backend contract is split. The current safe route confirms them together.
+3. Decide whether already-issued My Tiki raw URLs should be recoverable after reload. Current conservative behavior is reissue when the raw URL is unavailable.

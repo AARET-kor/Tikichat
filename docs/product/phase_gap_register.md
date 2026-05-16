@@ -1,6 +1,6 @@
 # TikiDoc Phase Gap Register
 
-Last updated: 2026-05-01
+Last updated: 2026-05-16
 
 This register tracks the practical gaps after hardening and Batch 6A / 6B / 6C / 6D. It distinguishes code completion from real-world clinic readiness.
 
@@ -121,11 +121,21 @@ Implemented:
   - generated URLs encode the raw token
   - token auth selects only required `patient_links` fields
   - optional schema fields no longer block link validity
+- Tiki Desk now treats My Tiki link state as journey infrastructure:
+  - link-needed patients can issue a link
+  - issued/opened patients can copy a recoverable link URL or reissue when the raw URL is unavailable
+  - 문진 미완료 and 동의 미완료 patients route to the existing staff forms-confirm transition
+  - arrival-confirmed patients route to the existing check-in transition when not already checked in
+  - expired/cancelled links show reissue as the safe action
+- `My Tiki 상태 상세` now uses these status-specific actions directly instead of showing only passive `상태 확인` buttons.
+- Unsupported states now show disabled operational copy rather than pretending a stage transition happened.
 
 Partial:
 
 - Broader patient task UX polish.
 - Multilingual patient UI needs real device QA after the latest design-system pass.
+- 문진 and 동의 are still confirmed together by the current backend route; separate confirmation controls are intentionally not added without a clearer schema/contract decision.
+- Raw link URLs may be unavailable after reload because raw tokens are not stored. Reissue is the conservative staff action in that case.
 
 Deferred:
 
@@ -172,6 +182,7 @@ Implemented:
 
 - Patient self-arrival.
 - Staff check-in.
+- Tiki Desk 도착 확인 buttons use the real staff check-in transition instead of a cosmetic stage move.
 - Ops Board lightweight refresh.
 - Staff-visible QR flow.
 - Tiki Desk document and internal scroll restoration after the design-system enlargement.

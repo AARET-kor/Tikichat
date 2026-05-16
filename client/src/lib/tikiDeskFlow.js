@@ -38,6 +38,10 @@ function hasMissingLink(visit = {}) {
   return !hasActiveLink(visit) || ["none", ...CLOSED_LINK_STATUSES].includes(visit.link_status);
 }
 
+function hasDisplayableLinkUrl(visit = {}) {
+  return Boolean(visit.link?.url || visit.link_url || visit.my_tiki_url);
+}
+
 function formsReady(visit = {}) {
   return Boolean(visit.intake_done && visit.consent_done);
 }
@@ -349,6 +353,78 @@ export function getMyTikiLinkStatus(visit = {}) {
     label: "링크 필요",
     helper: "아직 My Tiki 링크가 없습니다",
     tone: "urgent",
+  };
+}
+
+export function getMyTikiStatusAction(groupKey, visit = {}) {
+  const status = visit.link_status || "none";
+
+  if (groupKey === "link_needed") {
+    return {
+      type: "generate_link",
+      label: "My Tiki 링크 발급",
+      helper: "환자에게 보낼 링크를 새로 발급합니다",
+      enabled: true,
+    };
+  }
+
+  if (groupKey === "link_active" || groupKey === "link_opened") {
+    if (hasDisplayableLinkUrl(visit)) {
+      return {
+        type: "copy_my_tiki_link",
+        label: "링크 복사",
+        helper: "이미 발급된 My Tiki 링크를 복사합니다",
+        enabled: true,
+      };
+    }
+    return {
+      type: "generate_link",
+      label: "링크 재발급",
+      helper: "발급 기록은 있지만 복사할 링크 URL이 없어 새 링크를 발급합니다",
+      enabled: true,
+    };
+  }
+
+  if (groupKey === "intake_needed" || groupKey === "consent_needed") {
+    return {
+      type: "confirm_forms",
+      label: "문진·동의 확인",
+      helper: "직원이 문진과 동의서 확인을 완료 처리합니다",
+      enabled: true,
+    };
+  }
+
+  if (groupKey === "arrival_confirmed") {
+    if (visit.checked_in_at) {
+      return {
+        type: "disabled",
+        label: "도착 확인됨",
+        helper: "이미 체크인 처리된 방문입니다",
+        enabled: false,
+      };
+    }
+    return {
+      type: "check_in",
+      label: "도착 확인",
+      helper: "환자 도착 신호를 체크인으로 처리합니다",
+      enabled: true,
+    };
+  }
+
+  if (groupKey === "link_expired_cancelled" || CLOSED_LINK_STATUSES.includes(status)) {
+    return {
+      type: "generate_link",
+      label: "링크 재발급",
+      helper: "만료 또는 취소된 링크를 새로 발급합니다",
+      enabled: true,
+    };
+  }
+
+  return {
+    type: "disabled",
+    label: "처리 없음",
+    helper: "현재 상태에서 바로 처리할 작업이 없습니다",
+    enabled: false,
   };
 }
 

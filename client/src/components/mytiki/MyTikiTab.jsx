@@ -36,6 +36,7 @@ import {
   buildVisitStatusBadges,
   getDeskNextAction,
   getDeskPrimaryCta,
+  getMyTikiStatusAction,
   getStaffSafeErrorMessage,
 } from '../../lib/tikiDeskFlow';
 import {
@@ -896,6 +897,8 @@ function MyTikiStatusDrilldown({
   onSelectGroup,
   darkMode,
   onPrimaryAction,
+  busyVisitIds = new Set(),
+  actionStatuses = {},
 }) {
   const selected = groups.find((group) => group.key === selectedKey) || groups[0] || { patients: [], count: 0 };
   const toneByKey = {
@@ -961,8 +964,10 @@ function MyTikiStatusDrilldown({
           </div>
         ) : selected.patients.slice(0, 5).map((visit) => {
           const action = getDeskNextAction(visit);
-          const cta = getDeskPrimaryCta(action, visit);
+          const cta = getMyTikiStatusAction(selected.key, visit);
           const tone = toneByKey[selected.key] || DESK_TONE.info;
+          const busy = busyVisitIds.has(visit.id);
+          const actionStatus = actionStatuses[visit.id];
           return (
             <div
               key={`${selected.key}-${visit.id}`}
@@ -976,13 +981,17 @@ function MyTikiStatusDrilldown({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onPrimaryAction(cta.type, visit, action)}
-                  className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97]"
-                  style={{ background: tone.color }}
+                  disabled={!cta.enabled || busy}
+                  onClick={() => cta.enabled && onPrimaryAction(cta.type, visit, { ...action, myTikiAction: cta })}
+                  className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                  style={{ background: cta.enabled ? tone.color : (darkMode ? '#3F3F46' : '#94A3B8') }}
                 >
-                  {cta.label}
+                  {busy ? '처리 중' : cta.label}
                 </button>
               </div>
+              <p className={`mt-2 text-[11px] font-bold ${darkMode ? 'text-zinc-500' : 'text-[#6B7C88]'}`}>
+                {actionStatus || cta.helper}
+              </p>
               <MyTikiStatusStrip visit={visit} action={action} darkMode={darkMode} compact />
             </div>
           );
@@ -1100,6 +1109,8 @@ function TikiDeskCommandBoard({
           onSelectGroup={onSelectMyTikiGroup}
           darkMode={darkMode}
           onPrimaryAction={onPrimaryAction}
+          busyVisitIds={busyVisitIds}
+          actionStatuses={actionStatuses}
         />
         <DeskCompactPanel
           title="룸 상태"
@@ -2634,7 +2645,11 @@ export default function MyTikiTab({ darkMode }) {
     setDeskNotice(`${visit.patient_name || '해당 환자'}의 My Tiki 상태를 오른쪽 상세에서 확인합니다.`);
   }
 
-  function handleDeskPrimaryAction(type, visit) {
+  function handleDeskPrimaryAction(type, visit, action = null) {
+    if (type === 'disabled') {
+      setDeskNotice(action?.myTikiAction?.helper || action?.helper || '현재 상태에서 바로 처리할 작업이 없습니다.');
+      return;
+    }
     if (type === 'generate_link') {
       handleAction('generate', visit);
       return;

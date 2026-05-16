@@ -1,6 +1,6 @@
 # TikiDoc Phase Status
 
-Last updated: 2026-05-01
+Last updated: 2026-05-16
 
 Status meanings:
 
@@ -36,6 +36,7 @@ Status meanings:
 | Tiki Desk scroll | stable after deploy smoke test | Global document scroll and Tiki Desk internal scrolling are restored. Must be checked on actual staff screen sizes. |
 | New visit visibility | stable after deploy smoke test | New visits are inserted optimistically and date filters move to `today`, `tomorrow`, `week`, or `all` based on visit date. |
 | TikiPaste web-sidecar | usable / pilot-ready | Web-only paste/screenshot/reply/handoff workspace is implemented for one-off consultation capture. It now extracts patient/visit candidates, shows conservative existing-patient matches, and supports staff-confirmed existing/new patient conversion into patient + visit + My Tiki link + Memory. Chrome extension code has been removed; DOM-reading behavior, silent auto-match, and CRM/EMR bulk import ownership remain excluded. |
+| Tiki Desk My Tiki actions | implemented / validating | `My Tiki 상태 상세` is no longer passive-only. Link-needed, issued/opened, forms/consent-needed, arrival-confirmed, and expired/cancelled states now expose the smallest real staff action available from existing transitions, or a disabled operational explanation when no safe backend transition exists. |
 | Design-system pass | implemented / validating | Landing, staff shell, Tiki Desk, Protocol, Procedure Management, and My Tiki UI kit direction are standardized. More manual visual QA remains. |
 
 ## Batch Status
@@ -58,7 +59,7 @@ Status meanings:
 | My Tiki patient task layer | stable / pilot-ready | Connected to arrival, forms, aftercare due, acknowledgement, and safe return. |
 | Tiki Room browser voice | usable | Optional browser feature. Not reliable enough to be the only clinical input path. |
 | Tiki Room real clinic usability | pilot-ready | Core room session flow verified. Real room devices still need acceptance testing. |
-| Tiki Desk operational visibility | stable / pilot-ready | Urgency, SLA, owner/latest actor, room traffic, scheduler health, and audit/history browse are surfaced. |
+| Tiki Desk operational visibility | stable / pilot-ready | Seven-stage journey visibility, My Tiki status detail actions, urgency, SLA, owner/latest actor, room traffic, scheduler health, and audit/history browse are surfaced. Deployed end-to-end transition QA remains required before calling it clinic-ready. |
 | QR generation / patient link flow | stable / pilot-ready | Internal QR rendering via `/api/qr`; no external QR dependency remains. |
 | TikiPaste web-sidecar | usable / pilot-ready | Useful as a staff sidecar workspace with assisted matching and staff-confirmed conversion. It is not an extension, overlay, automatic chat-reader, silent auto-matcher, or CRM/EMR import manager. |
 | Signup/login | stable | Real Auth path is restored when deployed env/build values match Supabase. |
